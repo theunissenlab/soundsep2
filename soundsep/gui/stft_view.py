@@ -5,7 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 import wavio
 
-from soundsep.app.stft import spectral_derivative, stft_gen, stft_freq
+from soundsep.core.stft import spectral_derivative, stft_gen, stft_freq
 
 
 class STFTViewMode(Enum):

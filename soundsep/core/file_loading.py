@@ -19,13 +19,11 @@ from typing import List
 
 import soundfile
 
-from soundsep.core.io import AudioFile, Block
-from soundsep.core.project import Project
+from soundsep.core.io import AudioFile, Block, Project
 
 
 def load_project(
         directory,
-        organization: AudioFileOrganization,
         filename_pattern: str = None,
         block_keys: List[str] = None,
         channel_keys: List[str] = None,

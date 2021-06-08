@@ -89,11 +89,30 @@ Developers who want to create plugins or modify the code for specialized project
     organization and have access to those object identifiers.
 """
 
+from __future__ import annotations
+
 import os
-from typing import List
+from collections.abc import Iterable
+from functools import wraps
+from typing import List, Union
 
 import numpy as np
 import soundfile
+
+
+def match_type(fn):
+    """Decorator for wrapping methods with one argument to enforce types match
+    """
+    @wraps
+    def _wrapped(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError("Mismatching types for {}: {} and {}".format(
+                fn.__name__,
+                self.__class__,
+                other.__class__
+            ))
+        return fn(self, other)
+    return _wrapped
 
 
 class AudioFile:
@@ -120,7 +139,7 @@ class AudioFile:
         self._path = path
         self._max_frame = None
 
-        with soundfile.soundfile(path) as f:
+        with soundfile.SoundFile(path) as f:
             self._sampling_rate = f.samplerate
             self._channels = f.channels
             self._actual_frames = f.frames
@@ -287,6 +306,24 @@ class Block:
     def channel_mapping(self):
         return self._channel_mapping
 
+    def get_channel_info(self, channel: int):
+        """Get the original file path and index of the Block's channel
+
+        Arguments
+        ---------
+        channel : int
+            Block's channel to request info from
+
+        Returns
+        -------
+        path : str
+            Path to file corresponding to requested channel
+        index : int
+            Index of channel in original file
+        """
+        original_file, original_channel = self._channel_mapping[channel]
+        return original_file.path, original_channel
+
     @property
     def sampling_rate(self):
         return self._sampling_rate
@@ -309,3 +346,369 @@ class Block:
 
     def read_one(self, i, channels:List[int]):
         return self.read(i, i+1, channels)
+
+
+class Project:
+    """Data access to audio data in a series of Blocks
+
+    Attributes
+    ----------
+    blocks : List[Block]
+    channels : int
+    sampling_rate : int
+    channels : int
+    frames : int
+        Number of samples in entire project
+
+    Methods
+    -------
+    .iter_blocks()
+    .read(start, stop, channels)
+    .to_block_index(index)
+    .to_project_index(index)
+
+    Examples
+    --------
+    Data can be read from a project using the .read() method or square bracket
+    access notation. Data can be accessed using either BlockIndex or ProjectIndex
+    values, but not raw integers, to enforce consistency.
+
+    >>> project = Project(...)
+    >>> start = BlockIndex(block, 10)
+    >>> end = BlockIndex(block, 20)
+
+    Accessing one frame can be done with a single index
+    >>> project[start]
+
+    Accessing a range can be done with a slice object. The following are equivalent
+    >>> project[start:end]
+    >>> project.read(start, end)  # Equivalent to the line above
+
+    Selecting the channels to read can be specified as an argument to .read() or
+    as the second slice in the bracket notation. The following are all equivalent
+
+    >>> project[start:end, :4]
+    >>> project[start:end, range(4)]
+    >>> project.read(start, end, channels=[0, 1, 2, 3])
+
+    Slice behavior using BlockIndex and ProjectIndex follows the scheme that if
+    one end is a BlockIndex and the other is None, the None will be interpreted
+    as the end of that block. Otherwise, None values refer to the endpoints of
+    the entire Project.
+    """
+
+    def __init__(self, blocks: List[Block]):# , allow_cross_block_slices: bool):
+        """Initialize the Project
+        """
+        self._blocks = blocks
+        # Enforce that all WavBlocks have the same channel configuration
+
+    def __repr__(self):
+        return "<Project: {} blocks; {} Hz; {} Ch; {} frames>".format(
+            len(self.blocks),
+            self.sampling_rate,
+            self.channels,
+            self.frames,
+        )
+
+    @property
+    def channels(self):
+        return self._blocks[0].channels
+
+    @property
+    def sampling_rate(self):
+        return self._blocks[0].sampling_rate
+
+    @property
+    def frames(self):
+        return np.sum([b.frames for b in self.blocks])
+
+    @property
+    def blocks(self):
+        return self._blocks
+    
+    @property
+    def iter_blocks(self):
+        """Iterate over ((start_idx, stop_idx), Block) pairs"""
+        frame = 0
+        for block in self.blocks:
+            yield ((ProjectIndex(self, frame), ProjectIndex(self, frame + block.frames)), block)
+            frame += block.frames
+
+    def read(
+            self,
+            start: Union['BlockIndex', 'ProjectIndex'],
+            stop: Union['BlockIndex', 'ProjectIndex'],
+            channels: List[int]
+        ):
+        """Reads data of a start->stop slice, can use ProjectIndex or BlockIndex values"""
+        if isinstance(start, BlockIndex):
+            start = self.convert_block2project(start)
+        elif isinstance(start, ProjectIndex):
+            pass
+        else:
+            raise TypeError("Can only read from project using BlockIndex or ProjectIndex")
+
+        if isinstance(stop, BlockIndex):
+            stop = self.convert_block2project(stop)
+        elif isinstance(start, ProjectIndex):
+            pass
+        else:
+            raise TypeError("Can only read from project using BlockIndex or ProjectIndex")
+        
+        return self._read_by_project_indices(start, stop, channels)
+
+    def _read_by_project_indices(self, start: 'ProjectIndex', stop: 'ProjectIndex', channels: List[int]):
+        """Reads slice's data from one or more Blocks in project"""
+        out_data = []
+        for (i0, i1), block in self.iter_blocks():
+            if i1 < self.start:
+                continue
+            elif i0 > self.stop:
+                break
+            else:
+                # block.read() takes normal ints; if we enforce it to take BlockIndex instead, we will
+                # need to cast these its
+                block_read_start = max(self.start - i0, 0)
+                block_read_stop = min(self.stop - i0, block.frames)
+                out_data.append(block.read(block_read_start, block_read_stop, channels=channels))
+
+        return np.concatenate(out_data)
+
+    def _normalize_slice(self, slice_: slice) -> slice:
+        """Convert slice of ProjectIndex or BlockIndex values to a slice with explicit endpoints
+
+        This function makes the None values in a slice explicit relative to the Block or Project,
+        depending on the other values.
+
+        Example
+        -------
+        >>> project._normalize_slice(slice(BlockIndex(block, 3), None))
+        slice(ProjectIndex<3>, ProjectIndex<10>, None)
+
+        Arguments
+        ---------
+        slice_ : slice
+            A slice(start, stop, step) where start and stop are ProjectIndex, BlockIndex, or both. The
+            step attribute of the slice is ignored.
+
+        Returns
+        -------
+        normalized_slice : slice
+            A slice whose start and stop values are both ProjectIndex values corresponding to the input
+            slice_. The step attribute is preserved. (note that step will typically be ignored).
+            If the input had None, it is filled in with the Block endpoint if the other element was
+            a BlockIndex, or ProjectIndex otherwise. If both start and stop were None, returns
+            a slice representing the entire Project.
+        """
+        if slice_.start is None and slice_.stop is None:
+            start = ProjectIndex(self, 0)
+            stop = ProjectIndex(self, self.frames)
+        elif slice_.start is None:
+            if isinstance(slice_.stop, BlockIndex):
+                start = self.to_project_index(BlockIndex(slice_.stop.block, 0))
+                stop = self.to_project_index(slice_.stop)
+            elif isinstance(slice_.stop, ProjectIndex):
+                start = ProjectIndex(self, 0)
+                stop = slice_.stop
+            else:
+                raise TypeError("Can only normalize slices with ProjectIndex, BlockIndex, or None values")
+        elif slice_.stop is None:
+            if isinstance(slice_.start, BlockIndex):
+                start = self.to_project_index(slice_.start)
+                stop = self.to_project_index(BlockIndex(slice_.start.block, slice_.start.block.frames))
+            elif isinstance(slice_.start, ProjectIndex):
+                start = slice_.start
+                stop = ProjectIndex(self, slice_.start.block.frames)
+            else:
+                raise TypeError("Can only normalize slices with ProjectIndex, BlockIndex, or None values")
+        else:
+            start = self.to_project_index(slice_.start)
+            stop = self.to_project_index(slice_.stop)
+
+        return slice(start, stop, None)
+
+    def __getitem__(self, slices):
+        """Main data access of Project via Block coordinates or Project coordinates
+
+        See Project class documentation for usage examples
+
+        First parameters to the slice selects the indices, and the second parameter (optional)
+        selects the channels. The second parameter can either be an int, Python slice object,
+        or iterable.
+        """
+        # This function must handle four cases: (int, int), (int, slice), (slice, int), (slice, slice)
+        # The second value could be an iterable as well
+        if isinstance(slices, tuple):
+            if not len(slices, 2):
+                raise ValueError("Invalid index into Project of length {}".format(len(slices)))
+
+            s1, s2 = slices
+
+            if isinstance(s1, slice):
+                s1 = self._normalize_slice(s1)
+
+            if isinstance(s2, slice):
+                s2 = s2.indices(self.channels)
+                s2 = list(range(s2.start, s2.stop, s2.step))
+
+            if isinstance(s1, BaseIndex) and isinstance(s2, int):
+                index = self.to_block_index(s1)
+                return index.block.read_one(index, channels=[s2])
+            elif isinstance(s1, BaseIndex) and isinstance(s2, Iterable):
+                index = self.to_block_index(s1)
+                return index.block.read_one(index, channels=list(s2))
+            elif isinstance(s1, slice) and isinstance(s2, int):
+                return self._read_by_project_indices(s1.start, s1.stop, channels=[s2])
+            elif isinstance(s1, slice) and isinstance(s2, Iterable):
+                return self._read_by_project_indices(s1.start, s1.stop, channels=list(s2))
+            else:
+                raise TypeError("Invalid types for Project __getitem__ access: {} and {}".format(s1, s2))
+        elif isinstance(slices, BaseIndex):
+            index = self.to_block_index(slices)
+            return index.block.read_one(index, list(range(self.channels)))
+        elif isinstance(slices, slice):
+            slice_ = self._normalize_slice(slices)
+            return self._read_by_project_indices(slice_.start, slice_.stop, channels=list(range(self.channels)))
+
+        raise ValueError("Invalid index into Project {}".format(slices))
+
+    def to_block_index(self, index: Union['BlockIndex', 'ProjectIndex']) -> 'BlockIndex':
+        """Convert a BlockIndex/ProjectIndex to a BlockIndex
+        
+        Arguments
+        ---------
+        index : ProjectIndex or BlockIndex
+
+        Returns
+        -------
+        block_index : BlockIndex
+            Index relative to a Block in the Project corresponding to the given index
+        """
+        if isinstance(index, BlockIndex):
+            return index
+        elif isinstance(index, ProjectIndex):
+            for (i0, i1), block in project.iter_blocks():
+                if i1 > project_index:
+                    return BlockIndex(block, project_index - i0)
+            raise ValueError("Could not find BlockIndex in Project")
+        else:
+            raise TypeError("Cannot covert type {} to BlockIndex".format(type(index)))
+
+
+    def to_project_index(self, index: Union['BlockIndex', 'ProjectIndex']) -> 'ProjectIndex':
+        """Convert a BlockIndex/ProjectIndex to a ProjectIndex
+
+        Arguments
+        ---------
+        index : ProjectIndex or BlockIndex
+
+        Returns
+        -------
+        project_index : ProjectIndex
+            Index to data relative to the entire Project
+        """
+        if isinstance(index, ProjectIndex):
+            return index
+        elif isinstance(index, BlockIndex):
+            for (i0, i1), block in project.iter_blocks():
+                if block == block_index.block:
+                    return ProjectIndex(self, i0 + block_index)
+            raise ValueError("Could not find BlockIndex in Project")
+        else:
+            raise TypeError("Cannot covert type {} to ProjectIndex".format(type(index)))
+
+
+# TODO: re-evaluate if inheriting from int is worth it or if it will be more likely to cause
+# more problems than later (due to all the methods they will inherit)
+class BaseIndex(int):
+
+    ObjectType = None
+
+    def __new__(cls, source_object, value: int):
+        if not isinstance(source_object, cls.ObjectType):
+            raise TypeError("Index of type {} must be instantiated with {}".format(cls, cls.ObjectType))
+
+        return int.__new__(cls, value)
+
+    def __init__(cls, source_object, value: int):
+        if value < -source_object.frames:
+            value = -source_object.frames
+        elif value > source_object.frames:
+            value = source_object.frames
+
+        self._source_object = source_object
+
+        super().__init__(value)
+
+    def __repr__(self):
+        return "{}<{}>".format(self.__class__, int.__repr__(self))
+
+    __lt__ = match_type(int.__lt__)
+    __gt__ = match_type(int.__gt__)
+    __le__ = match_type(int.__le__)
+    __ge__ = match_type(int.__ge__)
+
+    @match_type
+    def __eq__(self, other):
+        return (other._source_object is self._source_object) and self == other
+
+    def __add__(self, other: int):
+        """BaseIndex + int -> BaseIndex"""
+        return self.__class__(self._source_object, super().__add__(self, other))
+
+    def __sub__(self, other: int):
+        """BaseIndex - int -> BaseIndex | BaseIndex - BaseIndex -> int"""
+        if isinstance(other, self.__class__):
+            return super().__sub__(self, other)
+        elif isinstance(other, int):
+            return self.__class__(self._source_object, super().__sub__(self, other))
+
+
+class ProjectIndex(BaseIndex):
+    """An integer index that is a global index into a specific Project
+
+    The range of values are clamped to the bounds of the Project itself
+
+    Arguments
+    ---------
+    source_object : soundsep.io.Project
+        Project for which the index is valid
+    value : int
+        Frame within the Project that the index refers to
+
+    Example
+    -------
+    >>> pidx = ProjectIndex(project, 10)
+    """
+
+    ObjectType = Project
+
+    @property
+    def project(self):
+        return self._source_object
+
+
+class BlockIndex(BaseIndex):
+    """An integer index that is local to a specific Block
+
+    The range of values are clamped to the bounds of the Block
+
+    Arguments
+    ---------
+    source_object : soundsep.io.Block
+        Project for which the index is valid
+    value : int
+        Frame within the Project that the index refers to
+
+    Example
+    -------
+    >>> bidx = BlockIndex(block, 10)
+    """
+    ObjectType = Block
+
+    @property
+    def block(self):
+        return self._source_object
+
+

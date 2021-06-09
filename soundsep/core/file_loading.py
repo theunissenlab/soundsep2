@@ -1,12 +1,4 @@
-"""Module for file loading
-
-TODO: Needs more helper functions to help users get set up or debug their filenames
-
-# n channels, k Blocks
-ONE_FILE = 1  # n channels per file, 1 wav file -> 1 block
-N_FILES = 2   # 1 channel per file, n wav files -> 1 block
-K_FILES = 3   # n channels per file, k wav files -> k blocks
-NK_FILES = 4  # 1 channels per file, n*k wav files -> k blocks
+"""Module for reading and writing data to and from the Project/Block/AudioFile organization
 """
 import collections
 import glob
@@ -19,18 +11,74 @@ from typing import List
 
 import soundfile
 
-from soundsep.core.io import AudioFile, Block, Project
+from soundsep.core.models import AudioFile, Block, Project
 
 
 def load_project(
-        directory,
+        directory: str,
         filename_pattern: str = None,
         block_keys: List[str] = None,
         channel_keys: List[str] = None,
-    ):
-    filelist = glob.glob(os.path.join(directory, "*.wav"))
+    ) -> Project:
+    """Load a single WAV file or a directory of WAV files
 
-    if filename_pattern is None  and len(filelist) != 1:
+    Example
+    -------
+    To load WAV files from a folder that looks like this
+
+    ```
+    data/
+        Red77_01012020_12345_Channel0.wav
+        Red77_01012020_12345_Channel1and2.wav
+        Red77_01012020_23456_Channel0.wav
+        Red77_01012020_23456_Channel1and2.wav
+        ...
+    ```
+
+    You might load the data like this
+
+    >>> project = load_project(
+    ...     "data/",
+    ...     filename_pattern="{subject}_{date}_{time}_Channel{channel}.wav",
+    ...     block_keys=["date", "time"],
+    ...     channel_keys=["channel"]
+    ... )
+
+    Arguments
+    ---------
+    directory : str
+        The directory to search for WAV files in. If the given path
+        points to a WAV file, create a project containing a single file.
+    filename_pattern : str
+        A filename pattern with curly bracket "{}" variables. Each set of
+        brackets can contain a variable name that can be used to group files as
+        blocks and/or order them as channels (see block_keys and channel_keys).
+        **NOTE**: your pattern must resolve ambiguity! For example, if filenames
+        are of the form "{subject}_{date}_{time}_{channel}.wav", a pattern of
+        "{subject}_{timestamp}_{channel}.wav" would be ambiguous, as it could group
+        subject and date together, or date and tiem together. Just be careful.
+        TODO: add a function that previews how groupings will be made given
+        a filename pattern?
+    block_keys : List[str]
+        A list of keys in filename_pattern that define a single block. All files
+        whose filenames match on all of block_keys are grouped into one Block.
+    channel_keys : List[str]
+        A list of keys in filename_pattern that define the ordering of channels.
+        This is used to enforce a consistent mapping of file channels to Block
+        channels.
+
+    Returns
+    -------
+    project : Project
+        A soundsep.core.models.Project instance linking all Blocks found that match
+        the filename_pattern provided
+    """
+    if not os.path.isdir(directory) and directory.endswith(".wav"):
+        filelist = [directory]
+    else:
+        filelist = glob.glob(os.path.join(directory, "*.wav"))
+
+    if filename_pattern is None and len(filelist) != 1:
         raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))
 
     return _load_project_by_blocks(filelist, filename_pattern, block_keys, channel_keys)

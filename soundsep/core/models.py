@@ -752,3 +752,25 @@ class BlockIndex(BaseIndex):
         return self._source_object
 
 
+class Source:
+    """A source represents one source of auditory objects and is associated with one channel
+
+    Arguments
+    ---------
+    project : Project
+    channel : int
+    """
+
+    def __init__(self, project: Project, name: str, channel: int):
+        if channel >= project.channels:
+            raise IndexError("Cannot assign channel greater than number of channels in project")
+
+        self._project = project
+        self.channel = channel
+        # TODO: there is nothing that enforces uniqueness of the Source names
+        self.name = name
+
+    @property
+    def project(self) -> Project:
+        """Project associated with this Source"""
+        return self._project

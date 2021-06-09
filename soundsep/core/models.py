@@ -218,6 +218,12 @@ class Block:
         original_file, original_channel = self._channel_mapping[channel]
         return original_file.path, original_channel
 
+    def lookup_channel_info(self, audio_file: AudioFile, channel: int) -> int:
+        for block_channel, (f, c) in self._channel_mapping.items():
+            if f == audio_file and c == channel:
+                return block_channel
+        raise ValueError("Audio file and channel not found in block")
+
     @property
     def sampling_rate(self) -> int:
         """int: Sampling rate of the Block"""

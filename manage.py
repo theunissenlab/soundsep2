@@ -17,6 +17,24 @@ def run(_dir):
     run_app(MainApp, project)
 
 
+@click.command(help="Open sphinx documentation in browser")
+def doc():
+    import webbrowser
+    webbrowser.open('docs/_build/html/index.html', new=2)
+
+
+@click.command(help="Build sphinx documentation")
+def build_doc():
+    import os
+    import inspect
+    import subprocess
+
+    __location__ = os.path.join(os.getcwd(), os.path.dirname(
+        inspect.getfile(inspect.currentframe())))
+    p = subprocess.Popen(["make", "html"], cwd=os.path.join(__location__, "docs"))
+    p.communicate()
+
+
 @click.command(help="Run unittests")
 @click.option("-d", "--dir", "_dir", type=str, default=".")
 @click.option("-v", "--verbose", type=int, default=1)
@@ -44,6 +62,8 @@ def unittest(_dir, verbose, _coverage):
 
 cli.add_command(run)
 cli.add_command(unittest)
+cli.add_command(build_doc)
+cli.add_command(doc)
 
 
 if __name__ == "__main__":

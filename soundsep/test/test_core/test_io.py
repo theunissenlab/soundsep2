@@ -282,10 +282,12 @@ class TestAudioFile(unittest.TestCase):
                 f1.read(-5, 10, channel=2)
 
         with mock.patch("soundfile.read") as mock_read:
+            mock_read.return_value = np.random.random((10, 2)), f1.sampling_rate
             result = f1.read(-5, 10, channel=0)
             mock_read.assert_called_with("asdf.wav", 15, -5, dtype=np.float64)
 
         with mock.patch("soundfile.read") as mock_read:
+            mock_read.return_value = np.random.random((self.frames - 10, self.channels)), f1.sampling_rate
             result = f1.read(10, self.frames + 100, channel=0)
             mock_read.assert_called_with("asdf.wav", self.frames - 10, 10, dtype=np.float64)
 
@@ -294,13 +296,13 @@ class TestAudioFile(unittest.TestCase):
             f1 = AudioFile("asdf.wav")
 
         with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((10, 2))
+            mock_read.return_value = np.random.random((10, 2)), f1.sampling_rate
 
             result0 = f1.read(10, 20, channel=0)
-            np.testing.assert_array_equal(result0, mock_read.return_value[:, 0])
+            np.testing.assert_array_equal(result0, mock_read.return_value[0][:, 0])
 
             result1 = f1.read(10, 20, channel=1)
-            np.testing.assert_array_equal(result1, mock_read.return_value[:, 1])
+            np.testing.assert_array_equal(result1, mock_read.return_value[0][:, 1])
 
 
 class TestBlock(unittest.TestCase):
@@ -410,7 +412,7 @@ class TestBlock(unittest.TestCase):
         block = Block([f1, f2], fix_uneven_frame_counts=False)
 
         with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((10, 2))
+            mock_read.return_value = np.random.random((10, 2)), f1.sampling_rate
 
             result = block.read(10, 20, [0, 1])
 
@@ -430,7 +432,7 @@ class TestBlock(unittest.TestCase):
         block = Block([f1, f2], fix_uneven_frame_counts=True)
 
         with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((5, 2))
+            mock_read.return_value = np.random.random((5, 2)), f1.sampling_rate
 
             result = block.read(10, 20, [0, 3, 1])
 

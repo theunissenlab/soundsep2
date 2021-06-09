@@ -123,7 +123,7 @@ class AudioFile:
         read_start = i0
         read_stop = min(i1, self.frames)
 
-        result = soundfile.read(self.path, read_stop - read_start, read_start, dtype=np.float64)
+        result, _ = soundfile.read(self.path, read_stop - read_start, read_start, dtype=np.float64)
         
         if result.ndim == 1:
             result = result[:, None]
@@ -464,12 +464,12 @@ class Project:
 
             if isinstance(s1, BaseIndex) and isinstance(s2, int):
                 index = self.to_block_index(s1)
-                return index.block.read_one(index, channels=[s2])
+                return index.block.read_one(index, channels=[s2])[:, 0]
             elif isinstance(s1, BaseIndex) and isinstance(s2, Iterable):
                 index = self.to_block_index(s1)
                 return index.block.read_one(index, channels=list(s2))
             elif isinstance(s1, slice) and isinstance(s2, int):
-                return self._read_by_project_indices(s1.start, s1.stop, channels=[s2])
+                return self._read_by_project_indices(s1.start, s1.stop, channels=[s2])[:, 0]
             elif isinstance(s1, slice) and isinstance(s2, Iterable):
                 return self._read_by_project_indices(s1.start, s1.stop, channels=list(s2))
             else:
@@ -586,6 +586,8 @@ class BaseIndex(int):
             raise TypeError("Index of type {} must be instantiated with {}".format(cls, cls.ObjectType))
 
         # Convert negative indices to their corresponding positive value
+        value = int(value)
+
         if value < 0:
             value = source_object.frames + value
 

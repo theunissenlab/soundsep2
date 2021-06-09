@@ -5,7 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 import wavio
 
-from soundsep.core.io import ProjectIndex
+from soundsep.core.models import ProjectIndex
 from soundsep.core.stft import spectral_derivative, stft_gen, stft_freq
 
 

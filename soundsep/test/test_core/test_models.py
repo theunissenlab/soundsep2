@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
-from soundsep.core.io import AudioFile, Block, BlockIndex, Project, ProjectIndex
+from soundsep.core.models import AudioFile, Block, BlockIndex, Project, ProjectIndex
 
 
 def mock_soundfile_with(samplerate=44100, channels=1, frames=44100):
@@ -581,7 +581,7 @@ class TestProject(unittest.TestCase):
         """Test that normalizing a slice with both sides None gives the whole Project"""
         project = Project([self.block1, self.block2])
         self.assertEqual(
-            project._normalize_slice(slice(None, None)),
+            project.normalize_slice(slice(None, None)),
             slice(ProjectIndex(project, 0), ProjectIndex(project, project.frames))
         )
 
@@ -590,7 +590,7 @@ class TestProject(unittest.TestCase):
         i0 = ProjectIndex(project, 25)
         i1 = ProjectIndex(project, 99)
         self.assertEqual(
-            project._normalize_slice(slice(i0, i1)),
+            project.normalize_slice(slice(i0, i1)),
             slice(ProjectIndex(project, 25), ProjectIndex(project, 99))
         )
 
@@ -644,7 +644,7 @@ class TestProject(unittest.TestCase):
             slice(ProjectIndex(project, 25), ProjectIndex(project, 101))
         )
 
-    @mock.patch("soundsep.core.io.Project._read_by_project_indices")
+    @mock.patch("soundsep.core.models.Project._read_by_project_indices")
     def test_getitem_all_channels(self, mock_fn):
         """Test the primary data access on the Project through bracket notation
         """
@@ -667,8 +667,8 @@ class TestProject(unittest.TestCase):
         p[p0:b1]
         mock_fn.assert_called_with(ProjectIndex(p, 40), ProjectIndex(p, 160), channels=[0, 1, 2])
 
-    @mock.patch("soundsep.core.io.Block.read_one")
-    @mock.patch("soundsep.core.io.Project._read_by_project_indices")
+    @mock.patch("soundsep.core.models.Block.read_one")
+    @mock.patch("soundsep.core.models.Project._read_by_project_indices")
     def test_getitem_one_sample(self, mock_fn, mock_read_one):
         p = Project([self.block1, self.block2])
 
@@ -686,7 +686,7 @@ class TestProject(unittest.TestCase):
         mock_fn.assert_not_called()
         mock_read_one.assert_called_with(BlockIndex(self.block1, 40), channels=[2])
 
-    @mock.patch("soundsep.core.io.Project._read_by_project_indices")
+    @mock.patch("soundsep.core.models.Project._read_by_project_indices")
     def test_getitem_select_channels(self, mock_fn):
         """Test the primary data access on the Project through bracket notation
         """

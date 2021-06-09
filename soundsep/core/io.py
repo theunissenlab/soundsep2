@@ -16,24 +16,13 @@ import soundfile
 class AudioFile:
     """Container for a audio file on disk
 
-    Attributes
-    ----------
-    max_frame : int
-        Last frame that can be read from. Reads beyond the given frame will be cut off.
-
-    Methods
-    -------
-    .read(i0: int, i1: int, channel: int) -> numpy.ndarray
+    Arguments
+    ---------
+    path : str
+        Full path to the audio file on disk
     """
 
     def __init__(self, path):
-        """
-
-        Arguments
-        ---------
-        path : str
-            Full path to the audio file on disk
-        """
         self._path = path
         self._max_frame = None
 
@@ -95,10 +84,10 @@ class AudioFile:
 
     @property
     def channels(self) -> int:
-        """int: Number of samples in audio file"""
+        """int: Number of channels in audio file"""
         return self._channels
 
-    def read(self, i0: int, i1: int, channel: int) -> np.typing.ArrayLike:
+    def read(self, i0: int, i1: int, channel: int) -> np.ndarray:
         """Read samples from i0 to i1 on channel
 
         Arguments
@@ -112,7 +101,7 @@ class AudioFile:
 
         Returns
         -------
-        ndarray
+        data : ndarray
             A 2D array of shape (frames: int, 1) containing data from the requested channel.
             The first dimension is the sample index, the second dimension is the channel
             axis, although this function only returns one channel.
@@ -134,10 +123,13 @@ class AudioFile:
 class Block:
     """Wrapper for simultaneously recorded audio files
 
-    Methods
-    -------
-    .read(i0: int, i1: int, channels: list[int]) -> numpy.ndarray
-        Reads data from i0 to i1 in the block on the selected channels
+    Arguments
+    ---------
+    audio_files : List[AudioFile]
+        List of audio files in channel order to include in the Block
+    fix_uneven_frame_counts : bool
+        If set to True, will treat all AudioFiles in Block as having the same
+        number of samples as the shortest file.
     """
 
     @staticmethod
@@ -205,6 +197,7 @@ class Block:
 
     @property
     def channel_mapping(self) -> Dict[int, Tuple[AudioFile, int]]:
+        """Dict[int, Tuple[AudioFile, int]]: Mapping from channel number in Block to channel number in an AudioFile"""
         return self._channel_mapping
 
     def get_channel_info(self, channel: int) -> Tuple[str, int]:
@@ -217,27 +210,46 @@ class Block:
 
         Returns
         -------
-        path : str
-            Path to file corresponding to requested channel
-        index : int
-            Index of channel in original file
+        info : Tuple[str, int]
+            A tuple where the first element is the path to file corresponding to
+            the requested channel, and the second element is the channel index
+            within that file corresponding to that channel.
         """
         original_file, original_channel = self._channel_mapping[channel]
         return original_file.path, original_channel
 
     @property
     def sampling_rate(self) -> int:
+        """int: Sampling rate of the Block"""
         return self._sampling_rate
 
     @property
     def frames(self) -> int:
+        """int: Number of readable samples in Block"""
         return self._frames
 
     @property
     def channels(self) -> int:
+        """int: Number of channels in Block"""
         return len(self._channel_mapping)
 
-    def read(self, i0: int, i1: int, channels: List[int]) -> np.typing.ArrayLike:
+    def read(self, i0: int, i1: int, channels: List[int]) -> np.ndarray:
+        """Read data from i0 to i1 in the block on the selected channels
+
+        Arguments
+        ---------
+        i0 : int
+            Starting index to read data from relative to the block (inclusive)
+        i1 : int
+            Last index to read data from relative to the block (exclusive)
+        channels : List[int]
+            List of channel numbers within block to read from
+
+        Returns
+        -------
+        data : np.ndarray
+            A 2D floating point array of shape (i1 - i0, len(channels))
+        """
         i1 = min(i1, self.frames)
         output = np.zeros((i1 - i0, len(channels)))
         for i, ch in enumerate(channels):
@@ -247,28 +259,32 @@ class Block:
         return output
 
     def read_one(self, i, channels:List[int]) -> np.typing.ArrayLike:
+        """Read a single sample at index i
+
+        Arguments
+        ---------
+        i : int
+            Index to read data from relative to the block
+
+        Returns
+        -------
+        data : np.ndarray
+            A 2D floating point array of shape (1, len(channels))
+
+        """
         return self.read(i, i+1, channels)
 
 
 class Project:
     """Data access to audio data in a series of Blocks
 
-    Attributes
-    ----------
+    Arguments
+    ---------
     blocks : List[Block]
-    channels : int
-    sampling_rate : int
-    channels : int
-    frames : int
-        Number of samples in entire project
-
-    Methods
-    -------
-    .iter_blocks()
-    .read(start, stop, channels)
-    .to_block_index(index)
-    .to_project_index(index)
-    .get_block_boundaries(start, stop)
+        An ordered list of Blocks to read in the Project. The indices determine
+        the order data will be read, so the Project should be initialized with Blocks
+        in the correct order (if relevant). All Blocks must have the same number of
+        channels and sampling rate.
 
     Examples
     --------
@@ -281,9 +297,11 @@ class Project:
     >>> end = BlockIndex(block, 20)
 
     Accessing one frame can be done with a single index
+
     >>> project[start]
 
     Accessing a range can be done with a slice object. The following are equivalent
+
     >>> project[start:end]
     >>> project.read(start, end)  # Equivalent to the line above
 
@@ -328,22 +346,34 @@ class Project:
 
     @property
     def channels(self) -> int:
+        """int: Number of channels in all Blocks of this Project"""
         return self._blocks[0].channels
 
     @property
     def sampling_rate(self) -> int:
+        """int: Sampling rate of audio in this Project"""
         return self._blocks[0].sampling_rate
 
     @property
     def frames(self) -> int:
+        """int: Total number of samples in the entire Project"""
         return int(np.sum([b.frames for b in self.blocks]))
 
     @property
     def blocks(self) -> List[Block]:
+        """List[Block]: An ordered list of the Blocks in the Project"""
         return self._blocks
     
     def iter_blocks(self) -> Iterable[Tuple['ProjectIndex', 'ProjectIndex', 'Block']] :
-        """Iterate over ((start_idx, stop_idx), Block) pairs"""
+        """Iterate over blocks in the Project
+
+        Returns
+        -------
+        generator
+            An iterator that yields tuples of the form ((start, stop), block), where
+            start and stop are ProjectIndex instances ponting to the startpoint (inclusive)
+            and endpoint (exclusive) of the Block, block.
+        """
         frame = 0
         for block in self.blocks:
             yield ((ProjectIndex(self, frame), ProjectIndex(self, frame + block.frames)), block)
@@ -354,8 +384,21 @@ class Project:
             start: Union['BlockIndex', 'ProjectIndex'],
             stop: Union['BlockIndex', 'ProjectIndex'],
             channels: List[int]
-        ) -> np.typing.ArrayLike:
-        """Reads data of a start->stop slice, can use ProjectIndex or BlockIndex values"""
+        ) -> np.ndarray:
+        """Reads data of a start->stop slice, can use ProjectIndex or BlockIndex values
+
+        Arguments
+        ---------
+        start : BlockIndex or ProjectIndex
+        stop : BlockIndex or ProjectIndex
+        channels : List[int]
+
+        Returns
+        -------
+        data : np.ndarray
+            A 2D array of shape (stop - start, len(channels)) representing data between
+            the start and stop indices.
+        """
         start = self.to_project_index(start)
         stop = self.to_project_index(stop)
         return self._read_by_project_indices(start, stop, channels)
@@ -393,7 +436,7 @@ class Project:
 
         Example
         -------
-        >>> project._normalize_slice(slice(BlockIndex(block, 3), None))
+        >>> project.normalize_slice(slice(BlockIndex(block, 3), None))
         slice(ProjectIndex<3>, ProjectIndex<10>, None)
 
         Arguments
@@ -456,7 +499,7 @@ class Project:
             s1, s2 = slices
 
             if isinstance(s1, slice):
-                s1 = self._normalize_slice(s1)
+                s1 = self.normalize_slice(s1)
 
             if isinstance(s2, slice):
                 s2 = s2.indices(self.channels)
@@ -478,7 +521,7 @@ class Project:
             index = self.to_block_index(slices)
             return index.block.read_one(index, channels=list(range(self.channels)))
         elif isinstance(slices, slice):
-            slice_ = self._normalize_slice(slices)
+            slice_ = self.normalize_slice(slices)
             return self._read_by_project_indices(slice_.start, slice_.stop, channels=list(range(self.channels)))
 
         raise ValueError("Invalid index into Project {}".format(slices))
@@ -533,9 +576,21 @@ class Project:
             from_: Union['BlockIndex', 'ProjectIndex'],
             to: Union['BlockIndex', 'ProjectIndex']
         ) -> List['ProjectIndex']:
-        """Returns a list of ProjectIndexes pointing to the boundaries between Blocks
+        """Get the boundaries between blocks that lie between two points
 
-        If block 1 is length 10 and block 2 is length 10, the boundaries are defined to be at [0, 10, 20]
+        Arguments
+        ---------
+        from_ : BlockIndex or ProjectIndex
+            First point to search for boundaries (inclusive)
+        to : BlockIndex or ProjectIndex
+            Last point to search for boundaries (inclusive)
+
+        Returns
+        -------
+        boundaries : List[ProjectIndex]
+            List of project index values that point to the edges of Blocks. These
+            include the endpoints, so if block 1 is length 10 and block 2 is length 10,
+            the boundaries would defined to be at [0, 10, 20]
         """
         from_ = self.to_project_index(from_)
         to = self.to_project_index(to)

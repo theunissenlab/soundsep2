@@ -24,16 +24,14 @@ def load_project(
 
     Example
     -------
-    To load WAV files from a folder that looks like this
+    To load WAV files from a folder that looks like this::
 
-    ```
-    data/
-        Red77_01012020_12345_Channel0.wav
-        Red77_01012020_12345_Channel1and2.wav
-        Red77_01012020_23456_Channel0.wav
-        Red77_01012020_23456_Channel1and2.wav
-        ...
-    ```
+        ./
+          data/
+            Red77_01012020_12345_Channel0.wav
+            Red77_01012020_12345_Channel1and2.wav
+            Red77_01012020_23456_Channel0.wav
+            Red77_01012020_23456_Channel1and2.wav
 
     You might load the data like this
 

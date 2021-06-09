@@ -1,0 +1,4 @@
+[run]
+branch = True
+source = soundsep/
+omit = soundsep/test/*, soundsep/examples/*

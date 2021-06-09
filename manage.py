@@ -1,6 +1,6 @@
 import click
 
-from soundsep.core.file_loading import load_project
+from soundsep.core.io import load_project
 from soundsep.gui.main import run_app
 from soundsep.app import MainApp
 

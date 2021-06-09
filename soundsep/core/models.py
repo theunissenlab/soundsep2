@@ -428,7 +428,7 @@ class Project:
 
         return np.concatenate(out_data)
 
-    def _normalize_slice(self, slice_: slice) -> slice:
+    def normalize_slice(self, slice_: slice) -> slice:
         """Convert slice of ProjectIndex or BlockIndex values to a slice with explicit endpoints
 
         This function makes the None values in a slice explicit relative to the Block or Project,

@@ -599,7 +599,7 @@ class TestProject(unittest.TestCase):
         i0 = BlockIndex(self.block1, 25)
         i1 = BlockIndex(self.block2, 1)
         self.assertEqual(
-            project._normalize_slice(slice(i0, i1)),
+            project.normalize_slice(slice(i0, i1)),
             slice(ProjectIndex(project, 25), ProjectIndex(project, 101))
         )
 
@@ -607,11 +607,11 @@ class TestProject(unittest.TestCase):
         project = Project([self.block1, self.block2])
         i0 = ProjectIndex(project, 25)
         self.assertEqual(
-            project._normalize_slice(slice(i0, None)),
+            project.normalize_slice(slice(i0, None)),
             slice(ProjectIndex(project, 25), ProjectIndex(project, project.frames))
         )
         self.assertEqual(
-            project._normalize_slice(slice(None, i0)),
+            project.normalize_slice(slice(None, i0)),
             slice(ProjectIndex(project, 0), ProjectIndex(project, 25))
         )
 
@@ -619,11 +619,11 @@ class TestProject(unittest.TestCase):
         project = Project([self.block1, self.block2])
         i0 = BlockIndex(self.block1, 25)
         self.assertEqual(
-            project._normalize_slice(slice(i0, None)),
+            project.normalize_slice(slice(i0, None)),
             slice(ProjectIndex(project, 25), ProjectIndex(project, 100))
         )
         self.assertEqual(
-            project._normalize_slice(slice(None, i0)),
+            project.normalize_slice(slice(None, i0)),
             slice(ProjectIndex(project, 0), ProjectIndex(project, 25))
         )
 
@@ -633,14 +633,14 @@ class TestProject(unittest.TestCase):
         i0 = BlockIndex(self.block1, 25)
         i1 = ProjectIndex(project, 101)
         self.assertEqual(
-            project._normalize_slice(slice(i0, i1)),
+            project.normalize_slice(slice(i0, i1)),
             slice(ProjectIndex(project, 25), ProjectIndex(project, 101))
         )
 
         i0 = ProjectIndex(project, 25)
         i1 = BlockIndex(self.block2, 1)
         self.assertEqual(
-            project._normalize_slice(slice(i0, i1)),
+            project.normalize_slice(slice(i0, i1)),
             slice(ProjectIndex(project, 25), ProjectIndex(project, 101))
         )
 

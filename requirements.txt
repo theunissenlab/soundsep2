@@ -1,6 +1,4 @@
 click
-coverage
-ipython
 matplotlib
 numpy
 pandas

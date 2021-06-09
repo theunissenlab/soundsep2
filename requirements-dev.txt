@@ -1,0 +1,6 @@
+pyqt5-tools  # for qt designer
+sphinx       # for audodoc
+sphinx-readable-theme
+m2r2         # for sphinx reading md files
+coverage
+ipython

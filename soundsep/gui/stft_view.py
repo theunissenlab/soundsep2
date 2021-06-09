@@ -5,6 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 import wavio
 
+from soundsep.core.io import ProjectIndex
 from soundsep.core.stft import spectral_derivative, stft_gen, stft_freq
 
 
@@ -104,10 +105,10 @@ class _STFTWorker(QThread):
     """
     ready = pyqtSignal(int, object)
 
-    def __init__(self, data, window_size, step, t0, t1):
+    def __init__(self, data, window_size, step, t0):
         super().__init__()
-        self._t0 = t0
-        self._t1 = t1
+        self._t0 = int(t0)
+        # self._t1 = t1
         self._step = step
         self._window_size = window_size
         self.data = data
@@ -118,12 +119,11 @@ class _STFTWorker(QThread):
 
         for row in stft_gen(
                     self.data,
-                    self._t0,
+                    0,
                     window_size=self._window_size,
                     window_step=self._step,
-                    n_windows=(self._t1 - self._t0) // self._step,
+                    n_windows=len(self.data) // self._step,
                     ):
-
             result.append(row)
             if self._cancel_flag == True:
                 return
@@ -168,22 +168,22 @@ class ScrollableSpectrogram(pg.PlotWidget):
     """
     def __init__(
             self,
-            filename,
+            project,
             channel,
             config: ScrollableSpectrogramConfig,
             *args,
             **kwargs
         ):
         super().__init__(*args, **kwargs)
-        self.filename = filename
+        self.project = project
         self.channel = channel
         self.plotItem.setMouseEnabled(x=False, y=False)
 
         self.config = config
-        self._wav = wavio.read(filename)  # Should I read every time or once?
-        self._stft_cache = _STFTCache(self._wav.rate, self._wav.rate / self.config.window_step)
+        # self._wav = wavio.read(filename)  # Should I read every time or once?
+        self._stft_cache = _STFTCache(self.project.sampling_rate, self.project.sampling_rate / self.config.window_step)
         self._stft_thread = None
-        self.freqs = stft_freq(self.config.window_size, self._wav.rate)
+        self.freqs = stft_freq(self.config.window_size, self.project.sampling_rate)
 
         # TODO hardcoded?
         self._view_mode = STFTViewMode.NORMAL
@@ -253,12 +253,14 @@ class ScrollableSpectrogram(pg.PlotWidget):
         if self._stft_thread is not None:
             self._stft_thread.cancel()
 
+        i0 = ProjectIndex(self.project, idx_data)
+        i1 = ProjectIndex(self.project, idx_data + self.config.spectrogram_size)
+
         self._stft_thread = _STFTWorker(
-                self._wav.data[:, self.channel], 
+                self.project[i0:i1, self.channel].flatten(),
                 self.config.window_size,
                 self.config.window_step,
                 idx_data,
-                idx_data + self.config.spectrogram_size,
         )
         self._stft_thread.ready.connect(self.set_spec)
         self._stft_thread.start()
@@ -269,7 +271,11 @@ class ScrollableSpectrogram(pg.PlotWidget):
         self.update_image()
 
     def visible_audio(self):
-        return self._wav.data[self._stft_cache.get_data_idx_slice(), self.channel]
+        # first convert to ProjectIndex coordinates
+        slice_ = self._stft_cache.get_data_idx_slice()
+        i0 = ProjectIndex(self.project, slice_.start)
+        i1 = ProjectIndex(self.project, slice_.stop)
+        return self.project[i0:i1, self.channel][:, 0]
 
     def visible_spectrogram(self):
         return self._stft_cache.read()

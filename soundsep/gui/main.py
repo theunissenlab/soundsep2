@@ -5,7 +5,7 @@ from PyQt5 import QtWidgets as widgets
 from qasync import QEventLoop
 
 
-def run_app(MainWindow=None):
+def run_app(MainWindow=None, *args, **kwargs):
     """Run an app using asyncio event loop
     """
     import sys
@@ -15,9 +15,9 @@ def run_app(MainWindow=None):
     asyncio.set_event_loop(loop)
 
     if MainWindow is None:
-        mainWindow = widgets.QMainWindow()
+        mainWindow = widgets.QMainWindow(*args, **kwargs)
     else:
-        mainWindow = MainWindow()
+        mainWindow = MainWindow(*args, **kwargs)
 
     mainWindow.show()
 

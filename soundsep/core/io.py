@@ -92,27 +92,13 @@ Developers who want to create plugins or modify the code for specialized project
 from __future__ import annotations
 
 import os
+import warnings
 from collections.abc import Iterable
 from functools import wraps
-from typing import List, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import soundfile
-
-
-def match_type(fn):
-    """Decorator for wrapping methods with one argument to enforce types match
-    """
-    @wraps
-    def _wrapped(self, other):
-        if not isinstance(other, self.__class__):
-            raise TypeError("Mismatching types for {}: {} and {}".format(
-                fn.__name__,
-                self.__class__,
-                other.__class__
-            ))
-        return fn(self, other)
-    return _wrapped
 
 
 class AudioFile:
@@ -125,7 +111,7 @@ class AudioFile:
 
     Methods
     -------
-    read(i0: int, i1: int, channel: int) -> numpy.ndarray
+    .read(i0: int, i1: int, channel: int) -> numpy.ndarray
     """
 
     def __init__(self, path):
@@ -145,7 +131,7 @@ class AudioFile:
             self._actual_frames = f.frames
 
     def __repr__(self):
-        return "<AudioFile object: {}; {} Hz; {} Ch; {} frames>".format(
+        return "<AudioFile: {}; {} Hz; {} Ch; {} frames>".format(
             os.path.basename(self._path),
             self.sampling_rate,
             self.channels,
@@ -165,7 +151,7 @@ class AudioFile:
             of the file rather than its actual length). 
         """
         if not isinstance(frames, int) or frames <= 0:
-            raise ValueError("max_frame must be a positive integer or None")
+            raise ValueError("max_frame must be a positive integer or None: got {}".format(frames))
         if frames > self._actual_frames:
             raise RuntimeError("Cannot force AudioFile to use more frames than on disk")
 
@@ -174,33 +160,33 @@ class AudioFile:
     def clear_max_frame(self):
         self._max_frame = None
 
-    def __eq__(self, other_file):
+    def __eq__(self, other_file) -> bool:
         if isinstance(other_file, AudioFile):
             return self.path == other_file.path
         else:
             raise ValueError("Can only compare AudioFile equality with other AudioFiles")
 
     @property
-    def path(self):
+    def path(self) -> str:
         """str: Full path to audio file"""
         return self._path
 
     @property
-    def sampling_rate(self):
+    def sampling_rate(self) -> int:
         """int: Sampling rate of the audio file"""
         return self._sampling_rate
 
     @property
-    def frames(self):
+    def frames(self) -> int:
         """int: Number of readable samples in audio file"""
         return self._max_frame or self._actual_frames 
 
     @property
-    def channels(self):
+    def channels(self) -> int:
         """int: Number of samples in audio file"""
         return self._channels
 
-    def read(self, i0: int, i1: int, channel: int):
+    def read(self, i0: int, i1: int, channel: int) -> np.typing.ArrayLike:
         """Read samples from i0 to i1 on channel
 
         Arguments
@@ -238,12 +224,12 @@ class Block:
 
     Methods
     -------
-    read(i0: int, i1: int, channels: list[int]) -> numpy.ndarray
+    .read(i0: int, i1: int, channels: list[int]) -> numpy.ndarray
         Reads data from i0 to i1 in the block on the selected channels
     """
 
     @staticmethod
-    def make_channel_mapping(files: List[AudioFile]):
+    def make_channel_mapping(files: List[AudioFile]) -> Dict[int, Tuple[AudioFile, int]]:
         """Produce a mapping channel_block -> (AudioFile, channel_file)
 
         Given n AudioFile objects and k_i channels on the ith AudioFile,
@@ -279,7 +265,7 @@ class Block:
 
         if not all([f == frames[0] for f in frames]):
             if fix_uneven_frame_counts:
-                min_frame = np.min(frames)
+                min_frame = int(np.min(frames))
                 for f in self._files:
                     f.set_max_frame(min_frame)
             else:
@@ -297,7 +283,7 @@ class Block:
             self.frames,
         )
 
-    def __eq__(self, other_block):
+    def __eq__(self, other_block: 'Block') -> bool:
         if isinstance(other_block, Block):
             if len(other_block._files) != len(self._files):
                 return False
@@ -306,10 +292,10 @@ class Block:
             raise ValueError("Can only compare Block equality with other Block")
 
     @property
-    def channel_mapping(self):
+    def channel_mapping(self) -> Dict[int, Tuple[AudioFile, int]]:
         return self._channel_mapping
 
-    def get_channel_info(self, channel: int):
+    def get_channel_info(self, channel: int) -> Tuple[str, int]:
         """Get the original file path and index of the Block's channel
 
         Arguments
@@ -328,18 +314,19 @@ class Block:
         return original_file.path, original_channel
 
     @property
-    def sampling_rate(self):
+    def sampling_rate(self) -> int:
         return self._sampling_rate
 
     @property
-    def frames(self):
+    def frames(self) -> int:
         return self._frames
 
     @property
-    def channels(self):
+    def channels(self) -> int:
         return len(self._channel_mapping)
 
-    def read(self, i0: int, i1: int, channels: List[int]):
+    def read(self, i0: int, i1: int, channels: List[int]) -> np.typing.ArrayLike:
+        i1 = min(i1, self.frames)
         output = np.zeros((i1 - i0, len(channels)))
         for i, ch in enumerate(channels):
             (audio_file, audio_file_ch) = self.channel_mapping[ch]
@@ -347,7 +334,7 @@ class Block:
 
         return output
 
-    def read_one(self, i, channels:List[int]):
+    def read_one(self, i, channels:List[int]) -> np.typing.ArrayLike:
         return self.read(i, i+1, channels)
 
 
@@ -369,6 +356,7 @@ class Project:
     .read(start, stop, channels)
     .to_block_index(index)
     .to_project_index(index)
+    .get_block_boundaries(start, stop)
 
     Examples
     --------
@@ -404,7 +392,19 @@ class Project:
         """Initialize the Project
         """
         self._blocks = blocks
-        # Enforce that all WavBlocks have the same channel configuration
+
+        rates = [b.sampling_rate for b in self._blocks]
+        channels = [b.channels for b in self._blocks]
+        channel_profiles = [tuple([f.channels for f in b._files]) for b in self._blocks]
+
+        if not all([r == rates[0] for r in rates]):
+            raise ValueError("Cannot instantiate Project with Blocks of different rates: {}".format(rates))
+
+        if not all([c == channels[0] for c in channels]):
+            raise ValueError("Cannot instantiate Project with Blocks with different channel counts: {}".format(channels))
+
+        if not all([c == channel_profiles[0] for c in channel_profiles]):
+            warnings.warn("Blocks in Project have mismatched channel profiles but same number of channels per block.")
 
     def __repr__(self):
         return "<Project: {} blocks; {} Hz; {} Ch; {} frames>".format(
@@ -415,23 +415,22 @@ class Project:
         )
 
     @property
-    def channels(self):
+    def channels(self) -> int:
         return self._blocks[0].channels
 
     @property
-    def sampling_rate(self):
+    def sampling_rate(self) -> int:
         return self._blocks[0].sampling_rate
 
     @property
-    def frames(self):
-        return np.sum([b.frames for b in self.blocks])
+    def frames(self) -> int:
+        return int(np.sum([b.frames for b in self.blocks]))
 
     @property
-    def blocks(self):
+    def blocks(self) -> List[Block]:
         return self._blocks
     
-    @property
-    def iter_blocks(self):
+    def iter_blocks(self) -> Iterable[Tuple['ProjectIndex', 'ProjectIndex', 'Block']] :
         """Iterate over ((start_idx, stop_idx), Block) pairs"""
         frame = 0
         for block in self.blocks:
@@ -443,37 +442,33 @@ class Project:
             start: Union['BlockIndex', 'ProjectIndex'],
             stop: Union['BlockIndex', 'ProjectIndex'],
             channels: List[int]
-        ):
+        ) -> np.typing.ArrayLike:
         """Reads data of a start->stop slice, can use ProjectIndex or BlockIndex values"""
-        if isinstance(start, BlockIndex):
-            start = self.convert_block2project(start)
-        elif isinstance(start, ProjectIndex):
-            pass
-        else:
-            raise TypeError("Can only read from project using BlockIndex or ProjectIndex")
-
-        if isinstance(stop, BlockIndex):
-            stop = self.convert_block2project(stop)
-        elif isinstance(start, ProjectIndex):
-            pass
-        else:
-            raise TypeError("Can only read from project using BlockIndex or ProjectIndex")
-        
+        start = self.to_project_index(start)
+        stop = self.to_project_index(stop)
         return self._read_by_project_indices(start, stop, channels)
 
-    def _read_by_project_indices(self, start: 'ProjectIndex', stop: 'ProjectIndex', channels: List[int]):
+    def _read_by_project_indices(
+            self,
+            start: 'ProjectIndex',
+            stop: 'ProjectIndex',
+            channels: List[int]
+        ) -> np.typing.ArrayLike:
         """Reads slice's data from one or more Blocks in project"""
+        if not isinstance(start, ProjectIndex) or not isinstance(stop, ProjectIndex):
+            raise RuntimeError("_read_by_project_indicies should never be called with anything but ProjectIndex instances")
+
         out_data = []
         for (i0, i1), block in self.iter_blocks():
-            if i1 < self.start:
+            if i1 < start:
                 continue
-            elif i0 > self.stop:
+            elif i0 > stop:
                 break
             else:
                 # block.read() takes normal ints; if we enforce it to take BlockIndex instead, we will
                 # need to cast these its
-                block_read_start = max(self.start - i0, 0)
-                block_read_stop = min(self.stop - i0, block.frames)
+                block_read_start = max(start - i0, 0)
+                block_read_stop = min(stop - i0, block.frames)
                 out_data.append(block.read(block_read_start, block_read_stop, channels=channels))
 
         return np.concatenate(out_data)
@@ -522,7 +517,7 @@ class Project:
                 stop = self.to_project_index(BlockIndex(slice_.start.block, slice_.start.block.frames))
             elif isinstance(slice_.start, ProjectIndex):
                 start = slice_.start
-                stop = ProjectIndex(self, slice_.start.block.frames)
+                stop = ProjectIndex(self, slice_.start.project.frames)
             else:
                 raise TypeError("Can only normalize slices with ProjectIndex, BlockIndex, or None values")
         else:
@@ -531,7 +526,7 @@ class Project:
 
         return slice(start, stop, None)
 
-    def __getitem__(self, slices):
+    def __getitem__(self, slices) -> np.typing.ArrayLike:
         """Main data access of Project via Block coordinates or Project coordinates
 
         See Project class documentation for usage examples
@@ -543,7 +538,7 @@ class Project:
         # This function must handle four cases: (int, int), (int, slice), (slice, int), (slice, slice)
         # The second value could be an iterable as well
         if isinstance(slices, tuple):
-            if not len(slices, 2):
+            if not len(slices) == 2:
                 raise ValueError("Invalid index into Project of length {}".format(len(slices)))
 
             s1, s2 = slices
@@ -553,7 +548,7 @@ class Project:
 
             if isinstance(s2, slice):
                 s2 = s2.indices(self.channels)
-                s2 = list(range(s2.start, s2.stop, s2.step))
+                s2 = list(range(s2[0], s2[1], s2[2]))
 
             if isinstance(s1, BaseIndex) and isinstance(s2, int):
                 index = self.to_block_index(s1)
@@ -569,7 +564,7 @@ class Project:
                 raise TypeError("Invalid types for Project __getitem__ access: {} and {}".format(s1, s2))
         elif isinstance(slices, BaseIndex):
             index = self.to_block_index(slices)
-            return index.block.read_one(index, list(range(self.channels)))
+            return index.block.read_one(index, channels=list(range(self.channels)))
         elif isinstance(slices, slice):
             slice_ = self._normalize_slice(slices)
             return self._read_by_project_indices(slice_.start, slice_.stop, channels=list(range(self.channels)))
@@ -591,13 +586,12 @@ class Project:
         if isinstance(index, BlockIndex):
             return index
         elif isinstance(index, ProjectIndex):
-            for (i0, i1), block in project.iter_blocks():
-                if i1 > project_index:
-                    return BlockIndex(block, project_index - i0)
+            for (i0, i1), block in self.iter_blocks():
+                if i1 > index:
+                    return BlockIndex(block, index - i0)
             raise ValueError("Could not find BlockIndex in Project")
         else:
             raise TypeError("Cannot covert type {} to BlockIndex".format(type(index)))
-
 
     def to_project_index(self, index: Union['BlockIndex', 'ProjectIndex']) -> 'ProjectIndex':
         """Convert a BlockIndex/ProjectIndex to a ProjectIndex
@@ -614,16 +608,63 @@ class Project:
         if isinstance(index, ProjectIndex):
             return index
         elif isinstance(index, BlockIndex):
-            for (i0, i1), block in project.iter_blocks():
-                if block == block_index.block:
-                    return ProjectIndex(self, i0 + block_index)
+            for (i0, i1), block in self.iter_blocks():
+                if block == index.block:
+                    # Casting to int to turn i0 and index into pure ints
+                    return ProjectIndex(self, int(i0 + int(index)))
             raise ValueError("Could not find BlockIndex in Project")
         else:
             raise TypeError("Cannot covert type {} to ProjectIndex".format(type(index)))
 
+    def get_block_boundaries(
+            self,
+            from_: Union['BlockIndex', 'ProjectIndex'],
+            to: Union['BlockIndex', 'ProjectIndex']
+        ) -> List['ProjectIndex']:
+        """Returns a list of ProjectIndexes pointing to the boundaries between Blocks
+
+        If block 1 is length 10 and block 2 is length 10, the boundaries are defined to be at [0, 10, 20]
+        """
+        from_ = self.to_project_index(from_)
+        to = self.to_project_index(to)
+
+        bounds = []
+
+        if from_ == ProjectIndex(self, 0):
+            bounds.append(from_)
+
+        for (_, i1), block in self.iter_blocks():
+            if from_ <= i1 <= to:
+                bounds.append(i1)
+
+        return bounds
+
 
 # TODO: re-evaluate if inheriting from int is worth it or if it will be more likely to cause
 # more problems than later (due to all the methods they will inherit)
+def _match_type(fn, require_same_source=False):
+    """Decorator for wrapping methods with one argument to enforce types match
+    """
+    @wraps(fn)
+    def _wrapped(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError("Mismatching types for {}: {} and {}".format(
+                fn.__name__,
+                self.__class__.__name__,
+                other.__class__.__name__
+            ))
+        if require_same_source and not (self._source_object is other._source_object):
+            raise ValueError("Cannot call {} on {} with mismatched targets {} and {}".format(
+                fn.__name__,
+                self.__class__.__name__,
+                self._source_object,
+                other._source_object
+            ))
+
+        return fn(self, other)
+    return _wrapped
+
+
 class BaseIndex(int):
 
     ObjectType = None
@@ -632,40 +673,61 @@ class BaseIndex(int):
         if not isinstance(source_object, cls.ObjectType):
             raise TypeError("Index of type {} must be instantiated with {}".format(cls, cls.ObjectType))
 
+        # Convert negative indices to their corresponding positive value
+        if value < 0:
+            value = source_object.frames + value
+
+        # Clamp values to be within the valid range for reading
+        value = BaseIndex._clamp(value, 0, source_object.frames)
+
         return int.__new__(cls, value)
 
-    def __init__(cls, source_object, value: int):
-        if value < -source_object.frames:
-            value = -source_object.frames
-        elif value > source_object.frames:
-            value = source_object.frames
-
+    def __init__(self, source_object, value: int):
         self._source_object = source_object
+        super().__init__()
 
-        super().__init__(value)
+    @staticmethod
+    def _clamp(value: int, low: int, high: int):
+        """Clamps values to the given range"""
+        if value < low:
+            value = low
+        elif value > high:
+            value = high
+        return value
 
     def __repr__(self):
-        return "{}<{}>".format(self.__class__, int.__repr__(self))
+        return "{}<{}>".format(self.__class__.__name__, int.__repr__(self))
 
-    __lt__ = match_type(int.__lt__)
-    __gt__ = match_type(int.__gt__)
-    __le__ = match_type(int.__le__)
-    __ge__ = match_type(int.__ge__)
+    __lt__ = _match_type(int.__lt__, require_same_source=True)
+    __gt__ = _match_type(int.__gt__, require_same_source=True)
+    __le__ = _match_type(int.__le__, require_same_source=True)
+    __ge__ = _match_type(int.__ge__, require_same_source=True)
 
-    @match_type
+    @_match_type
     def __eq__(self, other):
-        return (other._source_object is self._source_object) and self == other
+        return (other._source_object is self._source_object) and super().__eq__(other)
+
+    @_match_type
+    def __ne__(self, other):
+        return (other._source_object is not self._source_object) or super().__ne__(other)
 
     def __add__(self, other: int):
         """BaseIndex + int -> BaseIndex"""
-        return self.__class__(self._source_object, super().__add__(self, other))
+        if isinstance(other, BaseIndex) or not isinstance(other, int):
+            raise TypeError("Cannot add {} to {}".format(type(self).__name__, type(other).__name__))
+
+        return self.__class__(self._source_object, super().__add__(other))
 
     def __sub__(self, other: int):
         """BaseIndex - int -> BaseIndex | BaseIndex - BaseIndex -> int"""
-        if isinstance(other, self.__class__):
-            return super().__sub__(self, other)
+        if isinstance(other, BaseIndex):
+            if type(self) != type(other):
+                raise TypeError("Cannot subtract {} from {}".format(type(other).__name__, type(self).__name__))
+            return super().__sub__(other)
         elif isinstance(other, int):
-            return self.__class__(self._source_object, super().__sub__(self, other))
+            return self.__class__(self._source_object, super().__sub__(other))
+        else:
+            raise TypeError("Cannot subtract {} from {}".format(type(other).__name__, type(self).__name__))
 
 
 class ProjectIndex(BaseIndex):

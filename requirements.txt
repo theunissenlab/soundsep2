@@ -8,3 +8,4 @@ qasync
 scipy
 SoundFile
 soundsig
+pyyaml

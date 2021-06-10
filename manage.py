@@ -2,10 +2,6 @@ from pathlib import Path
 
 import click
 
-from soundsep.core.app import Workspace
-from soundsep.gui.main import run_app
-from soundsep.app import MainApp
-
 
 @click.group()
 def cli():
@@ -15,6 +11,10 @@ def cli():
 @click.command(help="Run SoundSep GUI")
 @click.option("-d", "--dir", "_dir", type=Path, default="data")
 def run(_dir):
+    from soundsep.core.app import Workspace
+    from soundsep.gui.main import run_app
+    from soundsep.app import MainApp
+
     project = Workspace(_dir)
     run_app(MainApp, project)
 

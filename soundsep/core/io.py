@@ -82,24 +82,68 @@ def load_project(
     return _load_project_by_blocks(filelist, filename_pattern, block_keys, channel_keys)
 
 
-def _load_project_by_blocks(
+class LoadProjectError(Exception):
+    pass
+
+
+'''
+class UnparseableFilename(LoadProjectError):
+    def __init__(self, filename, pattern):
+        self.info = (filename, pattern)
+        return super().__init__(
+            self,
+            "Failed to parse file {} using pattern {}".format(filename, pattern)
+        )
+
+
+class InvalidKeys(LoadProjectError):
+    def __init__(self, filename, parse_result, block_keys):
+        self.info = (filename, pattern)
+        return super().__init__(
+            self,
+            "Failed to parse file {} using pattern {}".format(filename, pattern)
+        )
+'''
+
+def _group_files_by_pattern(
         filelist: List[str],
         filename_pattern: str,
         block_keys: List[str],
         channel_keys: List[str],
-    ):
+        ) -> Iterable:
+    """Build a generator that yields the files in each block
+
+    Returns
+    -------
+    block_groups : List[Tuple[str, List[AudioFile]]]
+        Yields tuples of the form (str, List[AudioFile]), where the
+        first element is the block_id parsed from the list of audio
+        files in the second element. The AudioFiles in the second
+        element are sorted according to the parsed channel_ids
+
+        These potential blocks have not been validated for consistency
+        at this point.
+    errors : List[str]
+        A list of filenames that failed to be parsed successfully into
+        a group.
+    """
     if filename_pattern is None:
         filename_pattern = "{}"
 
     parsed_wav_files = []
+    bad_wav_files = []    # List of tuples
     for path in filelist:
         parse_result = parse.parse(filename_pattern, os.path.basename(path))
 
         if parse_result is None:
-            raise ValueError("Filename was not parse-able under pattern {}: {}".format(
+            bad_wav_files.append((os.path.basename(path), None))
+            continue
+            '''
+            raise LoadProjectError("Filename was not parse-able under pattern {}: {}".format(
                 filename_pattern,
                 path
             ))
+            '''
 
         try:
             if callable(block_keys):
@@ -122,23 +166,64 @@ def _load_project_by_blocks(
                 "channel_id": channel_id,
             })
         except KeyError:
+            bad_wav_files.append((os.path.basename(path), parse_result))
+            '''
             raise ValueError("Block or channel information could not be parsed from {}\n"
                     "{}\nblock_keys={}\nchannel_keys={}".format(path, parse_result, block_keys, channel_keys))
+            '''
 
     parsed_wav_files = sorted(parsed_wav_files, key=lambda x: (x["block_id"], x["channel_id"]))
+
+    block_groups = [
+        (k, list(v))
+        for k, v
+        in itertools.groupby(parsed_wav_files, key=lambda x: x["block_id"])
+    ]
+
+    return (
+        block_groups,
+        bad_wav_files
+    )
+
+
+def _load_project_by_blocks(
+        filelist: List[str],
+        filename_pattern: str,
+        block_keys: List[str],
+        channel_keys: List[str],
+    ):
+    block_groups, errors = _group_files_by_pattern(
+            filelist,
+            filename_pattern,
+            block_keys,
+            channel_keys
+    )
+
+    if len(errors):
+        raise LoadProjectError("Failed to parse {} files with\n"
+                "filename_pattern={}, block_keys={}, channel_keys={}\n"
+                "({} loaded successfully)\n"
+                "Files failed:\n{}".format(
+                    len(errors),
+                    filename_pattern,
+                    block_keys,
+                    channel_keys,
+                    len(block_groups),
+                    ",".join([str(e) for e in errors])
+                ))
 
     blocks = []
     channel_ids = collections.defaultdict(list)
 
     # Collect the blocks but also make sure every block has the same channel ids defined
-    for key, group in itertools.groupby(parsed_wav_files, key=lambda x: x["block_id"]):
+    for key, group in block_groups:
         group = list(group)
         new_block = Block([g["wav_file"] for g in group], fix_uneven_frame_counts=False)
         blocks.append(new_block)
         channel_ids[tuple([g["channel_id"] for g in group])].append(new_block)
 
     if len(channel_ids) != 1:
-        raise ValueError("Channel ids were not consistent over read blocks. "
+        raise LoadProjectError("Channel ids were not consistent over read blocks. "
             "Check the filename_pattern, block_keys, and channel_keys;\n"
             "For example:\n{}".format(
                 "\n".join(

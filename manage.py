@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import click
 
-from soundsep.core.io import load_project
+from soundsep.core.app import Workspace
 from soundsep.gui.main import run_app
 from soundsep.app import MainApp
 
@@ -11,9 +13,9 @@ def cli():
 
 
 @click.command(help="Run SoundSep GUI")
-@click.option("-d", "--dir", "_dir", type=str, default="data")
+@click.option("-d", "--dir", "_dir", type=Path, default="data")
 def run(_dir):
-    project = load_project(_dir, filename_pattern="ch{channel}.wav", channel_keys=["channel"])
+    project = Workspace(_dir)
     run_app(MainApp, project)
 
 

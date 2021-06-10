@@ -174,7 +174,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
             *args,
             **kwargs
         ):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, background=None, **kwargs)
         self.project = project
         self.channel = channel
         self.plotItem.setMouseEnabled(x=False, y=False)
@@ -210,7 +210,6 @@ class ScrollableSpectrogram(pg.PlotWidget):
     def init_ui(self):
         self.image = pg.ImageItem()
         self.addItem(self.image)
-
         self.image.setLookupTable(self._cmap.getLookupTable(alpha=True))
 
     def update_image(self):

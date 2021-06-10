@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1379</width>
+    <height>807</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <widget class="QScrollArea" name="mainScrollArea">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>3</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="mainScrollAreaContents">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>1252</width>
+          <height>679</height>
+         </rect>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_3"/>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="rightWidget" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QSplitter" name="splitter_2">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <widget class="QToolBox" name="toolBox">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>2</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="currentIndex">
+            <number>0</number>
+           </property>
+           <widget class="QWidget" name="PluginPlaceholder">
+            <property name="geometry">
+             <rect>
+              <x>0</x>
+              <y>0</y>
+              <width>85</width>
+              <height>557</height>
+             </rect>
+            </property>
+            <attribute name="label">
+             <string>Project Files</string>
+            </attribute>
+           </widget>
+           <widget class="QWidget" name="PluginPlaceholder2">
+            <property name="geometry">
+             <rect>
+              <x>0</x>
+              <y>0</y>
+              <width>85</width>
+              <height>557</height>
+             </rect>
+            </property>
+            <attribute name="label">
+             <string>Labels</string>
+            </attribute>
+           </widget>
+          </widget>
+          <widget class="QGroupBox" name="currentSelectionBox">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>2</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="title">
+            <string>Selection</string>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout">
+            <item>
+             <layout class="QVBoxLayout" name="verticalLayout_4"/>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1379</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionLoad_project"/>
+    <addaction name="actionSave"/>
+    <addaction name="actionExport"/>
+    <addaction name="separator"/>
+    <addaction name="actionClose"/>
+   </widget>
+   <widget class="QMenu" name="menuSources">
+    <property name="title">
+     <string>Sources</string>
+    </property>
+    <addaction name="actionAdd_source"/>
+    <addaction name="separator"/>
+    <addaction name="actionClear_selection"/>
+    <addaction name="separator"/>
+    <addaction name="actionCreate_Segment"/>
+    <addaction name="actionDelete_Segment"/>
+   </widget>
+   <widget class="QMenu" name="menuPlugins">
+    <property name="title">
+     <string>Plugins</string>
+    </property>
+    <widget class="QMenu" name="menuSimpleDetection">
+     <property name="title">
+      <string>SimpleDetection</string>
+     </property>
+     <addaction name="separator"/>
+     <addaction name="actionDetect"/>
+     <addaction name="actionLower_Threshold"/>
+     <addaction name="actionIncrease_Threshold"/>
+    </widget>
+    <widget class="QMenu" name="menuLabeling">
+     <property name="title">
+      <string>Labeling</string>
+     </property>
+     <addaction name="actionAdd_label"/>
+     <addaction name="actionEdit_label"/>
+    </widget>
+    <widget class="QMenu" name="menuTemplateMatching">
+     <property name="title">
+      <string>TemplateMatching</string>
+     </property>
+     <addaction name="actionNew_template_from_label"/>
+     <addaction name="actionMatch_to_selection"/>
+    </widget>
+    <widget class="QMenu" name="menuRavenExport">
+     <property name="title">
+      <string>RavenExport</string>
+     </property>
+     <addaction name="actionExport_to_Raven"/>
+    </widget>
+    <addaction name="menuSimpleDetection"/>
+    <addaction name="menuLabeling"/>
+    <addaction name="menuTemplateMatching"/>
+    <addaction name="menuRavenExport"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="actionGithub"/>
+   </widget>
+   <widget class="QMenu" name="menuSettings">
+    <property name="title">
+     <string>Settings</string>
+    </property>
+    <addaction name="actionKeymappings"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuSources"/>
+   <addaction name="menuPlugins"/>
+   <addaction name="menuSettings"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QDockWidget" name="toolbarDock">
+   <attribute name="dockWidgetArea">
+    <number>4</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContents_2">
+    <layout class="QGridLayout" name="gridLayout">
+     <item row="0" column="1">
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="0" column="0">
+      <widget class="QPushButton" name="addSourceButton">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text">
+        <string>+Source</string>
+       </property>
+       <property name="default">
+        <bool>false</bool>
+       </property>
+       <property name="flat">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+  <action name="actionLoad_project">
+   <property name="text">
+    <string>Load project</string>
+   </property>
+  </action>
+  <action name="actionSave">
+   <property name="text">
+    <string>Save</string>
+   </property>
+  </action>
+  <action name="actionExport">
+   <property name="text">
+    <string>Export</string>
+   </property>
+  </action>
+  <action name="actionKeymappings">
+   <property name="text">
+    <string>Keymappings</string>
+   </property>
+  </action>
+  <action name="actionClose">
+   <property name="text">
+    <string>Close</string>
+   </property>
+  </action>
+  <action name="actionAdd_source">
+   <property name="text">
+    <string>Add source...</string>
+   </property>
+  </action>
+  <action name="actionDetect">
+   <property name="text">
+    <string>Detect</string>
+   </property>
+  </action>
+  <action name="actionLower_Threshold">
+   <property name="text">
+    <string>Lower Threshold</string>
+   </property>
+  </action>
+  <action name="actionIncrease_Threshold">
+   <property name="text">
+    <string>Increase Threshold</string>
+   </property>
+  </action>
+  <action name="actionCreate_Segment">
+   <property name="text">
+    <string>Create Segment</string>
+   </property>
+  </action>
+  <action name="actionClear_selection">
+   <property name="text">
+    <string>Clear selection</string>
+   </property>
+  </action>
+  <action name="actionDelete_Segment">
+   <property name="text">
+    <string>Delete Segment</string>
+   </property>
+  </action>
+  <action name="actionAdd_label">
+   <property name="text">
+    <string>Add label...</string>
+   </property>
+  </action>
+  <action name="actionEdit_label">
+   <property name="text">
+    <string>Edit label</string>
+   </property>
+  </action>
+  <action name="actionNew_template_from_label">
+   <property name="text">
+    <string>New template from label</string>
+   </property>
+  </action>
+  <action name="actionMatch_to_selection">
+   <property name="text">
+    <string>Match to selection</string>
+   </property>
+  </action>
+  <action name="actionExport_to_Raven">
+   <property name="text">
+    <string>Export to Raven TSV</string>
+   </property>
+  </action>
+  <action name="actionGithub">
+   <property name="text">
+    <string>Source code</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

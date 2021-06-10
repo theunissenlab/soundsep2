@@ -54,10 +54,7 @@ class SpectrogramViewWidget(widgets.QWidget):
         layout.addWidget(self.spectrogram)
         self.setLayout(layout)
 
-        # TODO Replace this!
-        self.dialogFrame = FloatingFrame(parent=self)
-        self.dialog = FloatingButton("▼ {}".format(self.source.name), parent=self.dialogFrame)
-
+        self.dialog = FloatingButton("▼ {}".format(self.source.name), parent=self.spectrogram)
         self.spectrogram.image.sigImageChanged.connect(self.on_image_changed)
 
     def on_image_changed(self):
@@ -105,11 +102,21 @@ class MainApp(widgets.QMainWindow):
         self.spectrogram_layout.setSpacing(0)
         self.spectrogram_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.ui.addSourceButton.clicked.connect(self._create_source)
+        pg.setConfigOption('background', None)
+        pg.setConfigOption('foreground', 'k')
 
         self.preview_plot_widget = PreviewPlot()
+        self.preview_plot_widget.plotItem.setMouseEnabled(x=False, y=False)
         self.preview_plot = self.preview_plot_widget.plot([], [])
-        self.ui.currentSelectionBox.layout().addWidget(self.preview_plot_widget)
+        self.preview_plot.setPen(pg.mkPen((130, 120, 200), width=1))
+        self.ui.previewBox.layout().addWidget(self.preview_plot_widget)
+
+        self.toolbar = widgets.QToolBar()
+        self.ui.toolbarDock.setWidget(self.toolbar)
+        self.addSourceButtonToolbar = widgets.QPushButton("+Source")
+        self.toolbar.addWidget(self.addSourceButtonToolbar)
+
+        self.addSourceButtonToolbar.clicked.connect(self._create_source)
 
     def init_plugins(self):
         for P in self.api.plugins:
@@ -145,12 +152,8 @@ class MainApp(widgets.QMainWindow):
             source_view.spectrogram.scroll_to(i0)
 
     def draw_sources(self):
-        # We are clearing out... see ifw e can find the roi again
-        restore_roi = bool(self._roi)
-        if restore_roi:
-            _roi_source = self._roi[0]
-            _roi_pos = self._roi[1].pos()
-            _roi_size = self._roi[1].size()
+        # TODO: how to preserve the ROI after adding a source?
+        if self._roi:
             self._delete_roi()
 
         for i in reversed(range(self.spectrogram_layout.count())):
@@ -159,7 +162,7 @@ class MainApp(widgets.QMainWindow):
                 item.widget().deleteLater()
             self._source_views = []
 
-        config = self.api.ws.read_config()
+        config = self.api.read_config()
         for source_idx, source in enumerate(self.api.get_sources()):
             source_view = SpectrogramViewWidget(
                 project=self.api.project,
@@ -185,24 +188,28 @@ class MainApp(widgets.QMainWindow):
                 partial(self.on_click, source_idx)
             )
 
-            if restore_roi and source is _roi_source:
-                _roi_restore_source_idx = source_idx
-
-        if restore_roi:
-            self._draw_selection_box(_roi_restore_source_idx, _roi_pos, _roi_pos + _roi_size)
-
     def update_preview(self):
+        """Plot the selected bandpass signal or use the default bandpass settings
+        """
         try:
             (i0, i1), (f0, f1), source = self.api.get_active_selection()
         except TypeError:
-            self.preview_plot.setData([], [])
-        else:
-            if f0 > 0:
-                sig = bandpass_filter(self.api.project[i0:i1, source.channel], self.api.project.sampling_rate, f0, f1)
-            else:
-                sig = lowpass_filter(self.api.project[i0:i1, source.channel], self.api.project.sampling_rate, f1)
-
+            xbounds = self.api.get_xrange()
+            sig = self.api.project[xbounds[0]:xbounds[1], 0]
+            filtered = bandpass_filter(
+                sig,
+                self.api.project.sampling_rate,
+                250.0,  # TODO: Don't hardcode this!read from config?
+                10000.0, # TODO: ditto
+            )
             self.preview_plot.setData(np.arange(len(sig)), sig)
+        else:
+            f0 = max(f0, 250.0)
+            f1 = min(f1, 10000)
+            if f1 <= f0 or i1 - i0 < 33:
+                return None
+            filtered = bandpass_filter(self.api.project[i0:i1, source.channel], self.api.project.sampling_rate, f0, f1)
+            self.preview_plot.setData(np.arange(len(filtered)), filtered)
 
     def on_drag_complete(self, source_idx: int, from_, to):
         if self._roi:
@@ -305,12 +312,14 @@ class MainApp(widgets.QMainWindow):
         if self._roi:
             source_idx = self.api.get_sources().index(self._roi[0])
             xbounds, ybounds, source = self._get_selection_data(source_idx)
+
             self.api.set_selection(
-                (xbounds[0] - dx, xbounds[1] - dx),
+                xbounds,
                 ybounds,
                 source
             )
-            self.update_preview()
+
+        self.update_preview()
 
     def page_right(self):
         i0, i1 = self.api.get_xrange()
@@ -325,11 +334,12 @@ class MainApp(widgets.QMainWindow):
             source_idx = self.api.get_sources().index(self._roi[0])
             xbounds, ybounds, source = self._get_selection_data(source_idx)
             self.api.set_selection(
-                (xbounds[0] - dx, xbounds[1] - dx),
+                xbounds,
                 ybounds,
                 source
             )
-            self.update_preview()
+
+        self.update_preview()
 
     def setup_shortcuts(self):
         self.next_shortcut = widgets.QShortcut(QtGui.QKeySequence("D"), self)

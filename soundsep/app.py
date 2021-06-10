@@ -147,9 +147,13 @@ class MainApp(widgets.QMainWindow):
         else:
             self.api.create_source("NewSource", 0)
 
+    def show_status(self, message: str, duration: int=1000):
+        self.statusBar().showMessage(message, duration)
+
     def on_xrange_changed(self, i0: ProjectIndex, i1: ProjectIndex):
         for source_view in self._source_views:
             source_view.spectrogram.scroll_to(i0)
+            self.show_status("Moved {:.3f}s".format(i0 / i0.project.sampling_rate), 1000)
 
     def draw_sources(self):
         # TODO: how to preserve the ROI after adding a source?

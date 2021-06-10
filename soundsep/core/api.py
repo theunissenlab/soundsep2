@@ -31,21 +31,31 @@ class Soundsep(QObject):
     def __init__(self, workspace: Workspace):
         super().__init__()
 
-        self.ws = workspace
-
+        self._ws = workspace
         self._active_selection = None
 
-        config = self.ws.read_config()
+        config = self._ws.read_config()
         self._visible_range = (
-            ProjectIndex(self.ws.project, 0),
+            ProjectIndex(self._ws.project, 0),
             ProjectIndex(
-                self.ws.project, 
-                int(self.ws.project.sampling_rate * config["duration"])
+                self._ws.project, 
+                int(self._ws.project.sampling_rate * config["duration"])
             )
         )
 
         # self.view_state = None
         # self.selection_state = None
+
+    def __getitem__(self, plugin_name):
+        return self._ws.plugins[plugin_name]
+
+    @property
+    def plugins(self) -> list:
+        return self._ws.plugins
+
+    def get_datastore(self) -> dict:
+        """Get the *mutable* shared data store dict"""
+        return self._ws.datastore
 
     def read_config(self) -> dict:
         """Read the config file
@@ -54,15 +64,15 @@ class Soundsep(QObject):
         -------
         config : dict
         """
-        return self.ws.read_config()
+        return self._ws.read_config()
     
     @property
     def paths(self):
-        return self.ws.paths
+        return self._ws.paths
 
     @property
     def project(self):
-        return self.ws.project
+        return self._ws.project
 
     def set_xrange(self, start: ProjectIndex, stop: ProjectIndex):
         """Set the active view range in ProjectIndex coordinates
@@ -110,10 +120,10 @@ class Soundsep(QObject):
         name : str
         channel : int
         """
-        self.ws.sources.append(Source(self.ws.project, name, channel))
+        self._ws.sources.append(Source(self._ws.project, name, channel))
         self.sourcesChanged.emit(
             SourceChange.APPEND,
-            len(self.ws.sources) - 1
+            len(self._ws.sources) - 1
         )
 
     def edit_source(self, i: int, name: str, channel: int):
@@ -128,7 +138,7 @@ class Soundsep(QObject):
         name : str
         channel : int
         """
-        source = self.ws.sources[i]
+        source = self._ws.sources[i]
         changed = False
 
         if source.name != name:
@@ -151,13 +161,13 @@ class Soundsep(QObject):
         i : int
             Index of source to delete
         """
-        del self.ws.sources[i]
+        del self._ws.sources[i]
         self.sourcesChanged.emit(SourceChange.DELETE, i)
 
     def get_sources(self) -> List[Source]:
         """Get all the current sources
         """
-        return self.ws.sources[:]  # readonly!
+        return self._ws.sources[:]  # readonly!
 
     def set_selection(
             self,
@@ -201,7 +211,7 @@ class Soundsep(QObject):
         ---------
         save_file: 
         """
-        self.ws.load_sources(save_file)
+        self._ws.load_sources(save_file)
         self.sourcesChanged(SourceChange.RESET, 0)
 
     def save_sources(self, save_file: Path):
@@ -209,4 +219,4 @@ class Soundsep(QObject):
 
         Default location to save is Soundsep.ws.paths.default_sources_savefile
         """
-        self.ws.load_sources(save_file)
+        self._ws.load_sources(save_file)

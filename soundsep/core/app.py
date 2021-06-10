@@ -1,4 +1,8 @@
+import glob
 import os
+import importlib
+import pkgutil
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -140,8 +144,10 @@ class Workspace:
         self.project = None
         self.sources = None
         self.datastore = {"soundsep": {}}
+        self.plugins = []
 
         self.load_project()
+        self.load_plugins()
  
     def ready(self) -> bool:
         """Return True if a project has been loaded"""
@@ -188,4 +194,37 @@ class Workspace:
 
         data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel} for s in self.sources])
         data.to_csv(data)
+
+    def _find_plugins(self):
+        return glob.glob(os.path.join(self.paths.plugin_dir, "soundsep_*.py"))
+
+    def load_plugins(self):
+        """Load plugins from three possible locations
+
+        (1) soundsep.plugins, and (2) self.paths.plugin_dir
+        """
+        import soundsep.plugins
+
+        def iter_namespace(ns_pkg):
+            return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
+
+        plugin_modules = [
+            importlib.import_module(name)
+            for finder, name, ispkg
+            in iter_namespace(soundsep.plugins)
+        ]
+
+        for plugin_file in self._find_plugins():
+            name = os.path.splitext(os.path.basename(plugin_file))[0]
+            spec = importlib.util.spec_from_file_location("plugin.{}".format(name), plugin_file)
+            plugin_module = importlib.import_module(importlib.util.module_from_spec(spec))
+            spec.loader.exec_module(plugin_module)
+            plugin_modules.append(plugin_module)
+
+        self.plugins = []
+        for mod in plugin_modules:
+            try:
+                self.plugins.append(getattr(mod, "ExportPlugin"))
+            except:
+                warnings.warn("Did not find an ExportPlugin class in potential plugin file {}".format(mod))
 

@@ -74,6 +74,7 @@ class MainApp(widgets.QMainWindow):
         self.title = "SoundSep"
         self.api = Soundsep(workspace)
         self._source_views = []
+        self.plugins = []
         self._roi = None  # Tuple of (source, xbounds, ybounds)
 
         i0, i1 = self.api.get_xrange()
@@ -81,6 +82,8 @@ class MainApp(widgets.QMainWindow):
 
         self.init_ui()
         self.setup_shortcuts()
+        self.init_plugins()
+        self.init_plugins_ui()
 
         # Connect signals
         self.api.xrangeChanged.connect(self.on_xrange_changed)
@@ -108,11 +111,23 @@ class MainApp(widgets.QMainWindow):
         self.preview_plot = self.preview_plot_widget.plot([], [])
         self.ui.currentSelectionBox.layout().addWidget(self.preview_plot_widget)
 
-        # self.toolbar = widgets.QListWidget()
-        # self.ui.toolbarDock.setWidget(self.toolbar)
+    def init_plugins(self):
+        for P in self.api.plugins:
+            self.plugins.append(P(self.api, self))
 
-        # self.addSourceButtonToolbar = widgets.QPushButton("+Source")
-        # self.toolbar.addItem(self.ui.addSourcebutton)
+    def init_plugins_ui(self):
+        for item in reversed(range(self.ui.pluginPanelToolbox.count())):
+            self.ui.pluginPanelToolbox.removeItem(item)
+
+        for plugin in self.plugins:
+            for widget in plugin.plugin_toolbar_items():
+                self.toolbar.addWidget(widget)
+
+            if plugin.plugin_panel_widget():
+                self.ui.pluginPanelToolbox.addItem(
+                    plugin.plugin_panel_widget(),
+                    type(plugin).__name__
+                )
 
     def _create_source(self):
         """Adds a new source at the next empty channel, or channel 0"""

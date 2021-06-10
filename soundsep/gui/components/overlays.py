@@ -48,20 +48,6 @@ class FloatingButton(widgets.QPushButton):
         self.update_position()
 
 
-class FloatingFrame(widgets.QWidget):
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents)
-        # self.setWindowFlags(Qt.FramelessWindowHint)
-        # self.setWindowOpacity(1 - 50 / 100)
-        # self.setAttribute(Qt.WA_TranslucentBackground)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.resize(self.parent().sizeHint())
-
-
 class FloaingComboBox(widgets.QComboBox):
 
     def __init__(self, *args, padding=10, parent=None, **kwargs):

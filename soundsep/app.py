@@ -9,7 +9,7 @@ from soundsig.signal import bandpass_filter, lowpass_filter
 from soundsep.core.api import Soundsep
 from soundsep.core.app import Workspace
 from soundsep.core.models import ProjectIndex, Source
-from soundsep.gui.components.overlays import FloatingButton, FloatingFrame
+from soundsep.gui.components.overlays import FloatingButton
 from soundsep.gui.components.selection_box import SelectionBox
 from soundsep.gui.components.spectrogram_view_box import SpectrogramViewBox
 from soundsep.gui.stft_view import ScrollableSpectrogram, ScrollableSpectrogramConfig

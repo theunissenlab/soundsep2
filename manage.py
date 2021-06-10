@@ -20,9 +20,14 @@ def run(_dir):
 
 
 @click.command(help="Open sphinx documentation in browser")
-def doc():
+def open_doc():
     import webbrowser
     webbrowser.open('docs/_build/html/index.html', new=2)
+
+
+@click.command(help="Run pyuic for QtDesigner .ui -> .py conversion")
+def build_ui():
+    pass
 
 
 @click.command(help="Build sphinx documentation")
@@ -65,7 +70,8 @@ def unittest(_dir, verbose, _coverage):
 cli.add_command(run)
 cli.add_command(unittest)
 cli.add_command(build_doc)
-cli.add_command(doc)
+cli.add_command(open_doc)
+cli.add_command(build_ui)
 
 
 if __name__ == "__main__":

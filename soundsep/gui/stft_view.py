@@ -1,5 +1,6 @@
 from enum import Enum
 
+from PyQt5 import QtGui
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 import numpy as np
 import pyqtgraph as pg
@@ -162,6 +163,9 @@ class ScrollableSpectrogramConfig:
         """Number of samples to display of spectrogram in (in stft samples)"""
         return self._spectrogram_size
 
+    def set_spectrogram_size(self, size: int):
+        self._spectrogram_size = size
+
 
 class ScrollableSpectrogram(pg.PlotWidget):
     """Scrollable Spectrogram Plot Widget that uses the spectrogram indices as its native coordinate system
@@ -216,10 +220,23 @@ class ScrollableSpectrogram(pg.PlotWidget):
         if self._stft_cache.ready():
             stft_array = self._stft_cache.read()
 
+            # TODO: transform spectrogram into data coordinates
+            '''
+            tr = QtGui.QTransform()
+            tr.translate(
+                self._stft_cache._current_start_idx_data,
+                0)
+            tr.scale(self._stft_cache._conversion_factor, np.max(self.freqs) / stft_array.shape[1])
+            center = stft_array.shape[0] / 2
+            print(self._stft_cache._current_start_idx_data)
+            '''
+
             if self._view_mode == STFTViewMode.NORMAL:
                 self.image.setImage(stft_array)
+                # self.image.setTransform(tr)
             elif self._view_mode == STFTViewMode.DERIVATIVE:
                 self.image.setImage(spectral_derivative(stft_array))
+                # self.image.setTransform(tr)
             else:
                 raise RuntimeError("Invalid _view_mode {}".format(self._view_mode))
 
@@ -242,12 +259,15 @@ class ScrollableSpectrogram(pg.PlotWidget):
         self._stft_cache.set_data(idx_data, np.abs(spec[:, self.freqs > 0.0]))
         self.update_image()
 
-    def scroll_to(self, idx_data):
+    def scroll_to(self, idx_data, idx_data_end=None):
         """Move visible portion of spectrogram to idx_data
 
         :param idx_data: Index in audio samples to move view to 
         :type idx_data: int (wav coordinates)
         """
+        if idx_data_end is not None:
+            self.config.set_spectrogram_size(idx_data_end - idx_data)
+
         # Cancel any ongoing computation
         if self._stft_thread is not None:
             self._stft_thread.cancel()

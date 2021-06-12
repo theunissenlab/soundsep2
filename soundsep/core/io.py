@@ -7,6 +7,7 @@ import os
 import parse
 from collections.abc import Iterable
 from enum import Enum
+from pathlib import Path
 from typing import List
 
 import soundfile
@@ -15,7 +16,7 @@ from soundsep.core.models import AudioFile, Block, Project
 
 
 def load_project(
-        directory: str,
+        directory: Path,
         filename_pattern: str = None,
         block_keys: List[str] = None,
         channel_keys: List[str] = None,
@@ -71,10 +72,10 @@ def load_project(
         A soundsep.core.models.Project instance linking all Blocks found that match
         the filename_pattern provided
     """
-    if not os.path.isdir(directory) and directory.endswith(".wav"):
+    if not directory.is_dir() and directory.suffix == ".wav":
         filelist = [directory]
     else:
-        filelist = glob.glob(os.path.join(directory, "*.wav"))
+        filelist = directory.glob("*.wav")
 
     if filename_pattern is None and len(filelist) != 1:
         raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))

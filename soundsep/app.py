@@ -44,8 +44,9 @@ class SpectrogramViewWidget(widgets.QWidget):
             viewBox=self._spectrogram_viewbox
         )
 
-        self.spectrogram.showAxis("left", False)
-        self.spectrogram.showAxis("bottom", False)
+        # TODO: better styling of axes?
+        # self.spectrogram.showAxis("left", False)
+        # self.spectrogram.showAxis("bottom", False)
     
         layout = widgets.QVBoxLayout()
         layout.setSpacing(0)
@@ -54,7 +55,7 @@ class SpectrogramViewWidget(widgets.QWidget):
         layout.addWidget(self.spectrogram)
         self.setLayout(layout)
 
-        self.dialog = FloatingButton("▼ {}".format(self.source.name), parent=self.spectrogram)
+        self.dialog = FloatingButton("▼ {}".format(self.source.name), paddingx=80, paddingy=20, parent=self.spectrogram)
         self.spectrogram.image.sigImageChanged.connect(self.on_image_changed)
 
     def on_image_changed(self):
@@ -66,12 +67,13 @@ class SpectrogramViewWidget(widgets.QWidget):
 
 
 class MainApp(widgets.QMainWindow):
+
     def __init__(self, workspace: Workspace):
         super().__init__()
         self.title = "SoundSep"
         self.api = Soundsep(workspace)
         self._source_views = []
-        self.plugins = []
+        self.plugins = {}
         self._roi = None  # Tuple of (source, xbounds, ybounds)
 
         i0, i1 = self.api.get_xrange()
@@ -86,12 +88,50 @@ class MainApp(widgets.QMainWindow):
         self.api.xrangeChanged.connect(self.on_xrange_changed)
         self.api.sourcesChanged.connect(self.draw_sources)
         self.api.selectionChanged.connect(self.update_preview)
+        self.api.projectChanged.connect(self.on_project_changed)
+
+        # self.open_directory_action = widgets.QAction("Open Directory", self)
+        self.ui.actionLoad_project.triggered.connect(self.run_directory_loader)
 
         # If there are no saved sources, make one
         if self.api.paths.default_sources_savefile.exists():
             self.api.load_sources(self.api.paths.default_sources_savefile)
         else:
             self._create_source()
+
+
+    def run_directory_loader(self):
+        """Dialog to read in a directory of wav files and intervals
+
+        At some point we may have the gui generate the intervals file if it doesn't
+        exist yet, but for now it must be precomputed.
+
+        The directory should contain the following files (one wav per channel):
+            - ch0.wav
+            - ch1.wav
+            - ch2.wav
+            ...
+            - intervals.npy
+            - spectrograms.npy
+        """
+        options = widgets.QFileDialog.Options()
+        selected_file = widgets.QFileDialog.getExistingDirectory(
+            self,
+            "Load directory",
+            ".",
+            options=options
+        )
+
+        if selected_file:
+            self.load_project(selected_file)
+
+    def load_project(self, project_directory):
+        self._source_views = []
+        self.api.set_workspace_directory(project_directory)
+
+    def on_project_changed(self):
+        i0, i1 = self.api.get_xrange()
+        self.page_size = i1 - i0
 
     def init_ui(self):
         self.ui = Ui_MainWindow()
@@ -120,20 +160,20 @@ class MainApp(widgets.QMainWindow):
 
     def init_plugins(self):
         for P in self.api.plugins:
-            self.plugins.append(P(self.api, self))
+            self.plugins[P.NAME] = P(self.api, self)
 
     def init_plugins_ui(self):
         for item in reversed(range(self.ui.pluginPanelToolbox.count())):
             self.ui.pluginPanelToolbox.removeItem(item)
 
-        for plugin in self.plugins:
+        for plugin_name, plugin in self.plugins.items():
             for widget in plugin.plugin_toolbar_items():
                 self.toolbar.addWidget(widget)
 
             if plugin.plugin_panel_widget():
                 self.ui.pluginPanelToolbox.addItem(
                     plugin.plugin_panel_widget(),
-                    type(plugin).__name__
+                    plugin_name
                 )
 
     def _create_source(self):
@@ -152,7 +192,9 @@ class MainApp(widgets.QMainWindow):
 
     def on_xrange_changed(self, i0: ProjectIndex, i1: ProjectIndex):
         for source_view in self._source_views:
-            source_view.spectrogram.scroll_to(i0)
+            source_view.spectrogram.scroll_to(i0, i1)
+            # Crap. if the scale changed, how do we change the width of the spectrogram?
+            # source_view.spectrogram.set_width(i1 - i0)
             self.show_status("Moved {:.3f}s".format(i0 / i0.project.sampling_rate), 1000)
 
     def draw_sources(self):
@@ -167,7 +209,7 @@ class MainApp(widgets.QMainWindow):
             self._source_views = []
 
         config = self.api.read_config()
-        for source_idx, source in enumerate(self.api.get_sources()):
+        for source in self.api.get_sources():
             source_view = SpectrogramViewWidget(
                 project=self.api.project,
                 source=source,
@@ -183,14 +225,17 @@ class MainApp(widgets.QMainWindow):
             source_view.spectrogram.scroll_to(self.api.get_xrange()[0])
 
             source_view._spectrogram_viewbox.dragComplete.connect(
-                partial(self.on_drag_complete, source_idx)
+                partial(self.on_drag_complete, source)
             )
             source_view._spectrogram_viewbox.dragInProgress.connect(
-                partial(self.on_drag_in_progress, source_idx)
+                partial(self.on_drag_in_progress, source)
             )
             source_view._spectrogram_viewbox.clicked.connect(
-                partial(self.on_click, source_idx)
+                partial(self.on_click, source)
             )
+            # source_view._spectrogram_viewbox.zoomEvent.connect(
+            #     partial(self.on_zoom, source)
+            # )
 
     def update_preview(self):
         """Plot the selected bandpass signal or use the default bandpass settings
@@ -206,30 +251,29 @@ class MainApp(widgets.QMainWindow):
                 250.0,  # TODO: Don't hardcode this!read from config?
                 10000.0, # TODO: ditto
             )
-            self.preview_plot.setData(np.arange(len(sig)), sig)
+            self.preview_plot.setData(int(xbounds[0]) + np.arange(len(filtered)), filtered)
         else:
             f0 = max(f0, 250.0)
             f1 = min(f1, 10000)
             if f1 <= f0 or i1 - i0 < 33:
                 return None
             filtered = bandpass_filter(self.api.project[i0:i1, source.channel], self.api.project.sampling_rate, f0, f1)
-            self.preview_plot.setData(np.arange(len(filtered)), filtered)
+            self.preview_plot.setData(int(i0) + np.arange(len(filtered)), filtered)
 
-    def on_drag_complete(self, source_idx: int, from_, to):
+    def on_drag_complete(self, source: Source, from_, to):
         if self._roi:
-            old_source_idx = self.api.get_sources().index(self._roi[0])
-            if old_source_idx != source_idx:
+            if self._roi[0] != source:
                 self.api.clear_selection()
 
-        selection_data = self._get_selection_data(source_idx)
+        selection_data = self._get_selection_data(source)
         self.api.set_selection(*selection_data)
 
-    def on_drag_in_progress(self, source_idx: int, from_, to):
+    def on_drag_in_progress(self, source: Source, from_, to):
         if self._roi is None:
-            self._draw_selection_box(source_idx, from_, to)
-        elif self.api.get_sources().index(self._roi[0]) != source_idx:
+            self._draw_selection_box(source, from_, to)
+        elif self._roi[0] != source:
             self._delete_roi()
-            self._draw_selection_box(source_idx, from_, to)
+            self._draw_selection_box(source, from_, to)
         else:
             line = to - from_
             self._roi[1].setPos([
@@ -240,10 +284,50 @@ class MainApp(widgets.QMainWindow):
                 np.abs(line.x()),
                 np.abs(line.y())
             ])
-            selection_data = self._get_selection_data(source_idx)
+            selection_data = self._get_selection_data(source)
             self.api.set_selection(*selection_data)
 
-    def on_click(self, source_idx: int, at):
+    '''
+    def on_zoom(self, source: Source, direction: int, pos):
+        """Adjust the window size and reposition window.
+
+        direction: +1 or -1 for zoom in/out
+        pos: xy location in samples where the cursor is zooming
+        """
+        xbounds = self.api.get_xrange()
+        visible_range = (xbounds[1] - xbounds[0])
+
+        spectrogram = self._source_views[source.index].spectrogram
+        frac = pos.x() / spectrogram.image.width()
+        cursor_index = xbounds[0] + int(visible_range * frac)
+
+        config = self.api.read_config()
+        if direction == -1:
+            target_range = int(visible_range * 1.1)
+        elif direction == 1:
+            target_range = int(visible_range * 0.91)
+        else:
+            raise RuntimeError
+
+        new_offset = int(frac * target_range)
+        new_start = cursor_index - new_offset
+        # new_start = max(0, int(xbounds[0]) + int(xpos - cursor_target))
+        new_stop = new_start + target_range
+
+        self.api.set_xrange(
+            ProjectIndex(self.api.project, new_start),
+            ProjectIndex(self.api.project, new_stop)
+        )
+
+        # update the active selection with update coordinates
+        if self._roi:
+            xbounds, ybounds, source = self._get_selection_data(self._roi[0])
+            self.api.set_selection(xbounds, ybounds, source)
+
+        self.update_preview()
+    '''
+
+    def on_click(self, source: Source, at):
         self._clear_selection_box()
 
     def _delete_roi(self):
@@ -261,10 +345,10 @@ class MainApp(widgets.QMainWindow):
             self._delete_roi()
             self.api.clear_selection()
 
-    def _draw_selection_box(self, source_idx: int, from_, to):
-        source_view = self._source_views[source_idx]
+    def _draw_selection_box(self, source: Source, from_, to):
+        source_view = self._source_views[source.index]
         self._roi = (
-            self.api.get_sources()[source_idx],
+            source,
             SelectionBox(
                 pos=from_,
                 size=to - from_,
@@ -275,14 +359,14 @@ class MainApp(widgets.QMainWindow):
             )
         )
         self._roi[1].sigRegionChanged.connect(
-            partial(self.on_selection_changed, source_idx)
+            partial(self.on_selection_changed, source)
         )
         source_view.spectrogram.addItem(self._roi[1])
 
-    def _get_selection_data(self, source_idx):
+    def _get_selection_data(self, source: Source):
         """Get selection in terms of ProjectIndex, float freqs, nad Source object"""
         if self._roi is not None:
-            source_view = self._source_views[source_idx]
+            source_view = self._source_views[source.index]
             xbounds, ybounds = self._roi[1].get_scaled_bounds(
                 source_view.spectrogram.image,
                 source_view.spectrogram.xlim(),
@@ -293,12 +377,12 @@ class MainApp(widgets.QMainWindow):
                 ProjectIndex(self.api.project, int(xbounds[1])),
             )
 
-            return xbounds, ybounds, self.api.get_sources()[source_idx]
+            return xbounds, ybounds, source
         else:
             return None
 
-    def on_selection_changed(self, source_idx: int):
-        selection_data = self._get_selection_data(source_idx)
+    def on_selection_changed(self, source: Source):
+        selection_data = self._get_selection_data(source)
         if selection_data is None:
             self.api.clear_selection()
         else:
@@ -314,14 +398,8 @@ class MainApp(widgets.QMainWindow):
 
         # update the active selection with update coordinates
         if self._roi:
-            source_idx = self.api.get_sources().index(self._roi[0])
-            xbounds, ybounds, source = self._get_selection_data(source_idx)
-
-            self.api.set_selection(
-                xbounds,
-                ybounds,
-                source
-            )
+            xbounds, ybounds, source = self._get_selection_data(self._roi[0])
+            self.api.set_selection(xbounds, ybounds, source)
 
         self.update_preview()
 
@@ -335,13 +413,8 @@ class MainApp(widgets.QMainWindow):
 
         # update the active selection with update coordinates
         if self._roi:
-            source_idx = self.api.get_sources().index(self._roi[0])
-            xbounds, ybounds, source = self._get_selection_data(source_idx)
-            self.api.set_selection(
-                xbounds,
-                ybounds,
-                source
-            )
+            xbounds, ybounds, source = self._get_selection_data(self._roi[0])
+            self.api.set_selection(xbounds, ybounds, source)
 
         self.update_preview()
 

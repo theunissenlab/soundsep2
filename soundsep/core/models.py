@@ -759,9 +759,11 @@ class Source:
     ---------
     project : Project
     channel : int
+    index : int
+        Kinda weird to put it here, but a way to keep track of a source like an "id"
     """
 
-    def __init__(self, project: Project, name: str, channel: int):
+    def __init__(self, project: Project, name: str, channel: int, index: int):
         if channel >= project.channels:
             raise IndexError("Cannot assign channel greater than number of channels in project")
 
@@ -769,6 +771,7 @@ class Source:
         self.channel = channel
         # TODO: there is nothing that enforces uniqueness of the Source names
         self.name = name
+        self.index = index
 
     @property
     def project(self) -> Project:

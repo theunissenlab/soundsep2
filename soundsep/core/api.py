@@ -27,6 +27,7 @@ class Soundsep(QObject):
     sourcesChanged = pyqtSignal(SourceChange, int)
     selectionChanged = pyqtSignal()
     xrangeChanged = pyqtSignal(ProjectIndex, ProjectIndex)
+    projectChanged = pyqtSignal()
 
     def __init__(self, workspace: Workspace):
         super().__init__()
@@ -43,11 +44,31 @@ class Soundsep(QObject):
             )
         )
 
-        # self.view_state = None
-        # self.selection_state = None
+    def set_workspace_directory(self, dir_):
+        new_workspace = Workspace(Path(dir_))
+        self._ws = new_workspace
+
+        config = self._ws.read_config()
+        self._active_selection = None
+        self._visible_range = (
+            ProjectIndex(self._ws.project, 0),
+            ProjectIndex(
+                self._ws.project, 
+                int(self._ws.project.sampling_rate * config["duration"])
+            )
+        )
+
+        self.sourcesChanged.emit(SourceChange.RESET, 0)
+        self.selectionChanged.emit()
+        self.xrangeChanged.emit(*self._visible_range)
+        self.projectChanged.emit()
 
     def __getitem__(self, plugin_name):
-        return self._ws.plugins[plugin_name]
+        for plugin in self._ws.plugins:
+            if plugin.NAME == plugin_name:
+                return plugin
+        else:
+            raise KeyError("Plugin {} not found!".format(plugin_name))
 
     @property
     def plugins(self) -> list:
@@ -120,7 +141,8 @@ class Soundsep(QObject):
         name : str
         channel : int
         """
-        self._ws.sources.append(Source(self._ws.project, name, channel))
+        index = len(self._ws.sources)
+        self._ws.sources.append(Source(self._ws.project, name, channel, index))
         self.sourcesChanged.emit(
             SourceChange.APPEND,
             len(self._ws.sources) - 1
@@ -162,6 +184,8 @@ class Soundsep(QObject):
             Index of source to delete
         """
         del self._ws.sources[i]
+        for source in self._ws.sources[i:]:
+            source.index -= 1
         self.sourcesChanged.emit(SourceChange.DELETE, i)
 
     def get_sources(self) -> List[Source]:

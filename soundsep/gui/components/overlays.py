@@ -4,7 +4,7 @@ from PyQt5.QtCore import Qt, QSize
 
 class FloatingButton(widgets.QPushButton):
 
-    def __init__(self, *args, padding=10, parent=None, **kwargs):
+    def __init__(self, *args, paddingx=0, paddingy=0, parent=None, **kwargs):
         super().__init__(*args, parent=parent, **kwargs)
         self.setStyleSheet("""
             QPushButton {
@@ -12,7 +12,7 @@ class FloatingButton(widgets.QPushButton):
                 color: rgba(255, 255, 255, 50%);
                 padding: 0px;
                 border: 0px;
-                font-size: 24;
+                font-size: 36;
                 text-align: left;
             }
 
@@ -26,7 +26,7 @@ class FloatingButton(widgets.QPushButton):
                 color: rgba(255, 255, 255, 100%);
             }
         """)
-        self.padding = padding
+        self.padding = (paddingx, paddingy)
 
     def update_position(self):
         if hasattr(self.parent(), 'viewport'):
@@ -39,8 +39,8 @@ class FloatingButton(widgets.QPushButton):
         if not parent_rect:
             return
 
-        x = self.padding
-        y = self.padding
+        x = self.padding[0]
+        y = self.padding[1]
         self.setGeometry(x, y, self.width(), self.height())
 
     def resizeEvent(self, event):

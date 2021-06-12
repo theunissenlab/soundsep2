@@ -25,9 +25,21 @@ def open_doc():
     webbrowser.open('docs/_build/html/index.html', new=2)
 
 
-@click.command(help="Run pyuic for QtDesigner .ui -> .py conversion")
+@click.command("pyuic", help="Run pyuic for QtDesigner .ui -> .py conversion")
 def build_ui():
-    pass
+    import os
+    import inspect
+    import subprocess
+
+    __location__ = os.path.join(os.getcwd(), os.path.dirname(
+        inspect.getfile(inspect.currentframe())))
+    p = subprocess.Popen([
+        "pyuic5",
+        os.path.join(__location__, "soundsep", "gui", "ui", "main_window.ui"),
+        "-o",
+        os.path.join(__location__, "soundsep", "gui", "ui", "main_window.py"),
+    ])
+    p.communicate()
 
 
 @click.command(help="Build sphinx documentation")

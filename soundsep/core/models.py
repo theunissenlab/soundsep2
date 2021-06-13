@@ -701,7 +701,7 @@ class BaseIndex(int):
     @classmethod
     def range(cls, start, stop):
         for i in range(start, stop):
-            args = self._args + [i]
+            args = start._args + [i]
             yield cls(*args)
 
 
@@ -768,7 +768,7 @@ class StftIndex(BaseIndex):
         return self._source_object[1]
 
     def to_project_index(self):
-        return self * self.step
+        return ProjectIndex(self.project, int(self * self.step))
 
 
 class BlockIndex(BaseIndex):

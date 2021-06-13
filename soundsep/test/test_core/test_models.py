@@ -46,37 +46,6 @@ class TestIndex(unittest.TestCase):
         self.assertEqual(repr(bidx), "BlockIndex<10>")
         self.assertEqual(bidx.block, self.block1)
 
-    def test_negative_index_values(self):
-        """Test that negative indexes are mapped to their positive counterpart"""
-        idx = ProjectIndex(self.project, -201)
-        self.assertEqual(idx, ProjectIndex(self.project, 0), "ProjectIndex should clamp values outside of its bounds")
-
-        idx = ProjectIndex(self.project, -101)
-        self.assertEqual(idx, ProjectIndex(self.project, 99), "ProjectIndex should map negative values onto the correct positive ones")
-
-        idx = ProjectIndex(self.project, -1)
-        self.assertEqual(idx, ProjectIndex(self.project, 199), "ProjectIndex should map negative values onto the correct positive ones")
-
-    def test_clamping(self):
-        """Test that indices outside of valid bounds clamp to positive values in valid range"""
-        idx = ProjectIndex(self.project, -201)
-        self.assertEqual(idx, ProjectIndex(self.project, 0), "ProjectIndex should clamp values outside of its bounds")
-        idx = ProjectIndex(self.project, 201)
-        self.assertEqual(idx, ProjectIndex(self.project, 200), "ProjectIndex should clamp values outside of its bounds")
-        idx = ProjectIndex(self.project, -199)
-        self.assertEqual(idx, ProjectIndex(self.project, 1), "ProjectIndex should not clamp values within its bounds")
-        idx = ProjectIndex(self.project, 199)
-        self.assertEqual(idx, ProjectIndex(self.project, 199), "ProjectIndex should not clamp values within its bounds")
-
-        idx = BlockIndex(self.block1, -101)
-        self.assertEqual(idx, BlockIndex(self.block1, 0), "BlockIndex should clamp values outside of its bounds")
-        idx = BlockIndex(self.block1, 101)
-        self.assertEqual(idx, BlockIndex(self.block1, 100), "BlockIndex should clamp values outside of its bounds")
-        idx = BlockIndex(self.block1, -99)
-        self.assertEqual(idx, BlockIndex(self.block1, 1), "BlockIndex should not clamp values within of its bounds")
-        idx = BlockIndex(self.block1, 99)
-        self.assertEqual(idx, BlockIndex(self.block1, 99), "BlockIndex should not clamp values within of its bounds")
-
     def test_equality_relations(self):
         """Tests equality relations between Indexes.
 
@@ -125,11 +94,11 @@ class TestIndex(unittest.TestCase):
     def test_add(self):
         p0 = ProjectIndex(self.project, 10)
         self.assertEqual(p0 + 10, ProjectIndex(self.project, 20))
-        self.assertEqual(p0 + 300, ProjectIndex(self.project, 200), "Adding to a ProjectIndex beyond its frames should be clamped")
+        self.assertEqual(p0 + 300, ProjectIndex(self.project, 310))
 
         b0 = BlockIndex(self.block1, 10)
         self.assertEqual(b0 + 10, BlockIndex(self.block1, 20))
-        self.assertEqual(b0 + 300, BlockIndex(self.block1, 100), "Adding to a BlockIndex beyond its frames should be clamped")
+        self.assertEqual(b0 + 300, BlockIndex(self.block1, 310))
 
     def test_subtract(self):
         p0 = ProjectIndex(self.project, 10)
@@ -137,14 +106,14 @@ class TestIndex(unittest.TestCase):
         self.assertEqual(p0 - p1, 4)
         self.assertEqual(p1 - p0, -4)
         self.assertEqual(p0 - 2, ProjectIndex(self.project, 8))
-        self.assertEqual(p0 - 300, ProjectIndex(self.project, 0), "Subtracting from a ProjectIndex beyond its frames should be clamped")
+        self.assertEqual(p0 - 300, ProjectIndex(self.project, -290))
 
         b0 = BlockIndex(self.block1, 10)
         b1 = BlockIndex(self.block1, 6)
         self.assertEqual(b0 - b1, 4)
         self.assertEqual(b1 - b0, -4)
         self.assertEqual(b0 - 2, BlockIndex(self.block1, 8))
-        self.assertEqual(b0 - 300, BlockIndex(self.block1, 0), "Subtracting from a BlockIndex beyond its frames should be clamped")
+        self.assertEqual(b0 - 300, BlockIndex(self.block1, -290))
 
     def test_comparisons(self):
         """Test that <, <=, >, and >= work for indices"""

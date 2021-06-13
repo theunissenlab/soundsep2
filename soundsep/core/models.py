@@ -626,7 +626,7 @@ def _match_type(fn, require_same_source=False):
                 self.__class__.__name__,
                 other.__class__.__name__
             ))
-        if require_same_source and not (self._source_object is other._source_object):
+        if require_same_source and not (self._source_object == other._source_object):
             raise ValueError("Cannot call {} on {} with mismatched targets {} and {}".format(
                 fn.__name__,
                 self.__class__.__name__,
@@ -646,19 +646,11 @@ class BaseIndex(int):
         if not isinstance(source_object, cls.ObjectType):
             raise TypeError("Index of type {} must be instantiated with {}".format(cls, cls.ObjectType))
 
-        # Convert negative indices to their corresponding positive value
-        value = int(value)
-
-        if value < 0:
-            value = source_object.frames + value
-
-        # Clamp values to be within the valid range for reading
-        value = BaseIndex._clamp(value, 0, source_object.frames)
-
         return int.__new__(cls, value)
 
     def __init__(self, source_object, value: int):
         self._source_object = source_object
+        self._args = [source_object]
         super().__init__()
 
     @staticmethod
@@ -680,18 +672,19 @@ class BaseIndex(int):
 
     @_match_type
     def __eq__(self, other):
-        return (other._source_object is self._source_object) and super().__eq__(other)
+        return (other._source_object == self._source_object) and super().__eq__(other)
 
     @_match_type
     def __ne__(self, other):
-        return (other._source_object is not self._source_object) or super().__ne__(other)
+        return (other._source_object != self._source_object) or super().__ne__(other)
 
     def __add__(self, other: int):
         """BaseIndex + int -> BaseIndex"""
         if isinstance(other, BaseIndex) or not isinstance(other, int):
             raise TypeError("Cannot add {} to {}".format(type(self).__name__, type(other).__name__))
 
-        return self.__class__(self._source_object, super().__add__(other))
+        args = self._args + [super().__add__(other)]
+        return self.__class__(*args)
 
     def __sub__(self, other: int):
         """BaseIndex - int -> BaseIndex | BaseIndex - BaseIndex -> int"""
@@ -700,7 +693,8 @@ class BaseIndex(int):
                 raise TypeError("Cannot subtract {} from {}".format(type(other).__name__, type(self).__name__))
             return super().__sub__(other)
         elif isinstance(other, int):
-            return self.__class__(self._source_object, super().__sub__(other))
+            args = self._args + [super().__sub__(other)]
+            return self.__class__(*args)
         else:
             raise TypeError("Cannot subtract {} from {}".format(type(other).__name__, type(self).__name__))
 
@@ -727,6 +721,48 @@ class ProjectIndex(BaseIndex):
     @property
     def project(self):
         return self._source_object
+
+
+class StftIndex(BaseIndex):
+    """An integer index to a lattice on ProjectIndex separated by a given step
+
+    Arguments
+    ---------
+    source_object : (soundsep.io.Project, int)
+        A tuple of the Project for which the index is valid and the Stft step size
+    value : int
+        Frame within the Project that the index refers to
+
+    Example
+    -------
+    >>> sidx = StftIndex(project, 50, 10)
+    """
+
+    ObjectType = Project
+
+    def __new__(cls, project, step, value: int):
+        if not isinstance(project, Project):
+            raise TypeError("Cannot instantiate StftIndex without Project")
+        if not isinstance(step, int):
+            raise TypeError("Cannot instantiate StftIndex without step size")
+
+        return int.__new__(cls, value)
+
+    def __init__(self, project, step, value: int):
+        super().__init__((project, step), value)
+        self._step = step
+        self._args = [project, step]
+
+    @property
+    def project(self):
+        return self._source_object[0]
+
+    @property
+    def step(self):
+        return self._source_object[1]
+
+    def to_project_index(self):
+        return self * self.step
 
 
 class BlockIndex(BaseIndex):

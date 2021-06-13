@@ -698,6 +698,12 @@ class BaseIndex(int):
         else:
             raise TypeError("Cannot subtract {} from {}".format(type(other).__name__, type(self).__name__))
 
+    @classmethod
+    def range(cls, start, stop):
+        for i in range(start, stop):
+            args = self._args + [i]
+            yield cls(*args)
+
 
 class ProjectIndex(BaseIndex):
     """An integer index that is a global index into a specific Project

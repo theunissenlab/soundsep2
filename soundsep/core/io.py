@@ -75,7 +75,7 @@ def load_project(
     if not directory.is_dir() and directory.suffix == ".wav":
         filelist = [directory]
     else:
-        filelist = directory.glob("*.wav")
+        filelist = list(directory.glob("*.wav"))
 
     if filename_pattern is None and len(filelist) != 1:
         raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))

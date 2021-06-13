@@ -10,13 +10,22 @@ def cli():
 
 @click.command(help="Run SoundSep GUI")
 @click.option("-d", "--dir", "_dir", type=Path, default="data")
-def run(_dir):
+def run_old(_dir):
     from soundsep.core.app import Workspace
     from soundsep.gui.main import run_app
     from soundsep.app import MainApp
 
     project = Workspace(_dir)
     run_app(MainApp, project)
+
+
+@click.command(help="Run SoundSep GUI")
+@click.option("-d", "--dir", "_dir", type=Path, default="data")
+def run(_dir):
+    from soundsep.app.main import SoundsepApp, run_app
+    from soundsep.app.app import SoundsepController
+
+    run_app(SoundsepController(), None, MainWindow=SoundsepApp)
 
 
 @click.command(help="Open sphinx documentation in browser")

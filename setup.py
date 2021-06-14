@@ -39,6 +39,7 @@ setup(
         "scipy",
         "SoundFile",
         "soundsig",
+        "parse",
         "pyyaml",
     ],
     entry_points="""

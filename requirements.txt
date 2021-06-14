@@ -9,3 +9,4 @@ scipy
 SoundFile
 soundsig
 pyyaml
+parse

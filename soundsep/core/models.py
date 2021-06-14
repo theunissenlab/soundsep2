@@ -1,4 +1,4 @@
-"""Data structures for abstracting the audio file organization on disk
+"""Data structures for abstracting the audio file organization on disk and indexing into data
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class AudioFile:
 
     def set_max_frame(self, frames):
         """Set the maximum frame to read from the file
-        
+
         This can be used to force multiple AudioFiles to behave as if they have the
         same duration. Reads beyond the given frame will be cut off.
 
@@ -49,7 +49,7 @@ class AudioFile:
         ---------
         frames : int, optional
             Truncate reads from this file to force_frames (treat this as the length
-            of the file rather than its actual length). 
+            of the file rather than its actual length).
         """
         if not isinstance(frames, int) or frames <= 0:
             raise ValueError("max_frame must be a positive integer or None: got {}".format(frames))
@@ -80,7 +80,7 @@ class AudioFile:
     @property
     def frames(self) -> int:
         """int: Number of readable samples in audio file"""
-        return self._max_frame or self._actual_frames 
+        return self._max_frame or self._actual_frames
 
     @property
     def channels(self) -> int:
@@ -113,7 +113,7 @@ class AudioFile:
         read_stop = min(i1, self.frames)
 
         result, _ = soundfile.read(self.path, read_stop - read_start, read_start, dtype=np.float64)
-        
+
         if result.ndim == 1:
             result = result[:, None]
 
@@ -369,7 +369,7 @@ class Project:
     def blocks(self) -> List[Block]:
         """List[Block]: An ordered list of the Blocks in the Project"""
         return self._blocks
-    
+
     def iter_blocks(self) -> Iterable[Tuple['ProjectIndex', 'ProjectIndex', 'Block']] :
         """Iterate over blocks in the Project
 
@@ -534,7 +534,7 @@ class Project:
 
     def to_block_index(self, index: Union['BlockIndex', 'ProjectIndex']) -> 'BlockIndex':
         """Convert a BlockIndex/ProjectIndex to a BlockIndex
-        
+
         Arguments
         ---------
         index : ProjectIndex or BlockIndex
@@ -728,6 +728,9 @@ class ProjectIndex(BaseIndex):
     def project(self):
         return self._source_object
 
+    def to_timestamp(self):
+        return int(self) / self.project.sampling_rate
+
 
 class StftIndex(BaseIndex):
     """An integer index to a lattice on ProjectIndex separated by a given step
@@ -769,6 +772,9 @@ class StftIndex(BaseIndex):
 
     def to_project_index(self):
         return ProjectIndex(self.project, int(self * self.step))
+
+    def to_timestamp(self):
+        return self.to_project_index().to_timestamp()
 
 
 class BlockIndex(BaseIndex):

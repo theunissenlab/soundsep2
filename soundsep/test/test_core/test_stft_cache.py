@@ -5,7 +5,7 @@ import numpy as np
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtTest
 
-from soundsep.core.stft_cache import StftCache, StftConfig
+from soundsep.app.services import StftCache, StftConfig
 from soundsep.core.models import Project, ProjectIndex, StftIndex
 from soundsep.test.base_qt_test import test_app
 

@@ -1,4 +1,6 @@
+from functools import partial
 from pathlib import Path
+from collections import namedtuple
 
 import numpy as np
 import pyqtgraph as pg
@@ -8,13 +10,18 @@ from PyQt5.QtCore import QTimer
 
 from soundsep.api import SoundsepControllerApi, SoundsepGuiApi
 from soundsep.app.services import SourceService
-from soundsep.core.models import StftIndex
+from soundsep.core.models import ProjectIndex, StftIndex
 from soundsep.gui.ui.main_window import Ui_MainWindow
 from soundsep.gui.source_view import SourceView
+from soundsep.gui.preview import PreviewPlot
+from soundsep.gui.components.selection_box import SelectionBox
 
 
 pg.setConfigOption('background', None)
 pg.setConfigOption('foreground', 'k')
+
+
+Roi = namedtuple("Roi", ["roi", "source"])
 
 
 class SoundsepGui(widgets.QMainWindow):
@@ -43,16 +50,15 @@ class SoundsepGui(widgets.QMainWindow):
         self.toolbar = widgets.QToolBar()
         self.ui.toolbarDock.setWidget(self.toolbar)
 
-        # self.preview_plot_widget = PreviewPlot()
-        # self.preview_plot_widget.plotItem.setMouseEnabled(x=False, y=False)
-        # self.preview_plot = self.preview_plot_widget.plot([], [])
-        # self.preview_plot.setPen(pg.mkPen((130, 120, 200), width=1))
-        # self.ui.previewBox.layout().addWidget(self.preview_plot_widget)
+        self.preview_plot_widget = PreviewPlot(self.api._app.project)
+        self.ui.previewBox.layout().addWidget(self.preview_plot_widget)
 
         # TODO: replace this with an Icon
         self.add_source_button = widgets.QPushButton("+Source")
         self.toolbar.addWidget(self.add_source_button)
         self.add_source_button.clicked.connect(self.on_add_source)
+
+        self.roi = None
 
     def connect_events(self):
         # API Events
@@ -114,6 +120,13 @@ class SoundsepGui(widgets.QMainWindow):
         self.show_status("{:.2f}-{:.2f}".format(x.to_timestamp(), y.to_timestamp()))
         self.draw_sources()
 
+        # TODO: it is too slow to read/write this whole thing every time we move.
+        # Should do something similar to the StftCache...
+        # t_arr, data = self.api.get_workspace_signal()
+
+        # self.preview_plot_widget.waveform_plot.setData(t_arr, data[:, 0])
+        # self.preview_plot_widget.setXRange(int(x.to_project_index()), int(y.to_project_index()))
+
     def draw_sources(self):
         x0, x1 = self.api.workspace_get_lim()
         stft_data, _stale, freqs = self.api.get_workspace_stft()
@@ -132,7 +145,74 @@ class SoundsepGui(widgets.QMainWindow):
         self.source_views = []
         for source in sources:
             source_view = SourceView(source)
+            # TODO: have a class for all the sources manage these?
+            source_view.spectrogram.getViewBox().dragComplete.connect(partial(self.on_drag_complete, source))
+            source_view.spectrogram.getViewBox().dragInProgress.connect(partial(self.on_drag_in_progress, source))
+            source_view.spectrogram.getViewBox().clicked.connect(partial(self.on_spectrogram_clicked, source))
+            source_view.hover.connect(partial(self.on_spectrogram_hover, source))
+            source_view.spectrogram.getViewBox().zoomEvent.connect(partial(self.on_spectrogram_zoom, source))
+
             self.workspace_layout.addWidget(source_view)
             self.source_views.append(source_view)
 
         self.draw_sources()
+
+    def on_drag_complete(self, source):
+        pass
+
+    def on_drag_in_progress(self, source, from_, to):
+        # Draw selection box
+        if self.roi is None:
+            self.draw_selection_box(source, from_, to)
+        elif source != self.roi.source:
+            self.delete_roi()
+            self.draw_selection_box(source, from_, to)
+        else:
+            line = to - from_
+            self.roi.roi.setPos([
+                min(to.x(), from_.x()),
+                min(to.y(), from_.y())
+            ])
+            self.roi.roi.setSize([
+                np.abs(line.x()),
+                np.abs(line.y())
+            ])
+            # self.api.set_selection(
+            #     ProjectIndex(self.api._app.project, int(round(from_.x()))),
+            #     ProjectIndex(self.api._app.project, int(round(to.x()))),
+            #     from_.y(),
+            #     to.y()
+            # )
+
+    def draw_selection_box(self, source, from_, to):
+        source_view = self.source_views[source.index]
+        self.roi = Roi(
+            source=source,
+            roi=SelectionBox(
+                pos=from_,
+                size=to - from_,
+                pen=(156, 156, 100),
+                rotatable=False,
+                removable=False,
+                # maxBounds=source_view.spectrogram.viewRange(),
+            )
+        )
+        # self.roi.roi.sigRegionChanged.connect((self.on_selection_changed, source))
+        source_view.spectrogram.addItem(self.roi.roi)
+
+    def on_spectrogram_clicked(self, source):
+        # Clear roi
+        pass
+
+    def on_spectrogram_hover(self, source, x: ProjectIndex, y: float):
+        self.show_status("t={:.2f}s, freq={:.2f}Hz".format(x.to_timestamp(), y))
+
+    def on_spectrogram_zoom(self, source, direction: int, pos):
+        # TODO: there are weird artifats when using the zoom functionality in the spectrogram
+        self.api.workspace_scale(direction * -50)
+
+    # def on_selection_changed(self, source):
+    #     if selection_data is None:
+    #         self.api.clear_selection()
+    #     else:
+    #         self.api.set_selection(*selection_data)

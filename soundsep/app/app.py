@@ -173,12 +173,12 @@ class Workspace(QObject):
         n : int
         """
         if n < 0:
-            n = max(n, self.size - 1)
+            n = max(n, 1 - self.size)
         else:
             n = min(n, self.max_size - self.size)
 
-        start = self.start
-        stop = self.stop
+        start = int(self.start)
+        stop = int(self.stop)
         sign = np.sign(n)
 
         for i in range(abs(n)):
@@ -193,11 +193,11 @@ class Workspace(QObject):
                 else:
                     stop += sign
 
-        self.set_position(start, stop)
+        self.set_position(StftIndex(self.project, self.step, start), StftIndex(self.project, self.step, stop))
 
     def get_lim(self, as_: Union[ProjectIndex, StftIndex]) -> Tuple:
         if as_ == ProjectIndex:
-            return (self.start.as_project_index(), self.stop.as_project_index())
+            return (self.start.to_project_index(), self.stop.to_project_index())
         elif as_ == StftIndex:
             return (self.start, self.stop)
         else:
@@ -232,6 +232,9 @@ class Workspace(QObject):
             elif new_stop == self.max_index:
                 self.start = max(new_stop - requested_size, self.min_index)
                 self.stop = new_stop
+        else:
+            self.start = new_start
+            self.stop = new_stop
 
 
 def require_project_loaded(fn):
@@ -255,10 +258,7 @@ class SoundsepController(QObject):
         self.sources = None
         # self.services = None
         self.plugins = None
-
         self.stft = None
-
-
         # TODO make these properties with require_project_loaded decorator?
 
     def has_project_loaded(self):

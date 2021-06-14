@@ -4,6 +4,7 @@ import pyqtgraph as pg
 import numpy as np
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
+from PyQt5.QtCore import QPointF, pyqtSignal
 
 from soundsep.gui.components.overlays import FloatingButton
 from soundsep.gui.components.spectrogram_view_box import SpectrogramViewBox
@@ -49,6 +50,8 @@ class StftTimeAxis(pg.AxisItem):
 
 class SourceView(widgets.QWidget):
 
+    hover = pyqtSignal(ProjectIndex, float)
+
     def __init__(self, source, parent=None):
         super().__init__(parent=parent)
         self.source = source
@@ -59,8 +62,6 @@ class SourceView(widgets.QWidget):
         self.layout.setSpacing(0)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        self._spectrogram_viewbox = SpectrogramViewBox()
-        self._spectrogram_viewbox.autoRange(padding=0.0)
         self.spectrogram = ScrollableSpectrogram()
 
         self._stft_time_axis = StftTimeAxis(project=self.source.project, orientation="bottom")
@@ -68,6 +69,8 @@ class SourceView(widgets.QWidget):
             "left": FrequencyAxis(orientation="left"),
             "bottom": self._stft_time_axis,
         })
+
+        self.spectrogram.scene().sigMouseMoved.connect(self.on_sig_mouse_moved)
 
         self.dialog = FloatingButton(
             "▼ {}".format(self.source.name),
@@ -79,6 +82,10 @@ class SourceView(widgets.QWidget):
         self.layout.addWidget(self.spectrogram)
         self.setLayout(self.layout)
 
+    def on_sig_mouse_moved(self, event):
+        pos = self.spectrogram.getViewBox().mapSceneToView(event)
+        self.hover.emit(ProjectIndex(self.source.project, int(pos.x())), pos.y())
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.dialog.update_position()
@@ -87,9 +94,12 @@ class SourceView(widgets.QWidget):
 class ScrollableSpectrogram(pg.PlotWidget):
     """Scrollable Spectrogram Plot Widget that uses the spectrogram indices as its native coordinate system
     """
+
     def __init__(self, parent=None):
-        super().__init__(background=None, parent=parent)
-        self.plotItem.setMouseEnabled(x=False, y=False)
+        super().__init__(viewBox=SpectrogramViewBox(), background=None, parent=parent)
+        self.setMouseEnabled(x=False, y=False)
+        self.setMenuEnabled(False)
+        self.hideButtons()
 
         # TODO hardcoded? make this configurable
         self.set_view_mode(STFTViewMode.NORMAL)

@@ -3,14 +3,14 @@
 import functools
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 import numpy as np
 
 from soundsep.app.app import SoundsepController
 from soundsep.app.services import SourceService
-from soundsep.core.models import StftIndex, Source
+from soundsep.core.models import ProjectIndex, StftIndex, Source
 
 
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ class SoundsepControllerApi(QObject):
         self._app.workspace.scale(n)
         self._app.stft.set_position(self._app.workspace.start)
         if n != 0:
-            self.workspaceChanged(*self._app.workspace.get_lim(StftIndex))
+            self.workspaceChanged.emit(*self._app.workspace.get_lim(StftIndex))
 
     @require_project_loaded
     def workspace_get_lim(self) -> Tuple:
@@ -201,7 +201,6 @@ class SoundsepControllerApi(QObject):
             Frequency axis of data
         """
         xlim = self._app.workspace.get_lim(StftIndex)
-        # self._app.stft.set_position(self._app.workspace.start)
         data, stale = self._app.stft.read(*xlim)
         return data, stale, self._app.stft.get_freqs()
 

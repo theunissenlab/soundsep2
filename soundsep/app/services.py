@@ -341,7 +341,9 @@ class StftCache(QObject):
         start = start or x0
         stop = stop or x1
 
-        cache_bounds = self.get_active_range_from_active_position(self._pos)
+        cache_bounds = self.get_cache_range_from_active_position(self._pos)
+
+        print("REading cahce", start, stop, cache_bounds)
 
         if start < cache_bounds[0] or stop > cache_bounds[1]:
             raise ValueError("Attempting read outside of current Cache values. Call StftCache.set_position first?")

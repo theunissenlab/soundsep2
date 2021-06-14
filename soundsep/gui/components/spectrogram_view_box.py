@@ -14,6 +14,7 @@ class SpectrogramViewBox(pg.ViewBox):
     """
     dragComplete = pyqtSignal(QPointF, QPointF)
     dragInProgress = pyqtSignal(QPointF, QPointF)
+    hovered = pyqtSignal(QPointF)
     clicked = pyqtSignal(QPointF)
     zoomEvent = pyqtSignal(int, object)
 

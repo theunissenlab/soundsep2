@@ -12,7 +12,7 @@ from soundsep.api import SoundsepControllerApi, SoundsepGuiApi
 from soundsep.app.services import SourceService
 from soundsep.core.models import ProjectIndex, StftIndex
 from soundsep.gui.ui.main_window import Ui_MainWindow
-from soundsep.gui.source_view import SourceView
+from soundsep.gui.source_view import SourceView, STFTViewMode
 from soundsep.gui.preview import PreviewPlot
 from soundsep.gui.components.selection_box import SelectionBox
 
@@ -57,6 +57,12 @@ class SoundsepGui(widgets.QMainWindow):
         self.add_source_button = widgets.QPushButton("+Source")
         self.toolbar.addWidget(self.add_source_button)
         self.add_source_button.clicked.connect(self.on_add_source)
+
+        self.spectrogram_view_mode_button = widgets.QPushButton("SD")
+        self.spectrogram_view_mode_button.setCheckable(True)
+        self.spectrogram_view_mode_button.setChecked(False)
+        self.toolbar.addWidget(self.spectrogram_view_mode_button)
+        self.spectrogram_view_mode_button.clicked.connect(self.on_toggle_view_mode)
 
         self.roi = None
 
@@ -115,6 +121,14 @@ class SoundsepGui(widgets.QMainWindow):
         self._accumulated_movement = 0
         self._move_timer.stop()
 
+    def on_toggle_view_mode(self):
+        if self.spectrogram_view_mode_button.isChecked():
+            for source_view in self.source_views:
+                source_view.spectrogram.set_view_mode(STFTViewMode.DERIVATIVE)
+        else:
+            for source_view in self.source_views:
+                source_view.spectrogram.set_view_mode(STFTViewMode.NORMAL)
+
     def on_add_source(self):
         self.api.create_blank_source()
 
@@ -155,7 +169,6 @@ class SoundsepGui(widgets.QMainWindow):
         for source_view in self.source_views:
             source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel, :], freqs)
 
-        print(np.mean(_stale))
         if np.any(_stale):
             QTimer.singleShot(200, self.draw_sources)
 
@@ -169,6 +182,9 @@ class SoundsepGui(widgets.QMainWindow):
         self.source_views = []
         for source in sources:
             source_view = SourceView(source)
+
+            source_view.spectrogram.set_view_mode(STFTViewMode.DERIVATIVE if self.spectrogram_view_mode_button.isChecked() else STFTViewMode.NORMAL)
+
             # TODO: have a class for all the sources manage these?
             source_view.spectrogram.getViewBox().dragComplete.connect(partial(self.on_drag_complete, source))
             source_view.spectrogram.getViewBox().dragInProgress.connect(partial(self.on_drag_in_progress, source))

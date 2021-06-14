@@ -102,17 +102,22 @@ class ScrollableSpectrogram(pg.PlotWidget):
         # self.setCursor(Qt.CrossCursor)
         self.hideButtons()
 
-        # TODO hardcoded? make this configurable
-        self.set_view_mode(STFTViewMode.NORMAL)
+        self._data = None  # Caches the values of the set data in case the view mode is switched
 
         self.init_ui()
 
     def set_view_mode(self, view_mode: STFTViewMode):
         self._view_mode = view_mode
         if self._view_mode == STFTViewMode.DERIVATIVE:
-            self._cmap = pg.colormap.get("gist_yarg", source='matplotlib')
+            self.set_cmap("gist_yarg")
+            if self._data is not None:
+                self.image.setImage(spectral_derivative(self._data))
+                self.image.setTransform(self._tr)
         elif self._view_mode == STFTViewMode.NORMAL:
-            self._cmap = pg.colormap.get("turbo", source='matplotlib', skipCache=True)
+            self.set_cmap("turbo")
+            if self._data is not None:
+                self.image.setImage(self._data)
+                self.image.setTransform(self._tr)
         else:
             raise RuntimeError("Invalid _view_mode {}".format(self._view_mode))
 
@@ -121,7 +126,8 @@ class ScrollableSpectrogram(pg.PlotWidget):
         # TODO: dynamic cursor changing based on hover and what action would be activated?
         self.image.setCursor(Qt.CrossCursor)
         self.addItem(self.image)
-        self.image.setLookupTable(self._cmap.getLookupTable(alpha=True))
+        # TODO hardcoded? make this configurable
+        self.set_view_mode(STFTViewMode.NORMAL)
 
     def get_limits_rect(self) -> QRectF:
         """Return the plot limits (i0: StftIndex, f0: float, width: int, height: float) as a QRect
@@ -135,16 +141,17 @@ class ScrollableSpectrogram(pg.PlotWidget):
         freqs = freqs[positive_freqs]
 
         df = freqs[1] - freqs[0]
-        tr = QtGui.QTransform()
-        tr.translate(i0.to_project_index(), 0)
-        tr.scale(i0.step, df)
+        self._tr = QtGui.QTransform()
+        self._tr.translate(i0.to_project_index(), 0)
+        self._tr.scale(i0.step, df)
+        self._data = data
 
         if self._view_mode == STFTViewMode.NORMAL:
             self.image.setImage(data)
-            self.image.setTransform(tr)
+            self.image.setTransform(self._tr)
         elif self._view_mode == STFTViewMode.DERIVATIVE:
             self.image.setImage(spectral_derivative(data))
-            self.image.setTransform(tr)
+            self.image.setTransform(self._tr)
         else:
             raise RuntimeError("Invalid _view_mode {}".format(self._view_mode))
 

@@ -1,4 +1,5 @@
 import logging
+from collections import namedtuple
 from queue import Queue
 from typing import Optional, Tuple, Union
 
@@ -7,16 +8,63 @@ from scipy.fft import fft, fftfreq, next_fast_len
 import numpy as np
 
 from soundsep.core.models import Project, ProjectIndex, Source, StftIndex
-from soundsep.core.ampenv import compute_ampenv
+from soundsep.core.ampenv import filter_and_ampenv
 from soundsep.core.stft import create_gaussian_window
 
+
 logger = logging.getLogger(__name__)
+
+
+Selection = namedtuple("Selection", ["x0", "x1", "f0", "f1", "source"])
 
 
 class StftConfig(dict):
     def __init__(self, window, step):
         self.window = window
         self.step = step
+
+
+class SelectionService:
+    def __init__(self, project: Project):
+        self.project = project
+        self._selection = None
+
+    def is_set(self) -> bool:
+        return self._selection is not None
+
+    def clear(self):
+        self._selection = None
+
+    def set_selection(
+            self,
+            x0: ProjectIndex,
+            x1: ProjectIndex,
+            f0: float,
+            f1: float,
+            source: Source,
+        ):
+        self._selection = Selection(x0, x1, f0, f1, source)
+
+    def move_selection(self, dx: int):
+        self._selection = Selection(
+            self._selection.x0 + dx,
+            self._selection.x1 + dx,
+            self._selection.f0,
+            self._selection.f1,
+            self._selection.source
+        )
+
+    def scale_selection(self, n: int):
+        self._selection = Selection(
+            self._selection.x0 - n // 2,
+            self._selection.x1 + n // 2,
+            self._selection.f0,
+            self._selection.f1,
+            self._selection.source
+        )
+
+    def get_selection(self) -> Optional[Selection]:
+        return self._selection
 
 
 class SourceService(list):
@@ -54,29 +102,23 @@ class AmpenvService:
         self.project = project
         self._last_computation = None
 
-    def compute(
+    # TODO: as part of api's get_signal etc cleanup, make AmpenvService do its own caching
+    # So it can take start, stop values instead of
+    def filter_and_ampenv(
             self,
-            start: Union[ProjectIndex, StftIndex],
-            stop: Union[ProjectIndex, StftIndex],
+            signal: np.ndarray,
             f0: float,
             f1: float,
             rectify_lowpass: float,
-            attempt_cache: bool = False
-            ) -> np.ndarray:
-        key = (start, stop, f0, f1, rectify_lowpass)
-        if self._last_computation and self._last_computation[0] == key:
-            return self._last_computation[1]
-        else:
-            result = compute_ampenv(
-                self.project[start:stop],
-                self.project.sampling_rate,
-                f0,
-                f1,
-                rectify_lowpass
-            )
+            ) -> Tuple[np.ndarray, np.ndarray]:
 
-        if attempt_cache:
-            self._last_computation = (key, result)
+        result = filter_and_ampenv(
+            signal,
+            self.project.sampling_rate,
+            f0,
+            f1,
+            rectify_lowpass
+        )
 
         return result
 
@@ -137,7 +179,11 @@ class StftWorker(QThread):
                 self.process_request(q[0], q[1])
 
     def process_request(self, start: StftIndex, stop: StftIndex):
-        arr = self.project[start.to_project_index():stop.to_project_index()]
+        # Load the array with padding so that the first and last windows don't get cut in half
+        loaded_arr_start = max(ProjectIndex(self.project, 0), start.to_project_index() - self.config.window)
+        loaded_arr_stop = min(ProjectIndex(self.project, self.project.frames), stop.to_project_index() + self.config.window)
+        arr = self.project[loaded_arr_start:loaded_arr_stop]
+
         for window_center_stft in StftIndex.range(start, stop):
             window_center = window_center_stft.to_project_index()
             window_start = max(ProjectIndex(self.project, 0), window_center - self.config.window)
@@ -150,8 +196,8 @@ class StftWorker(QThread):
                 if self._cancel_flag:
                     return
 
-                a = max(0, window_start - start.to_project_index())
-                b = window_stop - start.to_project_index()
+                a = max(0, window_start - loaded_arr_start)
+                b = window_stop - loaded_arr_start
                 window_data = arr[a:b, ch]
 
                 if a <= 0:

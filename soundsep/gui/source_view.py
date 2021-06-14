@@ -4,7 +4,7 @@ import pyqtgraph as pg
 import numpy as np
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
-from PyQt5.QtCore import QPointF, pyqtSignal
+from PyQt5.QtCore import QPointF, QRectF, Qt, pyqtSignal
 
 from soundsep.gui.components.overlays import FloatingButton
 from soundsep.gui.components.spectrogram_view_box import SpectrogramViewBox
@@ -99,6 +99,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
         super().__init__(viewBox=SpectrogramViewBox(), background=None, parent=parent)
         self.setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
+        # self.setCursor(Qt.CrossCursor)
         self.hideButtons()
 
         # TODO hardcoded? make this configurable
@@ -117,8 +118,16 @@ class ScrollableSpectrogram(pg.PlotWidget):
 
     def init_ui(self):
         self.image = pg.ImageItem()
+        # TODO: dynamic cursor changing based on hover and what action would be activated?
+        self.image.setCursor(Qt.CrossCursor)
         self.addItem(self.image)
         self.image.setLookupTable(self._cmap.getLookupTable(alpha=True))
+
+    def get_limits_rect(self) -> QRectF:
+        """Return the plot limits (i0: StftIndex, f0: float, width: int, height: float) as a QRect
+        """
+        (x0, x1), (y0, y1) = self.viewRange()
+        return QRectF(x0, y0, x1 - x0, y1 - y0)
 
     def set_data(self, i0: StftIndex, i1: StftIndex, data: np.ndarray, freqs: np.ndarray):
         positive_freqs = freqs >= 0

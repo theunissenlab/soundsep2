@@ -6,7 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, QPointF
 
 from soundsep.api import SoundsepControllerApi, SoundsepGuiApi
 from soundsep.app.services import SourceService
@@ -64,6 +64,7 @@ class SoundsepGui(widgets.QMainWindow):
         # API Events
         self.api.workspaceChanged.connect(self.on_workspace_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
+        self.api.selectionChanged.connect(self.on_selection_changed)
 
         # User events
         self.ui.actionLoad_project.triggered.connect(self.run_directory_loader)
@@ -112,18 +113,39 @@ class SoundsepGui(widgets.QMainWindow):
     def _move(self):
         self.api.workspace_move_by(self._accumulated_movement)
         self._accumulated_movement = 0
+        self._move_timer.stop()
 
     def on_add_source(self):
         self.api.create_blank_source()
 
+    def on_selection_changed(self):
+        # Update the preview plot
+        selection = self.api.get_selection()
+        if selection:
+            t, signal = self.api.get_signal(selection.x0, selection.x1)
+            signal = signal[:, selection.source.channel]
+
+            filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
+
+            # filtered = filtered[:, selection.source.channel]
+            self.preview_plot_widget.waveform_plot.setData(t, filtered)
+            self.preview_plot_widget.ampenv_plot.setData(t, ampenv)
+
+    # TODO: Some handlers "on_X()" refer to handlers of api events,
+    # while others respond to internal user events and interactions. Should
+    # I change the naming conventions?
     def on_workspace_changed(self, x: StftIndex, y: StftIndex):
         self.show_status("{:.2f}-{:.2f}".format(x.to_timestamp(), y.to_timestamp()))
         self.draw_sources()
 
-        # TODO: it is too slow to read/write this whole thing every time we move.
-        # Should do something similar to the StftCache...
-        # t_arr, data = self.api.get_workspace_signal()
+        if self.roi:
+            source_view = self.source_views[self.roi.source.index]
+            self.roi.roi.maxBounds = source_view.spectrogram.get_limits_rect()
 
+        # TODO: it is too slow to read the whole signal whole thing every time we move.
+        # Should do something similar to the StftCache...
+        # Also TODO: have a concept of source focus so for displaying information
+        # t_arr, data = self.api.get_workspace_signal()
         # self.preview_plot_widget.waveform_plot.setData(t_arr, data[:, 0])
         # self.preview_plot_widget.setXRange(int(x.to_project_index()), int(y.to_project_index()))
 
@@ -133,6 +155,7 @@ class SoundsepGui(widgets.QMainWindow):
         for source_view in self.source_views:
             source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel, :], freqs)
 
+        print(np.mean(_stale))
         if np.any(_stale):
             QTimer.singleShot(200, self.draw_sources)
 
@@ -141,6 +164,7 @@ class SoundsepGui(widgets.QMainWindow):
             widget = self.workspace_layout.itemAt(i).widget()
             if isinstance(widget, SourceView):
                 widget.deleteLater()
+        self.roi = None
 
         self.source_views = []
         for source in sources:
@@ -161,7 +185,6 @@ class SoundsepGui(widgets.QMainWindow):
         pass
 
     def on_drag_in_progress(self, source, from_, to):
-        # Draw selection box
         if self.roi is None:
             self.draw_selection_box(source, from_, to)
         elif source != self.roi.source:
@@ -177,15 +200,23 @@ class SoundsepGui(widgets.QMainWindow):
                 np.abs(line.x()),
                 np.abs(line.y())
             ])
-            # self.api.set_selection(
-            #     ProjectIndex(self.api._app.project, int(round(from_.x()))),
-            #     ProjectIndex(self.api._app.project, int(round(to.x()))),
-            #     from_.y(),
-            #     to.y()
-            # )
+            pos = self.roi.roi.pos()
+            size = self.roi.roi.size()
+            self.api.set_selection(
+                self.api.make_project_index(pos.x()),
+                self.api.make_project_index(pos.x() + size.x()),
+                pos.y(),
+                pos.y() + size.y(),
+                source,
+            )
+
+    def delete_roi(self):
+        self.source_views[self.roi.source.index].spectrogram.removeItem(self.roi.roi)
+        self.roi = None
 
     def draw_selection_box(self, source, from_, to):
         source_view = self.source_views[source.index]
+
         self.roi = Roi(
             source=source,
             roi=SelectionBox(
@@ -194,25 +225,37 @@ class SoundsepGui(widgets.QMainWindow):
                 pen=(156, 156, 100),
                 rotatable=False,
                 removable=False,
-                # maxBounds=source_view.spectrogram.viewRange(),
+                maxBounds=source_view.spectrogram.get_limits_rect()
             )
         )
-        # self.roi.roi.sigRegionChanged.connect((self.on_selection_changed, source))
+        self.roi.roi.sigRegionChanged.connect(partial(self.on_roi_changed, source))
         source_view.spectrogram.addItem(self.roi.roi)
 
     def on_spectrogram_clicked(self, source):
-        # Clear roi
-        pass
+        if self.roi:
+            self.delete_roi()
 
     def on_spectrogram_hover(self, source, x: ProjectIndex, y: float):
         self.show_status("t={:.2f}s, freq={:.2f}Hz".format(x.to_timestamp(), y))
+        # TODO: show a indicator on all spectrograms of cursor position
 
     def on_spectrogram_zoom(self, source, direction: int, pos):
-        # TODO: there are weird artifats when using the zoom functionality in the spectrogram
-        self.api.workspace_scale(direction * -50)
+        # TODO: there vertical line artifacts in the spectrograms
+        # TODO: scale the amount that zooming happens based on the current scale
+        # TODO: also, buffer zoom eevents like in self._move
+        self.api.workspace_scale(direction * -20)
 
-    # def on_selection_changed(self, source):
-    #     if selection_data is None:
-    #         self.api.clear_selection()
-    #     else:
-    #         self.api.set_selection(*selection_data)
+    def on_roi_changed(self, source):
+        if not self.roi:
+            self.api.clear_selection()
+        else:
+            source_view = self.source_views[source.index]
+            pos = self.roi.roi.pos()
+            size = self.roi.roi.size()
+            self.api.set_selection(
+                self.api.make_project_index(pos.x()),
+                self.api.make_project_index(pos.x() + size.x()),
+                pos.y(),
+                pos.y() + size.y(),
+                source,
+            )

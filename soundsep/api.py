@@ -3,13 +3,13 @@
 import functools
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple, Union
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 import numpy as np
 
 from soundsep.app.app import SoundsepController
-from soundsep.app.services import SourceService
+from soundsep.app.services import SourceService, Selection
 from soundsep.core.models import ProjectIndex, StftIndex, Source
 
 
@@ -34,10 +34,13 @@ class SoundsepControllerApi(QObject):
     projectClosed = pyqtSignal()
     workspaceChanged = pyqtSignal(StftIndex, StftIndex)
     sourcesChanged = pyqtSignal(SourceService)
+    selectionChanged = pyqtSignal()
 
     def __init__(self, app: SoundsepController):
         super().__init__()
         self._app = app
+
+        self._cache = {}
 
     def load_project(self, directory: Path):
         """Load a new project from a directory
@@ -55,6 +58,23 @@ class SoundsepControllerApi(QObject):
             self.projectClosed.emit()
         else:
             self.projectLoaded.emit()
+
+    @require_project_loaded
+    def make_project_index(self, i: Union[int, float]) -> ProjectIndex:
+        """Shortcut for generating a ProjectIndex by rounding a normal int or float
+
+        Arguments
+        ---------
+        i : int or float
+
+        Returns
+        -------
+        pidx : ProjectIndex
+        """
+        if isinstance(i, float):
+            i = np.round(i)
+
+        return ProjectIndex(self._app.project, int(i))
 
     @require_project_loaded
     def close_project(self):
@@ -138,6 +158,10 @@ class SoundsepControllerApi(QObject):
         self._app.sources.delete(index)
         self.sourcesChanged.emit(self._app.sources)
 
+    @require_project_loaded
+    def get_sources(self) -> List[Source]:
+        return list(self._app.sources)
+
     # def read_config(self):
     #     return self._app.services.Config.read()
 
@@ -151,7 +175,8 @@ class SoundsepControllerApi(QObject):
         """
         prev_position = self._app.workspace.start
         self._app.workspace.move_to(start)
-        self._app.stft.set_position(start)
+        self._app.stft.set_position(self._app.workspace.start)
+        self._cache["get_workspace_signal"] = None
         if prev_position != start:
             self.workspaceChanged.emit(*self._app.workspace.get_lim(StftIndex))
 
@@ -163,8 +188,10 @@ class SoundsepControllerApi(QObject):
         ---------
         dx : int
         """
+        prev_position = self._app.workspace.start
         self._app.workspace.move_by(dx)
         self._app.stft.set_position(self._app.workspace.start)
+        self._cache["get_workspace_signal"] = None
         if dx != 0:
             self.workspaceChanged.emit(*self._app.workspace.get_lim(StftIndex))
 
@@ -176,8 +203,10 @@ class SoundsepControllerApi(QObject):
         ---------
         n : int
         """
+        prev_size = self._app.workspace.size
         self._app.workspace.scale(n)
         self._app.stft.set_position(self._app.workspace.start)
+        self._cache["get_workspace_signal"] = None
         if n != 0:
             self.workspaceChanged.emit(*self._app.workspace.get_lim(StftIndex))
 
@@ -205,6 +234,56 @@ class SoundsepControllerApi(QObject):
         return data, stale, self._app.stft.get_freqs()
 
     @require_project_loaded
+    def get_workspace_signal(self) -> np.ndarray:
+        """Return the xrange and signal of the current workspace
+
+        Returns
+        -------
+        result : np.ndarray[float]
+        """
+        # TODO: clean this up into a service maybe?
+        # this is a short quick hacky way to stop reading from disk too much
+        if self._cache.get("get_workspace_signal"):
+            return self._cache["get_workspace_signal"]
+
+        return self._cache_workspace_signal()
+
+    def _cache_workspace_signal(self):
+        xlim = self._app.workspace.get_lim(ProjectIndex)
+        data = self._app.project[xlim[0]:xlim[1]]
+        result = np.array(list(ProjectIndex.range(xlim[0], xlim[1]))), data
+        self._cache["get_workspace_signal"] = result
+        return result
+
+    @require_project_loaded
+    def get_signal(self, x0: ProjectIndex, x1: ProjectIndex) -> Tuple[np.ndarray, np.ndarray]:
+        """Return the signal in the given range
+
+        Arguments
+        ---------
+        x0 : ProjectIndex
+        x1 : ProjectIndex
+
+        Returns
+        -------
+        result : np.ndarray[float]
+        """
+        # TODO: Clean this up along with the other workspace signal cache cleanup
+        # For now, use it to see if we can just read from the cache
+        xlim = self._app.workspace.get_lim(ProjectIndex)
+        # print(x0, x1, xlim, self._cache)
+        if x0 >= xlim[0] and x1 <= xlim[1]:
+            if not self._cache.get("get_workspace_signal"):
+                self._cache_workspace_signal()
+            cached_t, cached_data = self._cache["get_workspace_signal"]
+            i0 = x0 - xlim[0]
+            i1 = x1 - xlim[0]
+            return cached_t[i0:i1], cached_data[i0:i1]
+
+        data = self._app.project[x0:x1]
+        return np.array(list(ProjectIndex.range(x0, x1))), data
+
+    @require_project_loaded
     def workspace_set_position(self, start: StftIndex, stop: StftIndex):
         """Placeholder
 
@@ -216,8 +295,46 @@ class SoundsepControllerApi(QObject):
         old_position = self._app.workspace.get_lim(StftIndex)
         self._app.workspace.set_position(start, stop)
         self._app.stft.set_position(start)
+        self._cache["get_workspace_signal"] = None
         if old_position[0] != start or old_position[1] != stop:
             self.workspaceChanged.emit(*self._app.workspace.get_lim(StftIndex))
+
+    @require_project_loaded
+    def set_selection(
+            self,
+            x0: ProjectIndex,
+            x1: ProjectIndex,
+            f0: float,
+            f1: float,
+            source: Source,
+        ):
+        self._app.selection.set_selection(x0, x1, f0, f1, source)
+        self.selectionChanged.emit()
+
+    @require_project_loaded
+    def clear_selection(self):
+        self._app.selection.clear()
+        self.selectionChanged.emit()
+
+    @require_project_loaded
+    def get_selection(self) -> Optional[Selection]:
+        if self._app.selection.is_set():
+            return self._app.selection.get_selection()
+        else:
+            return None
+
+    def filter_and_ampenv(
+            self,
+            signal: np.ndarray,
+            f0: float,
+            f1: float
+        ) -> np.ndarray:
+        # TODO: seems a bit weird to include this in api but maybe its okay
+        # TODO: also, where should the rectivy lowpass be configured?
+        if f0 == 0:
+            f0 = 1
+        return self._app.ampenv.filter_and_ampenv(signal, f0, f1, 200.0)
+
 
 
 class SoundsepGuiApi(QObject):

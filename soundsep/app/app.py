@@ -12,7 +12,13 @@ import pandas as pd
 import yaml
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 
-from soundsep.app.services import AmpenvService, SourceService, StftCache, StftConfig
+from soundsep.app.services import (
+    AmpenvService,
+    SelectionService,
+    SourceService,
+    StftCache,
+    StftConfig
+)
 from soundsep.core.models import Project, ProjectIndex, StftIndex, Source
 from soundsep.core.io import load_project
 
@@ -255,10 +261,13 @@ class SoundsepController(QObject):
         self.project = None
         self.paths = None
         self.workspace = None
-        self.sources = None
         # self.services = None
         self.plugins = None
         self.stft = None
+        self.ampenv = None
+        self.sources = None
+        self.selection = None
+
         # TODO make these properties with require_project_loaded decorator?
 
     def has_project_loaded(self):
@@ -278,7 +287,7 @@ class SoundsepController(QObject):
             config.get("channel_keys", None),
         )
 
-        step = config.get("stft.step", 88)
+        step = config.get("stft.step", 44)
         self.workspace = Workspace(
             StftIndex(self.project, step, 0),
             StftIndex(self.project, step, config.get("workspace.default_size", 1000)),
@@ -295,6 +304,7 @@ class SoundsepController(QObject):
             pad=config.get("stft.cache.size", 4 * self.workspace.size),  # TODO whats a good default?
             stft_config=StftConfig(window=config.get("stft.window", 400), step=step)
         )
+        self.selection = SelectionService(self.project)
 
         self.plugins = []
 
@@ -312,6 +322,7 @@ class SoundsepController(QObject):
         self.stft = None
         self.ampenv = None
         self.sources = None
+        self.selection = None
 
     def read_config(self, path) -> dict:
         """Read the configuration file into a dictionary"""

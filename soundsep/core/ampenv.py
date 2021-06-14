@@ -2,7 +2,7 @@ import numpy as np
 from soundsig.signal import lowpass_filter, highpass_filter, bandpass_filter
 
 
-def compute_ampenv(
+def filter_and_ampenv(
         data,
         sampling_rate: int,
         f0: float,
@@ -11,11 +11,11 @@ def compute_ampenv(
     ) -> np.ndarray:
     """Compute an amplitude envelope of a signal
     """
-    filtered = highpass_filter(data.T, fs, f0, filter_order=10).T
-    filtered = lowpass_filter(filtered.T, fs, f1, filter_order=10).T
+    filtered = highpass_filter(data.T, sampling_rate, f0, filter_order=10).T
+    filtered = lowpass_filter(filtered.T, sampling_rate, f1, filter_order=10).T
 
     # Rectify and lowpass filter
-    filtered = np.abs(filtered)
-    filtered = lowpass_filter(filtered.T, fs, rectify_lowpass).T
+    rectified = np.abs(filtered)
+    ampenv = lowpass_filter(rectified.T, sampling_rate, rectify_lowpass).T
 
-    return filtered
+    return filtered, ampenv

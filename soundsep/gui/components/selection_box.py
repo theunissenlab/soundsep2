@@ -3,6 +3,7 @@
 from typing import Tuple
 
 import pyqtgraph as pg
+from PyQt5.QtCore import Qt
 from pyqtgraph.graphicsItems.ROI import Handle
 
 
@@ -22,6 +23,11 @@ class SelectionBox(pg.RectROI):
         super().__init__(*args, **kwargs)
         self.setPen(self._roi_color, width=2, cosmetic=True)
 
+        # TODO: There is a bug where the OpenHandCursor shows up the same as ClosedHandCursor
+        # Make a better choice of cursor here?
+        # https://bugreports.qt.io/browse/QTBUG-71296
+        # self.setCursor(Qt.OpenHandCursor)
+
         for x in (0.0, 0.5, 1.0):
             for y in (0.0, 0.5, 1.0):
                 if x == 0.5 and y == 0.5:
@@ -33,7 +39,16 @@ class SelectionBox(pg.RectROI):
                     hoverPen=self._handle_hover_color,
                     parent=self,
                 )
-                handle.pen.setWidth(2)
+                if x == 0.5:
+                    handle.setCursor(Qt.SplitVCursor)
+                elif y == 0.5:
+                    handle.setCursor(Qt.SplitHCursor)
+                elif x != y:
+                    handle.setCursor(Qt.SizeFDiagCursor)
+                elif x == y:
+                    handle.setCursor(Qt.SizeBDiagCursor)
+
+                handle.pen.setWidth(1)
                 self.addScaleHandle(
                     (x, y),
                     (1 - x, 1 - y),
@@ -71,5 +86,3 @@ class SelectionBox(pg.RectROI):
         y1 = y0 + tr.m22() * self.boundingRect().height()
 
         return (x0, x1), (y0, y1)
-
-

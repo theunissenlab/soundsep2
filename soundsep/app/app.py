@@ -66,7 +66,7 @@ class FileLocations(dict):
             "export_dir": export_dir or base_dir / "export",
             "plugin_dir": plugin_dir or base_dir / "plugins",
             "save_dir": save_dir or appdata_dir / "save",
-            "recovery_dir": recovery_dir or appdata_dir / "save",
+            "recovery_dir": recovery_dir or appdata_dir / "recovery_dir",
             "log_dir": log_dir or appdata_dir / "logs",
         }
         self["_files"] = {
@@ -95,7 +95,7 @@ class FileLocations(dict):
     def create_folders(self):
         """Create all subdirectory folders for the given configuration if they don't exist"""
         for v in self._subdirectories.values():
-            if not os.path.commonprefix([self.base_dir, v]) == self.base_dir:
+            if not os.path.commonprefix([self.base_dir, v]) == str(self.base_dir):
                 raise ValueError("All project folders must be a subdirectory of the base project")
             v.mkdir(parents=True, exist_ok=True)
 
@@ -365,11 +365,13 @@ class SoundsepController(QObject):
 
     def save_sources(self, save_file: Path):
         """Save sources to a csv file"""
-        if not self.ready():
+        self.paths.create_folders()
+
+        if not self.has_project_loaded():
             raise RuntimeError("You really shouldn't be trying to save when nothing is loaded.")
 
         data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel} for s in self.sources])
-        data.to_csv(data)
+        data.to_csv(save_file)
 
     def reload_plugins(self, api, gui):
         local_plugin_modules = self.load_local_plugins()

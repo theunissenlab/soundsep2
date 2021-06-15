@@ -34,6 +34,7 @@ class SoundsepGui(widgets.QMainWindow):
 
         self.title = "SoundSep"
         self.init_ui()
+        self.setup_actions()
         self.connect_events()
         self.setup_shortcuts()
 
@@ -41,7 +42,6 @@ class SoundsepGui(widgets.QMainWindow):
         # Initialize main window
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        self.ui.mainSplitter.setSizes([1000, 600])
 
         self.workspace_layout = self.ui.mainScrollArea.widget().layout()
         self.workspace_layout.setSpacing(0)
@@ -64,6 +64,9 @@ class SoundsepGui(widgets.QMainWindow):
         self.toolbar.addWidget(self.spectrogram_view_mode_button)
         self.spectrogram_view_mode_button.clicked.connect(self.on_toggle_view_mode)
 
+        self.setMinimumSize(1000, 500)
+        self.ui.mainSplitter.setSizes([1000, 600])
+
         self.roi = None
 
     def connect_events(self):
@@ -71,9 +74,6 @@ class SoundsepGui(widgets.QMainWindow):
         self.api.workspaceChanged.connect(self.on_workspace_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
         self.api.selectionChanged.connect(self.on_selection_changed)
-
-        # User events
-        self.ui.actionLoad_project.triggered.connect(self.run_directory_loader)
 
         # Rate limited events
         # TODO dynamically adjust the timeout based on the time it takes and or event backlog?
@@ -84,11 +84,73 @@ class SoundsepGui(widgets.QMainWindow):
     def show_status(self, message: str, duration: int=1000):
         self.statusBar().showMessage(message, duration)
 
+    def setup_actions(self):
+        self.open_action = widgets.QAction("&Open Directory")
+        self.open_action.triggered.connect(self.run_directory_loader)
+
+        self.close_action = widgets.QAction("&Close")
+        self.close_action.triggered.connect(self.close)
+
+        self.save_action = widgets.QAction("&Save")
+        self.save_action.setToolTip("Save the current segements")
+        self.save_action.triggered.connect(self.on_save)
+
+        # self.save_as_action = widgets.QAction("Save &As")
+        # self.save_as_action.setToolTip("Save the current segments")
+        # self.save_as_action.triggered.connect(self.on_save_as)
+
+        # User events
+        self.ui.menuFile.addAction(self.open_action)
+        self.ui.menuFile.addSeparator()
+        self.ui.menuFile.addAction(self.save_action)
+        # self.ui.menuFile.addAction(self.save_as_action)
+        self.ui.menuFile.addSeparator()
+        self.ui.menuFile.addAction(self.close_action)
+
     def setup_shortcuts(self):
         self.next_shortcut = widgets.QShortcut(QtGui.QKeySequence("D"), self)
         self.next_shortcut.activated.connect(self.next)
         self.prev_shortcut = widgets.QShortcut(QtGui.QKeySequence("A"), self)
         self.prev_shortcut.activated.connect(self.prev)
+
+        self.open_action.setShortcut(QtGui.QKeySequence.Open)
+        self.close_action.setShortcut(QtGui.QKeySequence("Ctrl+W"))
+        self.save_action.setShortcut(QtGui.QKeySequence.Save)
+        # self.save_as_action.setShortcut(QtGui.QKeySequence.SaveAs)
+
+    def closeEvent(self, event):
+        if not self.api.check_if_sources_need_saving():
+            event.accept()
+            return
+
+        reply = widgets.QMessageBox.question(
+            self,
+            "Close confirmation",
+            "Are you sure you want to quit? There are unsaved changes.",
+            widgets.QMessageBox.Save | widgets.QMessageBox.Close | widgets.QMessageBox.Cancel,
+            widgets.QMessageBox.Save
+        )
+        if reply == widgets.QMessageBox.Save:
+            if self.on_save():
+                event.accept()
+            else:
+                event.ignore()
+            return
+        elif reply == widgets.QMessageBox.Cancel:
+            event.ignore()
+            return
+        elif reply == widgets.QMessageBox.Close:
+            event.accept()
+            return
+
+        event.ignore()
+
+    def on_save(self):
+        """Attempt save. Returns True if successful"""
+        return self.api.save_sources()
+
+    # def on_save_as(self):
+    #     self.api.save_sources()
 
     def run_directory_loader(self):
         """Dialog to read in a directory of wav files and intervals """

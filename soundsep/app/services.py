@@ -71,25 +71,34 @@ class SourceService(list):
     """Placeholder service for Source management"""
     def __init__(self, project: Project):
         self.project = project
+        self._needs_saving = False
         super().__init__()
 
     def create(self, name: str, channel: int) -> Source:
         print("before", list(self))
         new_source = Source(self.project, name, channel, len(self))
         self.append(new_source)
-        print(list(self))
+        self._needs_saving = True
         return new_source
 
     def edit(self, index: int, name: str, channel: int) -> Source:
         self[index].name = name
         self[index].channel = channel
+        self._needs_saving = True
         return self[index]
 
     def delete(self, index: int) -> "SourceService":
         del self[index]
         for source in self[index:]:
             source.index -= 1
+        self._needs_saving = True
         return self
+
+    def set_needs_saving(self, flag: bool):
+        self._needs_saving = flag
+
+    def needs_saving(self) -> bool:
+        return self._needs_saving
 
 
 class AmpenvService:

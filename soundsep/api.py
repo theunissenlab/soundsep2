@@ -352,7 +352,14 @@ class SoundsepControllerApi(QObject):
 
         return self._app.ampenv.filter_and_ampenv(signal, f0, f1, 200.0)
 
+    def check_if_sources_need_saving(self) -> bool:
+        """Returns True if Sources have unsaved changes
+        """
+        return self._app.sources.needs_saving()
 
+    def save_sources(self):
+        self._app.save_sources(self._app.paths.default_sources_savefile)
+        return True
 
 class SoundsepGuiApi(QObject):
     """Soundsep GUI API exposed to plugins

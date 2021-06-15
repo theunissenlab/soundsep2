@@ -43,24 +43,30 @@ def run_app(*args, MainWindow=None, **kwargs):
         loop.run_forever()
 
 
-# TODO: move this into gui components?
-class ProjectLoader(widgets.QWidget):
+class Splash(widgets.QWidget):
+    """Splash screen displaying initial options"""
 
     loadDirectory = pyqtSignal(Path)
 
     def __init__(self, parent=None):
-        super().__init__(parent=parent)
-
-        button = widgets.QPushButton("Load", self)
-        layout = widgets.QVBoxLayout()
-        layout.addWidget(button)
+        super().__init__(parent)
+        layout = widgets.QVBoxLayout(self)
+        self.open_button = widgets.QPushButton("Open Directory", self)
+        self.recent_button = widgets.QPushButton("Open Last", self)
+        self.import_button = widgets.QPushButton("Import audio files", self)
+        self.quit_button = widgets.QPushButton("Quit", self)
+        layout.addWidget(self.open_button)
+        layout.addWidget(self.recent_button)
+        layout.addWidget(self.import_button)
+        layout.addWidget(self.quit_button)
         self.setLayout(layout)
+        self.setMinimumSize(500, 300)
 
-        button.clicked.connect(self.on_load)
+        self.recent_button.clicked.connect(self.on_load)
+        self.quit_button.clicked.connect(self.close)
 
     def on_load(self):
         self.loadDirectory.emit(Path("data"))
-
 
 
 class SoundsepApp(QObject):
@@ -85,19 +91,17 @@ class SoundsepApp(QObject):
         self.connect_events()
 
     def init_ui(self):
-        self.main_window = widgets.QMainWindow()
-        self.central_widget = widgets.QStackedWidget()
-        self.main_window.setCentralWidget(self.central_widget)
+        self.splash = Splash()
+        self.splash.loadDirectory.connect(self.on_load_directory)
+        self._center_on(self.splash)
 
-        self.loader_view = ProjectLoader()
-        self.loader_view.loadDirectory.connect(self.on_load_directory)
-
-        self.central_widget.addWidget(self.loader_view)
-        if self.gui is not None:
-            self.central_widget.addWidget(self.gui)
-            self.central_widget.setCurrentWidget(self.gui)
-        else:
-            self.central_widget.setCurrentWidget(self.loader_view)
+    def _center_on(self, w):
+        rect = w.frameGeometry()
+        geom = widgets.QDesktopWidget().availableGeometry()
+        center_on = geom.center()
+        center_on.setY(center_on.y() - geom.height() / 8)
+        rect.moveCenter(center_on)
+        w.move(rect.topLeft())
 
     def connect_events(self):
         self.api.projectClosed.connect(self.on_project_closed)
@@ -115,28 +119,20 @@ class SoundsepApp(QObject):
         self.app.reload_plugins(self.api, self.gui)
 
     def remove_gui(self):
-        if self.gui is not None:
-            self.central_widget.removeWidget(self.gui)
-            self.gui.deleteLater()
-
+        self.gui.close()
         self.gui = None
-        self.central_widget.setCurrentWidget(self.loader_view)
+        self.show_loader()
+        self.splash.show()
 
     def replace_gui(self, new_gui: SoundsepGui):
-        if self.gui is not None:
-            self.central_widget.removeWidget(self.gui)
-            self.gui.deleteLater()
-
+        self.splash.hide()
         self.gui = new_gui
-        self.central_widget.addWidget(self.gui)
-        self.central_widget.setCurrentWidget(self.gui)
+        self.gui.showMaximized()
 
     def show(self):
-        self.main_window.show()
+        self.splash.show()
 
     def on_load_directory(self, directory: Path):
-        gui = SoundsepGui(self.api)
-        self.replace_gui(gui)
         self.api.load_project(directory)
 
 

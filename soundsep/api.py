@@ -41,6 +41,7 @@ class SoundsepControllerApi(QObject):
         self._app = app
 
         self._cache = {}
+        self._plugins = {}
 
     def load_project(self, directory: Path):
         """Load a new project from a directory
@@ -58,6 +59,10 @@ class SoundsepControllerApi(QObject):
             self.projectClosed.emit()
         else:
             self.projectLoaded.emit()
+
+    @require_project_loaded
+    def get_mut_datastore(self):
+        return self._app.datastore
 
     @require_project_loaded
     def make_project_index(self, i: Union[int, float]) -> ProjectIndex:
@@ -331,8 +336,11 @@ class SoundsepControllerApi(QObject):
         ) -> np.ndarray:
         # TODO: seems a bit weird to include this in api but maybe its okay
         # TODO: also, where should the rectivy lowpass be configured?
-        if f0 == 0:
-            f0 = 1
+        if f0 < 250:
+            f0 = 250
+        if f1 > 10000:
+            f1 = 10000
+
         return self._app.ampenv.filter_and_ampenv(signal, f0, f1, 200.0)
 
 
@@ -340,3 +348,25 @@ class SoundsepControllerApi(QObject):
 class SoundsepGuiApi(QObject):
     """Soundsep GUI API exposed to plugins
     """
+
+    def __init__(self, gui: "SoundsepGui"):
+        super().__init__()
+        self._gui = gui
+
+    def _set_gui(self, gui):
+        self._gui = gui
+
+    def show_status(self, msg, timeout=1000):
+        if not self._gui:
+            return
+        self._gui.show_status(msg)
+
+    def get_source_views(self):
+        if not self._gui:
+            return
+        return self._gui.source_views
+
+    def get_preview_plot(self):
+        if not self._gui:
+            return
+        return self._gui.preview_plot_widget

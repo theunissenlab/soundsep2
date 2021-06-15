@@ -1,8 +1,6 @@
 import functools
 import glob
 import os
-import importlib
-import pkgutil
 import warnings
 from pathlib import Path
 from typing import Optional, Tuple, Union
@@ -262,12 +260,12 @@ class SoundsepController(QObject):
         self.paths = None
         self.workspace = None
         # self.services = None
-        self.plugins = None
         self.stft = None
         self.ampenv = None
         self.sources = None
         self.selection = None
 
+        self.datastore = None
         # TODO make these properties with require_project_loaded decorator?
 
     def has_project_loaded(self):
@@ -306,15 +304,13 @@ class SoundsepController(QObject):
         )
         self.selection = SelectionService(self.project)
 
-        self.plugins = []
-
+        self.datastore = {}
         # TODO: set a timer job to Watch config file for changes?
 
     def clear_project(self):
         self.project = None
         self.paths = None
         self.workspace = None
-        self.plugins = None
 
         if self.stft is not None:
             self.stft._worker.cancel()
@@ -323,6 +319,7 @@ class SoundsepController(QObject):
         self.ampenv = None
         self.sources = None
         self.selection = None
+        self.datastore = None
 
     def read_config(self, path) -> dict:
         """Read the configuration file into a dictionary"""
@@ -349,38 +346,3 @@ class SoundsepController(QObject):
 
         data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel} for s in self.sources])
         data.to_csv(data)
-
-    @require_project_loaded
-    def _find_plugins(self):
-        return glob.glob(os.path.join(self.paths.plugin_dir, "soundsep_*.py"))
-
-    @require_project_loaded
-    def load_plugins(self):
-        """Load plugins from three possible locations
-
-        (1) soundsep.plugins, and (2) self.paths.plugin_dir
-        """
-        import soundsep.plugins
-
-        def iter_namespace(ns_pkg):
-            return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
-
-        plugin_modules = [
-            importlib.import_module(name)
-            for finder, name, ispkg
-            in iter_namespace(soundsep.plugins)
-        ]
-
-        for plugin_file in self._find_plugins():
-            name = os.path.splitext(os.path.basename(plugin_file))[0]
-            spec = importlib.util.spec_from_file_location("plugin.{}".format(name), plugin_file)
-            plugin_module = importlib.import_module(importlib.util.module_from_spec(spec))
-            spec.loader.exec_module(plugin_module)
-            plugin_modules.append(plugin_module)
-
-        self.plugins = []
-        for mod in plugin_modules:
-            try:
-                self.plugins.append(getattr(mod, "ExportPlugin"))
-            except:
-                warnings.warn("Did not find an ExportPlugin class in potential plugin file {}".format(mod))

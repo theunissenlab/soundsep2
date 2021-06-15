@@ -1,13 +1,18 @@
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 
-from soundsep.core.app import Workspace
-
 
 class BasePlugin(QObject):
-    def __init__(self, api, gui):
+
+    registry = []
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.registry.append(cls)
+
+    def __init__(self, api, gui_api):
         super().__init__()
         self.api = api
-        self.gui = gui
+        self.gui_api = gui_api
 
     def plugin_toolbar_items(self):
         return []
@@ -20,4 +25,3 @@ class BasePlugin(QObject):
 
     def setup_plugin_shortcuts(self):
         return None
-

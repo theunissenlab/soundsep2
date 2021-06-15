@@ -653,15 +653,6 @@ class BaseIndex(int):
         self._args = [source_object]
         super().__init__()
 
-    @staticmethod
-    def _clamp(value: int, low: int, high: int):
-        """Clamps values to the given range"""
-        if value < low:
-            value = low
-        elif value > high:
-            value = high
-        return value
-
     def __repr__(self):
         return "{}<{}>".format(self.__class__.__name__, int.__repr__(self))
 

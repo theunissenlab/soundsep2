@@ -790,6 +790,10 @@ class BlockIndex(BaseIndex):
     def block(self):
         return self._source_object
 
+    def to_file_timestamp(self):
+        """Return the timestamp of this index relative to its file"""
+        return float(self) / float(self.block.sampling_rate)
+
 
 class Source:
     """A source represents one source of auditory objects and is associated with one channel

@@ -17,7 +17,7 @@ class BasePlugin(QObject):
     def plugin_toolbar_items(self):
         return []
 
-    def plugin_menu(self):
+    def add_plugin_menu(self, menu):
         return None
 
     def plugin_panel_widget(self):

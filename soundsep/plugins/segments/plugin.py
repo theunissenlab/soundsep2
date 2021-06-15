@@ -72,14 +72,6 @@ class SegmentVisualizer(QtGui.QGraphicsRectItem):
             self.segment.stop.to_timestamp(),
         ))
 
-    def clear(self):
-        for line in self.lines:
-            try:
-                self.spectrogram.removeItem(line)
-            except:
-                pass
-        self.lines = []
-
     def mouseClickEvent(self, event):
         pass
         # TODO: Calling set_selection is hazardous here because it doesnt update
@@ -163,7 +155,6 @@ class SegmentPlugin(BasePlugin):
             except RuntimeError:
                 # This can happen if the parent was destroyed prior to this fn called
                 pass
-            annotation.clear()
         self._annotations = []
 
         # Find the row in the table of the first visible segment

@@ -389,7 +389,7 @@ class StftCache(QObject):
 
         cache_bounds = self.get_cache_range_from_active_position(self._pos)
 
-        print("REading cahce", start, stop, cache_bounds)
+        logger.debug("Reading cache from {} to {} out of {}".format(start, stop, cache_bounds))
 
         if start < cache_bounds[0] or stop > cache_bounds[1]:
             raise ValueError("Attempting read outside of current Cache values. Call StftCache.set_position first?")

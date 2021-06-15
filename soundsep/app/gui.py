@@ -252,7 +252,11 @@ class SoundsepGui(widgets.QMainWindow):
             self.delete_roi()
 
     def on_spectrogram_hover(self, source, x: ProjectIndex, y: float):
-        self.show_status("t={:.2f}s, freq={:.2f}Hz".format(x.to_timestamp(), y))
+        self.show_status("t={:.2f}s, freq={:.2f}Hz, {} ch{}".format(
+            x.to_timestamp(),
+            y,
+            *self.api._app.project.to_block_index(x).block.get_channel_info(source.channel)
+        ))
         # TODO: show a indicator on all spectrograms of cursor position
 
     def on_spectrogram_zoom(self, source, direction: int, pos):

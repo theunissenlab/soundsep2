@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import logging
 import pkgutil
 from pathlib import Path
 
@@ -12,10 +13,22 @@ from soundsep.app.gui import SoundsepGui
 from soundsep.app.app import SoundsepController
 
 
+logger = logging.getLogger(__name__)
+
+
 def run_app(*args, MainWindow=None, **kwargs):
     """Run an app using asyncio event loop
     """
     import sys
+
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+
+    rootLogger = logging.getLogger()
+    rootLogger.addHandler(console)
+    rootLogger.setLevel(level=logging.DEBUG)
 
     app = widgets.QApplication(sys.argv)
     loop = QEventLoop(app)
@@ -73,12 +86,7 @@ class SoundsepApp(QObject):
         self.init_ui()
         self.connect_events()
 
-        self.active_plugins = {
-            Plugin.__name__: Plugin(self.api, self.gui_api)
-            for Plugin in self.load_plugins()
-        }
-
-        print(self.active_plugins)
+        self.active_plugins = {}
 
     def init_ui(self):
         self.main_window = widgets.QMainWindow()
@@ -129,6 +137,9 @@ class SoundsepApp(QObject):
             Plugin.__name__: Plugin(self.api, self.gui_api)
             for Plugin in self.load_plugins()
         }
+
+        logger.info("Loaded Plugins {}".format(self.active_plugins))
+
         for name, plugin in self.active_plugins.items():
             plugin.setup_plugin_shortcuts()
             for w in plugin.plugin_toolbar_items():

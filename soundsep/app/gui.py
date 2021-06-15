@@ -248,6 +248,7 @@ class SoundsepGui(widgets.QMainWindow):
         source_view.spectrogram.addItem(self.roi.roi)
 
     def on_spectrogram_clicked(self, source):
+        self.api.clear_selection()
         if self.roi:
             self.delete_roi()
 

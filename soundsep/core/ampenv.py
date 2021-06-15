@@ -16,6 +16,6 @@ def filter_and_ampenv(
 
     # Rectify and lowpass filter
     rectified = np.abs(filtered)
-    ampenv = lowpass_filter(rectified.T, sampling_rate, rectify_lowpass).T
+    ampenv = lowpass_filter(rectified.T, sampling_rate, rectify_lowpass, filter_order=10).T
 
     return filtered, ampenv

@@ -61,6 +61,14 @@ class SoundsepControllerApi(QObject):
             self.projectLoaded.emit()
 
     @require_project_loaded
+    def get_current_project(self):
+        return self._app.project
+
+    @require_project_loaded
+    def plugins(self):
+        return self._app.plugins
+
+    @require_project_loaded
     def get_mut_datastore(self):
         return self._app.datastore
 
@@ -167,8 +175,9 @@ class SoundsepControllerApi(QObject):
     def get_sources(self) -> List[Source]:
         return list(self._app.sources)
 
-    # def read_config(self):
-    #     return self._app.services.Config.read()
+    @require_project_loaded
+    def read_config(self):
+        return self._app.read_config()
 
     @require_project_loaded
     def workspace_move_to(self, start: StftIndex):
@@ -256,7 +265,7 @@ class SoundsepControllerApi(QObject):
     def _cache_workspace_signal(self):
         xlim = self._app.workspace.get_lim(ProjectIndex)
         data = self._app.project[xlim[0]:xlim[1]]
-        result = np.array(list(ProjectIndex.range(xlim[0], xlim[1]))), data
+        result = list(ProjectIndex.range(xlim[0], xlim[1])), data
         self._cache["get_workspace_signal"] = result
         return result
 
@@ -286,7 +295,7 @@ class SoundsepControllerApi(QObject):
             return cached_t[i0:i1], cached_data[i0:i1]
 
         data = self._app.project[x0:x1]
-        return np.array(list(ProjectIndex.range(x0, x1))), data
+        return list(ProjectIndex.range(x0, x1)), data
 
     @require_project_loaded
     def workspace_set_position(self, start: StftIndex, stop: StftIndex):

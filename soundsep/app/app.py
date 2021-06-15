@@ -1,9 +1,12 @@
 import functools
 import glob
+import importlib
+import logging
 import os
+import pkgutil
 import warnings
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -17,8 +20,12 @@ from soundsep.app.services import (
     StftCache,
     StftConfig
 )
+from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.models import Project, ProjectIndex, StftIndex, Source
 from soundsep.core.io import load_project
+
+
+logger = logging.getLogger(__name__)
 
 
 class FileLocations(dict):
@@ -260,13 +267,20 @@ class SoundsepController(QObject):
         self.paths = None
         self.workspace = None
         # self.services = None
+
+        # TODO make these properties with require_project_loaded decorator?
         self.stft = None
         self.ampenv = None
         self.sources = None
         self.selection = None
 
         self.datastore = None
-        # TODO make these properties with require_project_loaded decorator?
+
+        self._plugins = {}
+
+    @property
+    def plugins(self):
+        return self._plugins
 
     def has_project_loaded(self):
         return self.project is not None
@@ -321,8 +335,18 @@ class SoundsepController(QObject):
         self.selection = None
         self.datastore = None
 
-    def read_config(self, path) -> dict:
-        """Read the configuration file into a dictionary"""
+        self._plugins = {}
+
+    def read_config(self, path=None) -> dict:
+        """Read the configuration file into a dictionary
+
+        If path is not provided, attemps to read from the self.path object.
+        read_config() can only be called without a path argument if a project
+        is loaded
+        """
+        if path is None:
+            path = self.paths.config_file
+
         with open(path, "r") as f:
             return yaml.load(f, Loader=yaml.SafeLoader)
 
@@ -346,3 +370,79 @@ class SoundsepController(QObject):
 
         data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel} for s in self.sources])
         data.to_csv(data)
+
+    def reload_plugins(self, api, gui):
+        local_plugin_modules = self.load_local_plugins()
+        app_plugin_modules = self.load_app_plugins()
+        all_active_plugin_modules = local_plugin_modules + app_plugin_modules
+
+        # Setup plugins
+        self._plugins = {
+            Plugin.__name__: Plugin(api, gui)
+            for Plugin in BasePlugin.registry
+            if any([Plugin.__module__.startswith(m) for m in all_active_plugin_modules])
+        }
+
+        logger.info("Loaded Plugins {}".format(self._plugins))
+
+        for name, plugin in self.plugins.items():
+            plugin.setup_plugin_shortcuts()
+            for w in plugin.plugin_toolbar_items():
+                gui.toolbar.addWidget(w)
+
+            panel = plugin.plugin_panel_widget()
+            if panel:
+                gui.ui.pluginPanelToolbox.addItem(
+                    panel,
+                    name
+                )
+
+            menu = plugin.add_plugin_menu(gui.ui.menuPlugins)
+
+    @require_project_loaded
+    def load_local_plugins(self) -> List[str]:
+        logger.debug("Searching {} for plugin modules".format(
+            self.paths.plugin_dir))
+
+        local_modules = glob.glob(os.path.join(self.paths.plugin_dir, "*"))
+
+        plugin_names = []
+        for plugin_file in local_modules:
+            name = os.path.splitext(os.path.basename(plugin_file))[0]
+            mod_name = "local_plugins.{}".format(name)
+
+            if name.startswith(".") or name.startswith("_"):
+                continue
+
+            spec = importlib.util.spec_from_file_location(mod_name, plugin_file)
+
+            if spec is None:
+                continue
+
+            try:
+                plugin_module = importlib.util.module_from_spec(spec)
+            except AttributeError:
+                continue
+            else:
+                spec.loader.exec_module(plugin_module)
+            plugin_names.append(mod_name)
+
+        return plugin_names
+
+    def load_app_plugins(self) -> List[str]:
+        """Load plugins from three possible locations
+
+        (1) soundsep.plugins, and (2) self.paths.plugin_dir
+        """
+        import soundsep.plugins
+
+        def iter_namespace(ns_pkg):
+            return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
+
+        # Search for builtin plugins in soundsep/plugins
+        plugin_names = []
+        for finder, name, ispkg in iter_namespace(soundsep.plugins):
+            importlib.import_module(name)
+            plugin_names.append(name)
+
+        return plugin_names

@@ -17,7 +17,6 @@ class SegmentPanel(widgets.QWidget):
 
     # TODO add a filtering dropdown / text box
     # TODO jump to time with click events
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
@@ -52,16 +51,26 @@ class SegmentPanel(widgets.QWidget):
 class SegmentVisualizer(QtGui.QGraphicsRectItem):
     def __init__(self, segment, spectrogram, plugin):
         super().__init__(
-            segment.start, 0, segment.stop - segment.start, 250, parent=spectrogram.image
+            segment.start,
+            spectrogram.viewRange()[1][0],
+            segment.stop - segment.start,
+            spectrogram.viewRange()[1][1],
+            spectrogram.image
         )
         self.segment_plugin = plugin
         self.segment = segment
         self.spectrogram = spectrogram
 
-        self.setPen(pg.mkPen(None))
-        self.setBrush(pg.mkBrush("#00ff00"))
+        self.setPen(pg.mkPen("#00ff00", width=2))
+        self.setOpacity(0.3)
+        self.setBrush(pg.mkBrush(None))
         self.setAcceptHoverEvents(True)
-        self.lines = []
+
+        self.setToolTip("{}\n{:.2f}s to {:.2f}s".format(
+            self.segment.source.name,
+            self.segment.start.to_timestamp(),
+            self.segment.stop.to_timestamp(),
+        ))
 
     def clear(self):
         for line in self.lines:
@@ -86,27 +95,13 @@ class SegmentVisualizer(QtGui.QGraphicsRectItem):
 
     def hoverEnterEvent(self, event):
         """Draw vertical lines as boundaries"""
-        self.lines.append(pg.InfiniteLine(pos=int(self.segment.start)))
-        self.lines.append(pg.InfiniteLine(pos=int(self.segment.stop)))
-        for line in self.lines:
-            try:
-                self.spectrogram.addItem(line)
-            except:
-                pass
-
-        self.segment_plugin.gui_api.show_status(
+        self.setOpacity(1.0)
+        self.segment_plugin.gui.show_status(
             "Segment from {} to {} on {}".format(self.segment.start, self.segment.stop, self.segment.source)
         )
-        self.segment_plugin
 
     def hoverLeaveEvent(self, event):
-        """Destroy lines"""
-        for line in self.lines:
-            try:
-                self.spectrogram.removeItem(line)
-            except:
-                pass
-        self.lines = []
+        self.setOpacity(0.3)
 
 
 class SegmentPlugin(BasePlugin):
@@ -153,7 +148,10 @@ class SegmentPlugin(BasePlugin):
         self.refresh()
 
     def refresh(self):
-        """Keeps the table pointed at a visible segment"""
+        """Keeps the table pointed at a visible segment
+
+        Refresh the rectangles drawn on spectrogram views
+        """
         ws0, ws1 = self.api.workspace_get_lim()
         ws0 = ws0.to_project_index()
         ws1 = ws1.to_project_index()
@@ -177,7 +175,7 @@ class SegmentPlugin(BasePlugin):
         self.panel.table.scrollTo(index)
 
         for segment in self._segmentation_datastore[first_segment_idx:last_segment_idx]:
-            source_view = self.gui_api.get_source_views()[segment.source.index]
+            source_view = self.gui.source_views[segment.source.index]
             rect = SegmentVisualizer(segment, source_view.spectrogram, self)
             source_view.spectrogram.addItem(rect)
             self._annotations.append((source_view.spectrogram, rect))
@@ -202,7 +200,7 @@ class SegmentPlugin(BasePlugin):
         self._segmentation_datastore.append(new_segment)
         self._segmentation_datastore.sort()
         self.panel.set_data(self._segmentation_datastore)
-        self.gui_api.show_status("Created segment {} to {}".format(start, stop))
+        self.gui.show_status("Created segment {} to {}".format(start, stop))
         logger.debug("Created segment {} to {}".format(start, stop))
         self.refresh()
 
@@ -221,7 +219,7 @@ class SegmentPlugin(BasePlugin):
     def plugin_toolbar_items(self):
         return [self.button]
 
-    def plugin_menu(self, menu_parent):
+    def add_plugin_menu(self, menu_parent):
         menu = menu_parent.addMenu("&Segments")
         menu.addAction(self.create_segment_action)
         menu.addAction(self.delete_selection_action)

@@ -9,10 +9,10 @@ class BasePlugin(QObject):
         super().__init_subclass__(**kwargs)
         cls.registry.append(cls)
 
-    def __init__(self, api, gui_api):
+    def __init__(self, api, gui):
         super().__init__()
         self.api = api
-        self.gui_api = gui_api
+        self.gui = gui
 
     def plugin_toolbar_items(self):
         return []

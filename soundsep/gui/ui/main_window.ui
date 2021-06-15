@@ -35,8 +35,8 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>580</width>
-          <height>974</height>
+          <width>673</width>
+          <height>972</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_3"/>
@@ -55,13 +55,13 @@
           <property name="currentIndex">
            <number>0</number>
           </property>
-          <widget class="QWidget" name="page_4">
+          <widget class="QWidget" name="pluginPanelDefault">
            <property name="geometry">
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>1021</width>
-             <height>881</height>
+             <width>927</width>
+             <height>889</height>
             </rect>
            </property>
            <attribute name="label">
@@ -73,7 +73,7 @@
         <item>
          <widget class="QGroupBox" name="previewBox">
           <property name="title">
-           <string>GroupBox</string>
+           <string>Selection</string>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_4"/>
          </widget>
@@ -90,7 +90,7 @@
      <x>0</x>
      <y>0</y>
      <width>1643</width>
-     <height>20</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -99,7 +99,6 @@
     </property>
     <addaction name="actionLoad_project"/>
     <addaction name="actionSave"/>
-    <addaction name="actionExport"/>
     <addaction name="separator"/>
     <addaction name="actionClose"/>
    </widget>
@@ -115,39 +114,6 @@
     <property name="title">
      <string>&amp;Plugins</string>
     </property>
-    <widget class="QMenu" name="menuSimpleDetection">
-     <property name="title">
-      <string>SimpleDetection</string>
-     </property>
-     <addaction name="separator"/>
-     <addaction name="actionDetect"/>
-     <addaction name="actionLower_Threshold"/>
-     <addaction name="actionIncrease_Threshold"/>
-    </widget>
-    <widget class="QMenu" name="menuLabeling">
-     <property name="title">
-      <string>Labeling</string>
-     </property>
-     <addaction name="actionAdd_label"/>
-     <addaction name="actionEdit_label"/>
-    </widget>
-    <widget class="QMenu" name="menuTemplateMatching">
-     <property name="title">
-      <string>TemplateMatching</string>
-     </property>
-     <addaction name="actionNew_template_from_label"/>
-     <addaction name="actionMatch_to_selection"/>
-    </widget>
-    <widget class="QMenu" name="menuRavenExport">
-     <property name="title">
-      <string>RavenExport</string>
-     </property>
-     <addaction name="actionExport_to_Raven"/>
-    </widget>
-    <addaction name="menuSimpleDetection"/>
-    <addaction name="menuLabeling"/>
-    <addaction name="menuTemplateMatching"/>
-    <addaction name="menuRavenExport"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">

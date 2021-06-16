@@ -122,6 +122,7 @@ class SegmentPlugin(BasePlugin):
         self.delete_button.clicked.connect(self.on_delete_segment_activated)
 
         self.api.workspaceChanged.connect(self.on_workspace_changed)
+        self.api.sourcesChanged.connect(self.on_sources_changed)
 
     @property
     def _datastore(self):
@@ -135,6 +136,9 @@ class SegmentPlugin(BasePlugin):
         else:
             datastore["segments"] = []
             return datastore["segments"]
+
+    def on_sources_changed(self, sources):
+        self.refresh()
 
     def on_workspace_changed(self, x: StftIndex, y: StftIndex):
         self.refresh()

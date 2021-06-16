@@ -10,10 +10,12 @@ class FloatingButton(widgets.QPushButton):
             QPushButton {
                 background-color: rgba(150, 50, 50, 20%);
                 color: rgba(255, 255, 255, 50%);
-                padding: 0px;
+                padding: 2px;
                 border: 0px;
-                font-size: 36;
+                font-size: 20px;
                 text-align: left;
+                min-height: 40px;
+                min-width: 100px;
             }
 
             QPushButton:hover {
@@ -29,11 +31,7 @@ class FloatingButton(widgets.QPushButton):
         self.padding = (paddingx, paddingy)
 
     def update_position(self):
-        if hasattr(self.parent(), 'viewport'):
-            parent_rect = self.parent().viewport().rect()
-        else:
-            parent_rect = self.parent().rect()
-        
+        parent_rect = self.parent().rect()
         self.adjustSize()
 
         if not parent_rect:
@@ -48,18 +46,21 @@ class FloatingButton(widgets.QPushButton):
         self.update_position()
 
 
-class FloaingComboBox(widgets.QComboBox):
+class FloatingComboBox(widgets.QComboBox):
 
-    def __init__(self, *args, padding=10, parent=None, **kwargs):
+    def __init__(self, *args, paddingx=0, paddingy=0, parent=None, **kwargs):
         super().__init__(*args, parent=parent, **kwargs)
         self.setStyleSheet("""
             QComboBox {
                 background-color: rgba(150, 50, 50, 20%);
                 padding: 0px;
+                padding-left: 16px;
                 border: 0px;
                 color: rgba(255, 255, 255, 1);
-                font-size: 24;
+                font-size: 20px;
                 text-align: left;
+                min-height: 44px;
+                max-width: 40px;
             }
 
             QComboBox:hover {
@@ -70,25 +71,19 @@ class FloaingComboBox(widgets.QComboBox):
                 background-color: rgba(50, 50, 50, 100%);
             }
         """)
-        self.padding = padding
+        self.padding = (paddingx, paddingy)
 
     def update_position(self):
-        if hasattr(self.parent(), 'viewport'):
-            parent_rect = self.parent().viewport().rect()
-        else:
-            parent_rect = self.parent().rect()
-        
-        self.adjustSize()
+        parent_rect = self.parent().rect()
 
         if not parent_rect:
             return
 
-        x = self.padding
-        y = self.padding
+        x = self.padding[0]
+        y = self.padding[1]
+
         self.setGeometry(x, y, self.width(), self.height())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.update_position()
-
-

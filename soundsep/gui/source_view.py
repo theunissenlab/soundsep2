@@ -6,9 +6,9 @@ from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
 from PyQt5.QtCore import QPointF, QRectF, Qt, pyqtSignal
 
-from soundsep.gui.components.overlays import FloatingButton
+from soundsep.gui.components.overlays import FloatingButton, FloatingComboBox
 from soundsep.gui.components.spectrogram_view_box import SpectrogramViewBox
-from soundsep.core.models import ProjectIndex, StftIndex
+from soundsep.core.models import ProjectIndex, StftIndex, Source
 from soundsep.core.stft import spectral_derivative
 
 
@@ -48,8 +48,55 @@ class StftTimeAxis(pg.AxisItem):
         return [self._format_time(self._to_timestamp(value)) for value in values]
 
 
+class EditSourceModal(widgets.QDialog):
+
+    deleteSourceSignal = pyqtSignal(Source)
+    editSourceSignal = pyqtSignal(Source)
+
+    def __init__(self, source, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.source = source
+
+        self.setModal(True)
+        self.setWindowTitle("Edit source information")
+
+        layout = widgets.QVBoxLayout(self)
+        layout.addWidget(widgets.QLabel("Source Name"))
+        self.line_edit = widgets.QLineEdit(self)
+        self.line_edit.setText(self.source.name)
+        layout.addWidget(self.line_edit)
+
+        button_box = widgets.QDialogButtonBox(
+            widgets.QDialogButtonBox.Help
+            | widgets.QDialogButtonBox.Ok
+            | widgets.QDialogButtonBox.Cancel
+        )
+        button_box.button(widgets.QDialogButtonBox.Help).setText("Delete Source")
+
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+        # Im just using helpRequested as the delete signal
+        button_box.helpRequested.connect(self.delete)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+    def delete(self):
+        """Sends a delete signal"""
+        self.deleteSourceSignal.emit(self.source)
+        super().accept()
+
+    def accept(self):
+        """Sends signal to edit the source"""
+        self.source.name = self.line_edit.text()
+        self.editSourceSignal.emit(self.source)
+        super().accept()
+
+
 class SourceView(widgets.QWidget):
 
+    editSourceSignal = pyqtSignal(Source)
+    deleteSourceSignal = pyqtSignal(Source)
     hover = pyqtSignal(ProjectIndex, float)
 
     def __init__(self, source, parent=None):
@@ -72,15 +119,35 @@ class SourceView(widgets.QWidget):
 
         self.spectrogram.scene().sigMouseMoved.connect(self.on_sig_mouse_moved)
 
-        self.dialog = FloatingButton(
-            "▼ {}".format(self.source.name),
-            paddingx=80,
-            paddingy=20,
+        self.source_channel_dialog = FloatingComboBox(
+            paddingx=40,
+            paddingy=10,
             parent=self.spectrogram
         )
+        self.source_name_dialog = FloatingButton(
+            "▼ {}".format(self.source.name),
+            paddingx=100,
+            paddingy=10,
+            parent=self.spectrogram
+        )
+        self.source_name_dialog.clicked.connect(self.open_edit_source_modal)
+
+        self.source_channel_dialog.addItems([str(ch) for ch in range(self.source.project.channels)])
+        self.source_channel_dialog.setCurrentIndex(self.source.channel)
+        self.source_channel_dialog.currentIndexChanged.connect(self.on_source_channel_changed)
 
         self.layout.addWidget(self.spectrogram)
         self.setLayout(self.layout)
+
+    def on_source_channel_changed(self, new_channel):
+        self.source.channel = new_channel
+        self.editSourceSignal.emit(self.source)
+
+    def open_edit_source_modal(self):
+        dialog = EditSourceModal(self.source)
+        dialog.editSourceSignal.connect(self.editSourceSignal.emit)
+        dialog.deleteSourceSignal.connect(self.deleteSourceSignal.emit)
+        dialog.exec()
 
     def on_sig_mouse_moved(self, event):
         pos = self.spectrogram.getViewBox().mapSceneToView(event)
@@ -88,7 +155,8 @@ class SourceView(widgets.QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.dialog.update_position()
+        self.source_name_dialog.update_position()
+        self.source_channel_dialog.update_position()
 
 
 class ScrollableSpectrogram(pg.PlotWidget):

@@ -156,7 +156,7 @@ class SoundsepControllerApi(QObject):
         -------
         modified_source : Source
         """
-        modified_source = self._app.sources.edit(index, source_name, source_channel)
+        modified_source = self._app.sources.edit(source_index, source_name, source_channel)
         self.sourcesChanged.emit(self._app.sources)
         return modified_source
 
@@ -168,7 +168,7 @@ class SoundsepControllerApi(QObject):
         ---------
         source_index : int
         """
-        self._app.sources.delete(index)
+        self._app.sources.delete(source_index)
         self.sourcesChanged.emit(self._app.sources)
 
     @require_project_loaded

@@ -270,6 +270,9 @@ class SoundsepGui(widgets.QMainWindow):
         self.source_views = []
         for source in sources:
             source_view = SourceView(source)
+            # for ch in range(self.api.get_current_project().channels):
+            source_view.editSourceSignal.connect(partial(self.on_edit_source_signal, source))
+            source_view.deleteSourceSignal.connect(partial(self.on_delete_source_signal, source))
 
             source_view.spectrogram.set_view_mode(STFTViewMode.DERIVATIVE if self.spectrogram_view_mode_button.isChecked() else STFTViewMode.NORMAL)
 
@@ -284,6 +287,12 @@ class SoundsepGui(widgets.QMainWindow):
             self.source_views.append(source_view)
 
         self.draw_sources()
+
+    def on_delete_source_signal(self, source):
+        self.api.delete_source(source.index)
+
+    def on_edit_source_signal(self, source):
+        self.api.edit_source(source.index, source.name, source.channel)
 
     def on_drag_complete(self, source):
         pass

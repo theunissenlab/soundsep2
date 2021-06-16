@@ -10,6 +10,7 @@ from soundsep.gui.components.overlays import FloatingButton, FloatingComboBox
 from soundsep.gui.components.spectrogram_view_box import SpectrogramViewBox
 from soundsep.core.models import ProjectIndex, StftIndex, Source
 from soundsep.core.stft import spectral_derivative
+from soundsep.gui.components.axes import ProjectIndexTimeAxis, FrequencyAxis
 
 
 class STFTViewMode(Enum):
@@ -17,36 +18,36 @@ class STFTViewMode(Enum):
     DERIVATIVE = 2
 
 
-class FrequencyAxis(pg.AxisItem):
-    """Frequency axis in kHz for spectrograms
-    """
-    def tickStrings(self, values, scale, spacing):
-        return ["{}k".format(int(value // 1000)) for value in values]
-
-
-class StftTimeAxis(pg.AxisItem):
-    """Time axis converting StftIndex into timestamps
-    """
-
-    def __init__(self, *args, project, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.project = project
-
-    def _format_time(self, t: float):
-        """Format time in seconds to form hh:mm:ss"""
-        h = int(t / 3600)
-        t -= h * 3600
-        m = int(t / 60)
-        t -= m * 60
-        s = t
-        return "{}:{:02d}:{:.2f}".format(h, m, s)
-
-    def _to_timestamp(self, x):
-        return ProjectIndex(self.project, x).to_timestamp()
-
-    def tickStrings(self, values, scale, spacing):
-        return [self._format_time(self._to_timestamp(value)) for value in values]
-
+# class FrequencyAxis(pg.AxisItem):
+#     """Frequency axis in kHz for spectrograms
+#     """
+#     def tickStrings(self, values, scale, spacing):
+#         return ["{}k".format(int(value // 1000)) for value in values]
+#
+#
+# class StftTimeAxis(pg.AxisItem):
+#     """Time axis converting StftIndex into timestamps
+#     """
+#
+#     def __init__(self, *args, project, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.project = project
+#
+#     def _format_time(self, t: float):
+#         """Format time in seconds to form hh:mm:ss"""
+#         h = int(t / 3600)
+#         t -= h * 3600
+#         m = int(t / 60)
+#         t -= m * 60
+#         s = t
+#         return "{}:{:02d}:{:.2f}".format(h, m, s)
+#
+#     def _to_timestamp(self, x):
+#         return ProjectIndex(self.project, x).to_timestamp()
+#
+#     def tickStrings(self, values, scale, spacing):
+#         return [self._format_time(self._to_timestamp(value)) for value in values]
+#
 
 class EditSourceModal(widgets.QDialog):
 
@@ -111,22 +112,21 @@ class SourceView(widgets.QWidget):
 
         self.spectrogram = ScrollableSpectrogram()
 
-        self._stft_time_axis = StftTimeAxis(project=self.source.project, orientation="bottom")
         self.spectrogram.setAxisItems({
             "left": FrequencyAxis(orientation="left"),
-            "bottom": self._stft_time_axis,
+            "bottom": ProjectIndexTimeAxis(project=self.source.project, orientation="bottom"),
         })
 
         self.spectrogram.scene().sigMouseMoved.connect(self.on_sig_mouse_moved)
 
         self.source_channel_dialog = FloatingComboBox(
-            paddingx=40,
+            paddingx=80,
             paddingy=10,
             parent=self.spectrogram
         )
         self.source_name_dialog = FloatingButton(
             "▼ {}".format(self.source.name),
-            paddingx=100,
+            paddingx=140,
             paddingy=10,
             parent=self.spectrogram
         )

@@ -180,6 +180,10 @@ class SoundsepControllerApi(QObject):
         return self._app.read_config()
 
     @require_project_loaded
+    def convert_project_index_to_stft_index(self, idx: ProjectIndex):
+        return StftIndex(self._app.project, self._app.stft.config.step, idx // self._app.stft.config.step)
+
+    @require_project_loaded
     def workspace_move_to(self, start: StftIndex):
         """Placeholder
 

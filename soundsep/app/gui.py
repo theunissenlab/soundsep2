@@ -15,6 +15,7 @@ from soundsep.gui.ui.main_window import Ui_MainWindow
 from soundsep.gui.source_view import SourceView, STFTViewMode
 from soundsep.gui.preview import PreviewPlot
 from soundsep.gui.components.selection_box import SelectionBox
+from soundsep.gui.components.box_scroll import ProjectScrollbar
 
 
 pg.setConfigOption('background', None)
@@ -47,22 +48,27 @@ class SoundsepGui(widgets.QMainWindow):
         self.workspace_layout.setSpacing(0)
         self.workspace_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.toolbar = widgets.QToolBar()
-        self.ui.toolbarDock.setWidget(self.toolbar)
-
-        self.preview_plot_widget = PreviewPlot(self.api._app.project)
+        self.preview_plot_widget = PreviewPlot(self.api.get_current_project())
         self.ui.previewBox.layout().addWidget(self.preview_plot_widget)
 
         # TODO: replace this with an Icon
         self.add_source_button = widgets.QPushButton("+Source")
-        self.toolbar.addWidget(self.add_source_button)
+        self.ui.toolbarLayout.addWidget(self.add_source_button)
         self.add_source_button.clicked.connect(self.on_add_source)
 
         self.spectrogram_view_mode_button = widgets.QPushButton("SD")
         self.spectrogram_view_mode_button.setCheckable(True)
         self.spectrogram_view_mode_button.setChecked(False)
-        self.toolbar.addWidget(self.spectrogram_view_mode_button)
+        self.ui.toolbarLayout.addWidget(self.spectrogram_view_mode_button)
         self.spectrogram_view_mode_button.clicked.connect(self.on_toggle_view_mode)
+
+        self.scrollbarToolbar = widgets.QToolBar()
+        self.ui.leftVLayout.addWidget(self.scrollbarToolbar)
+        self.scrollbar = ProjectScrollbar(self.api.get_current_project(), self)
+        self.scrollbarToolbar.addWidget(self.scrollbar)
+        x0, x1 = self.api.workspace_get_lim()
+        self.scrollbar.set_current_range(x0.to_project_index(), x1.to_project_index())
+        self.scrollbar.positionChanged.connect(self.on_scrollbar_position_changed)
 
         self.setMinimumSize(1000, 500)
         self.ui.mainSplitter.setSizes([1000, 600])
@@ -215,6 +221,12 @@ class SoundsepGui(widgets.QMainWindow):
     def on_add_source(self):
         self.api.create_blank_source()
 
+    def on_scrollbar_position_changed(self, x: float, y: float):
+        stft_index = self.api.convert_project_index_to_stft_index(
+            ProjectIndex(self.api.get_current_project(), int(x))
+        )
+        self.api.workspace_move_to(stft_index)
+
     def on_selection_changed(self):
         # TODO: this function is called very ferquently when the box is dragged around
         # get_signal() is already cached but filter_and_ampevn can/should be cached as
@@ -239,6 +251,7 @@ class SoundsepGui(widgets.QMainWindow):
     def on_workspace_changed(self, x: StftIndex, y: StftIndex):
         self.show_status("{:.2f}-{:.2f}".format(x.to_timestamp(), y.to_timestamp()))
         self.draw_sources()
+        self.scrollbar.set_current_range(x.to_project_index(), y.to_project_index())
 
         if self.roi:
             source_view = self.source_views[self.roi.source.index]

@@ -391,11 +391,11 @@ class SoundsepController(QObject):
         for name, plugin in self.plugins.items():
             plugin.setup_plugin_shortcuts()
             for w in plugin.plugin_toolbar_items():
-                gui.toolbar.addWidget(w)
+                gui.ui.toolbarLayout.addWidget(w)
 
             panel = plugin.plugin_panel_widget()
             if panel:
-                gui.ui.pluginPanelToolbox.addItem(
+                gui.ui.pluginPanelToolbox.addTab(
                     panel,
                     name
                 )

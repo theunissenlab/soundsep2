@@ -12,7 +12,7 @@ class FloatingButton(widgets.QPushButton):
                 color: rgba(255, 255, 255, 50%);
                 padding: 2px;
                 border: 0px;
-                font-size: 20px;
+                font-size: 24px;
                 text-align: left;
                 min-height: 40px;
                 min-width: 100px;
@@ -57,7 +57,7 @@ class FloatingComboBox(widgets.QComboBox):
                 padding-left: 16px;
                 border: 0px;
                 color: rgba(255, 255, 255, 1);
-                font-size: 20px;
+                font-size: 24px;
                 text-align: left;
                 min-height: 44px;
                 max-width: 40px;
@@ -69,6 +69,14 @@ class FloatingComboBox(widgets.QComboBox):
 
             QComboBox:pressed {
                 background-color: rgba(50, 50, 50, 100%);
+            }
+
+            QComboBox QAbstractItemView
+            {
+                background-color: rgba(20, 20, 20, 60%);
+                selection-background-color: rgb(100, 100, 255);
+                border-radius: 0px;
+                color: rgba(255, 255, 255, 1);
             }
         """)
         self.padding = (paddingx, paddingy)

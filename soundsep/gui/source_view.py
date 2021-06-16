@@ -174,6 +174,12 @@ class ScrollableSpectrogram(pg.PlotWidget):
 
         self.init_ui()
 
+    def overlay(self, x, y):
+        self._overlay_plot.setData(x, y)
+
+    def clear_overlay(self):
+        self._overlay_plot.setData([], [])
+
     def set_view_mode(self, view_mode: STFTViewMode):
         self._view_mode = view_mode
         if self._view_mode == STFTViewMode.DERIVATIVE:
@@ -194,6 +200,11 @@ class ScrollableSpectrogram(pg.PlotWidget):
         # TODO: dynamic cursor changing based on hover and what action would be activated?
         self.image.setCursor(Qt.CrossCursor)
         self.addItem(self.image)
+
+        self._overlay_plot = pg.PlotCurveItem()
+        self._overlay_plot.setPen(pg.mkPen("r", width=2))
+        self.addItem(self._overlay_plot)
+
         # TODO hardcoded? make this configurable
         self.set_view_mode(STFTViewMode.NORMAL)
 

@@ -111,6 +111,11 @@ class SoundsepGui(widgets.QMainWindow):
         self.create_source_action.setToolTip("Create a new source")
         self.create_source_action.triggered.connect(self.on_add_source)
 
+        self.toggle_ampenv_action = widgets.QAction("Show &Amplitude Envelope")
+        self.toggle_ampenv_action.setToolTip("Show or hide amplitude envelope. It is slow right now!")
+        self.toggle_ampenv_action.setCheckable(True)
+        self.toggle_ampenv_action.triggered.connect(self.draw_ampenv_plots)
+
         # self.save_as_action = widgets.QAction("Save &As")
         # self.save_as_action.setToolTip("Save the current segments")
         # self.save_as_action.triggered.connect(self.on_save_as)
@@ -126,6 +131,8 @@ class SoundsepGui(widgets.QMainWindow):
 
         self.ui.menuSources.addAction(self.create_source_action)
 
+        self.ui.menuView.addAction(self.toggle_ampenv_action)
+
     def setup_shortcuts(self):
         self.next_shortcut = widgets.QShortcut(QtGui.QKeySequence("D"), self)
         self.next_shortcut.activated.connect(self.next)
@@ -136,6 +143,7 @@ class SoundsepGui(widgets.QMainWindow):
         self.prev_shortcut_arrow = widgets.QShortcut(QtGui.QKeySequence("left"), self)
         self.prev_shortcut_arrow.activated.connect(self.prev)
 
+        self.toggle_ampenv_action.setShortcut(QtGui.QKeySequence("Ctrl+A"))
         self.open_action.setShortcut(QtGui.QKeySequence.Open)
         self.close_action.setShortcut(QtGui.QKeySequence("Ctrl+W"))
         self.save_action.setShortcut(QtGui.QKeySequence.Save)
@@ -175,6 +183,19 @@ class SoundsepGui(widgets.QMainWindow):
 
     # def on_save_as(self):
     #     self.api.save_sources()
+
+    def draw_ampenv_plots(self):
+        # TODO: This desperately needs to be made faster by caching/threading
+        if self.toggle_ampenv_action.isChecked():
+            t_arr, data = self.api.get_workspace_signal()
+            filtered, ampenv = self.api.filter_and_ampenv(data, f0=250, f1=10000)
+            ampenv /= np.max(ampenv)
+            ampenv *= 5000
+            for source_view in self.source_views:
+                source_view.spectrogram.overlay(t_arr, ampenv[:, source_view.source.channel])
+        else:
+            for source_view in self.source_views:
+                source_view.spectrogram.clear_overlay()
 
     def run_directory_loader(self):
         """Dialog to read in a directory of wav files and intervals """
@@ -257,6 +278,7 @@ class SoundsepGui(widgets.QMainWindow):
             source_view = self.source_views[self.roi.source.index]
             self.roi.roi.maxBounds = source_view.spectrogram.get_limits_rect()
 
+        self.draw_ampenv_plots()
         # TODO: it is too slow to read the whole signal whole thing every time we move.
         # Should do something similar to the StftCache...
         # Also TODO: have a concept of source focus so for displaying information
@@ -300,6 +322,7 @@ class SoundsepGui(widgets.QMainWindow):
             self.source_views.append(source_view)
 
         self.draw_sources()
+        self.draw_ampenv_plots()
 
     def on_delete_source_signal(self, source):
         self.api.delete_source(source.index)

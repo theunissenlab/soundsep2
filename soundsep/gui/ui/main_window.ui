@@ -41,8 +41,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>583</width>
-                <height>965</height>
+                <width>590</width>
+                <height>983</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -151,14 +151,14 @@
     </property>
     <addaction name="actionKeymappings"/>
    </widget>
-   <widget class="QMenu" name="menu_View">
+   <widget class="QMenu" name="menuView">
     <property name="title">
      <string>&amp;View</string>
     </property>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuSources"/>
-   <addaction name="menu_View"/>
+   <addaction name="menuView"/>
    <addaction name="menuPlugins"/>
    <addaction name="menuSettings"/>
    <addaction name="menuHelp"/>

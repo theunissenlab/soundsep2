@@ -51,10 +51,12 @@ class Splash(widgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = widgets.QVBoxLayout(self)
+        self.new_project_button = widgets.QPushButton("Create new project", self)
         self.open_button = widgets.QPushButton("Open Directory", self)
         self.recent_button = widgets.QPushButton("Open Last", self)
         self.import_button = widgets.QPushButton("Import audio files", self)
         self.quit_button = widgets.QPushButton("Quit", self)
+        layout.addWidget(self.new_project_button)
         layout.addWidget(self.open_button)
         layout.addWidget(self.recent_button)
         layout.addWidget(self.import_button)

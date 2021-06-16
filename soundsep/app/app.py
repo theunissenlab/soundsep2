@@ -302,7 +302,7 @@ class SoundsepController(QObject):
         step = config.get("stft.step", 44)
         self.workspace = Workspace(
             StftIndex(self.project, step, 0),
-            StftIndex(self.project, step, config.get("workspace.default_size", 1000)),
+            StftIndex(self.project, step, config.get("workspace.default_size", 2000)),
         )
 
         # Initialize Services
@@ -313,8 +313,8 @@ class SoundsepController(QObject):
         self.stft = StftCache(
             self.project,
             self.workspace.size,
-            pad=config.get("stft.cache.size", 4 * self.workspace.size),  # TODO whats a good default?
-            stft_config=StftConfig(window=config.get("stft.window", 400), step=step)
+            pad=config.get("stft.cache.size", 12 * self.workspace.size),  # TODO whats a good default?
+            stft_config=StftConfig(window=config.get("stft.window", 302), step=step)
         )
         self.selection = SelectionService(self.project)
 
@@ -360,7 +360,8 @@ class SoundsepController(QObject):
             self.sources.append(Source(
                 self.project,
                 str(row["SourceName"]),
-                int(row["SourceChannel"])
+                int(row["SourceChannel"]),
+                int(row["SourceIndex"]),
             ))
 
     def save_sources(self, save_file: Path):
@@ -370,7 +371,7 @@ class SoundsepController(QObject):
         if not self.has_project_loaded():
             raise RuntimeError("You really shouldn't be trying to save when nothing is loaded.")
 
-        data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel} for s in self.sources])
+        data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel, "SourceIndex": s.index} for s in self.sources])
         data.to_csv(save_file)
 
     def reload_plugins(self, api, gui):

@@ -35,7 +35,7 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>673</width>
+          <width>687</width>
           <height>972</height>
          </rect>
         </property>
@@ -60,7 +60,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>927</width>
+             <width>913</width>
              <height>889</height>
             </rect>
            </property>
@@ -97,18 +97,13 @@
     <property name="title">
      <string>&amp;File</string>
     </property>
-    <addaction name="actionLoad_project"/>
-    <addaction name="actionSave"/>
     <addaction name="separator"/>
-    <addaction name="actionClose"/>
    </widget>
    <widget class="QMenu" name="menuSources">
     <property name="title">
      <string>&amp;Sources</string>
     </property>
-    <addaction name="actionAdd_source"/>
     <addaction name="separator"/>
-    <addaction name="actionClear_selection"/>
    </widget>
    <widget class="QMenu" name="menuPlugins">
     <property name="title">

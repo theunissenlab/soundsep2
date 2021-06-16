@@ -201,7 +201,7 @@ class SegmentPlugin(BasePlugin):
             if (
                 (segment.start <= start and segment.stop <= start) or
                 (segment.start >= stop and segment.stop >= stop)
-            )
+            ) or source != segment.source
         ]
         self._segmentation_datastore.clear()
         self._segmentation_datastore.extend(filtered_segments)

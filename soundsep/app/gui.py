@@ -188,13 +188,13 @@ class SoundsepGui(widgets.QMainWindow):
         # the plot here even as we accumulate move increments for a snappier response
         self._accumulated_movement += 1
         if not self._move_timer.isActive():
-            self._move_timer.start(10)
+            self._move_timer.start(1)
 
     def prev(self):
         """Move the workspace by a fixed amount. Accumulates over 200ms windows"""
         self._accumulated_movement -= 1
         if not self._move_timer.isActive():
-            self._move_timer.start(10)
+            self._move_timer.start(1)
 
     def _move(self):
         x0, x1 = self.api.workspace_get_lim()
@@ -218,7 +218,8 @@ class SoundsepGui(widgets.QMainWindow):
     def on_selection_changed(self):
         # TODO: this function is called very ferquently when the box is dragged around
         # get_signal() is already cached but filter_and_ampevn can/should be cached as
-        # well. This could be done as an overall ampenv service refactor.
+        # well. This could be done as an overall ampenv service refactor and/or
+        # having the amplitude envelope be computed in a background thread.
 
         # Update the preview plot
         selection = self.api.get_selection()
@@ -257,7 +258,6 @@ class SoundsepGui(widgets.QMainWindow):
             source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel, :], freqs)
 
         if np.any(_stale):
-            # print(np.where(_stale))
             QTimer.singleShot(100, self.draw_sources)
 
     def on_sources_changed(self, sources: SourceService):
@@ -349,8 +349,7 @@ class SoundsepGui(widgets.QMainWindow):
         # TODO: show a indicator on all spectrograms of cursor position
 
     def on_spectrogram_zoom(self, source, direction: int, pos):
-        # TODO: there vertical line artifacts in the spectrograms
-        # TODO: scale the amount that zooming happens based on the current scale
+        """Buffer zoom events"""
         self._accumulated_zoom += direction
 
         if not self._zoom_timer.isActive():
@@ -362,15 +361,19 @@ class SoundsepGui(widgets.QMainWindow):
 
         x0, x1 = self.api.workspace_get_lim()
         if self._accumulated_zoom > 0:
-            scale = 1 + (x1 - x0) // 2
-        else:
+            # Zooming in to 2/3 of the current workspace
             scale = 1 + (x1 - x0) // 3
+        else:
+            # Zooming out to 3/2 of the current workspace
+            # 1 is added for when the workspace size is == 1, you can still zoom out
+            scale = 1 + (x1 - x0) // 2
 
         self.api.workspace_scale(np.sign(self._accumulated_zoom) * -1 * scale)
         self._accumulated_zoom = 0
         self._zoom_timer.stop()
 
     def on_roi_changed(self, source):
+        """Handles a dragged change to the rectangular selection ROI"""
         if not self.roi:
             self.api.clear_selection()
         else:

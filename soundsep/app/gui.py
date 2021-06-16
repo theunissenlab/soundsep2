@@ -179,7 +179,7 @@ class SoundsepGui(widgets.QMainWindow):
 
     def on_save(self):
         """Attempt save. Returns True if successful"""
-        return self.api.save_sources()
+        return self.api.save()
 
     # def on_save_as(self):
     #     self.api.save_sources()

@@ -114,11 +114,9 @@ class SoundsepApp(QObject):
 
     def on_project_loaded(self):
         self.replace_gui(SoundsepGui(self.api))
-
-        # Have the app reinstantiate all plugins with the
-        # api object (so all plugins have access to the SoundsepControllerApi)
-        # and access to modifying the GUI elements
+        # Have the app reinstantiate all plugins
         self.app.reload_plugins(self.api, self.gui)
+        self.api.projectReady.emit()
 
     def remove_gui(self):
         self.gui.close()

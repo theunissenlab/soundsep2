@@ -3,6 +3,7 @@ import logging
 import PyQt5.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
+import pandas as pd
 from PyQt5 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
@@ -105,6 +106,7 @@ class SegmentPlugin(BasePlugin):
         self.init_actions()
         self.connect_events()
 
+        self._needs_saving = False
         self._annotations = []
 
     def init_actions(self):
@@ -121,6 +123,7 @@ class SegmentPlugin(BasePlugin):
         self.delete_button = widgets.QPushButton("-Segments")
         self.delete_button.clicked.connect(self.on_delete_segment_activated)
 
+        self.api.projectReady.connect(self.on_project_ready)
         self.api.workspaceChanged.connect(self.on_workspace_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
 
@@ -136,6 +139,65 @@ class SegmentPlugin(BasePlugin):
         else:
             datastore["segments"] = []
             return datastore["segments"]
+
+    def on_project_ready(self):
+        """Called once"""
+        save_file = self.api.paths().save_dir / "segments.csv"
+        project = self.api.get_current_project()
+
+        if not save_file.exists():
+            return
+
+        data = pd.read_csv(save_file)
+
+        sources = []
+        indices = []
+        source_lookup = set([
+            (source.name, source.channel) for source in self.api.get_sources()
+        ])
+
+        for i in range(len(data)):
+            row = data.iloc[i]
+            source_key = (row["SourceName"], row["SourceChannel"])
+            if source_key not in source_lookup:
+                source_lookup.add(source_key)
+                self.api.create_source(source_key[0], source_key[1])
+            sources.append(source_key)
+            indices.append((row["StartIndex"], row["StopIndex"]))
+
+        source_dict = {
+            (source.name, source.channel): source
+            for source in self.api.get_sources()
+        }
+        for source_key, (start, stop) in zip(sources, indices):
+            self._segmentation_datastore.append(Segment(
+                ProjectIndex(project, start),
+                ProjectIndex(project, stop),
+                source_dict[source_key]
+            ))
+
+        self._segmentation_datastore.sort()
+        self.refresh()
+
+    def needs_saving(self):
+        return self._needs_saving
+
+    def save(self):
+        """Save pointers within project"""
+        # TODO: these pointers could get out of sync with a project if/when files are added.
+        # Can we recover from this? or should we hash the project so we can at least
+        # warn the user when things dont match up to when the file was saved?
+        segment_dicts = []
+        project = self.api.get_current_project()
+        for segment in self._segmentation_datastore:
+            segment_dicts.append({
+                "SourceName": segment.source.name,
+                "SourceChannel": segment.source.channel,
+                "StartIndex": int(segment.start),
+                "StopIndex": int(segment.stop),
+            })
+        pd.DataFrame(segment_dicts).to_csv(self.api.paths().save_dir / "segments.csv")
+        self._needs_saving = False
 
     def on_sources_changed(self, sources):
         self.refresh()
@@ -197,6 +259,7 @@ class SegmentPlugin(BasePlugin):
         self.panel.set_data(self._segmentation_datastore)
         self.gui.show_status("Created segment {} to {}".format(start, stop))
         logger.debug("Created segment {} to {}".format(start, stop))
+        self._needs_saving = True
         self.refresh()
 
     def delete_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
@@ -209,6 +272,7 @@ class SegmentPlugin(BasePlugin):
         ]
         self._segmentation_datastore.clear()
         self._segmentation_datastore.extend(filtered_segments)
+        self._needs_saving = True
         self.refresh()
 
     def plugin_toolbar_items(self):

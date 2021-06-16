@@ -307,7 +307,7 @@ class SoundsepController(QObject):
 
         # Initialize Services
         self.ampenv = AmpenvService(self.project)
-        self.sources = SourceService(self.project)
+        self.sources = self.load_sources()
         # TODO: not sure if here is the place, but we can adjust stft.window so it
         # aligns well with a scipy.fft.next_fast_len for ~30% speedup in some cases
         self.stft = StftCache(
@@ -351,28 +351,26 @@ class SoundsepController(QObject):
             return yaml.load(f, Loader=yaml.SafeLoader)
 
     @require_project_loaded
-    def load_sources(self, save_file: Path):
+    def load_sources(self) -> SourceService:
         """Read sources from a save file"""
-        self.sources = SourceService(self.project)
-        data = pd.read_csv(sources_file)
+        sources = SourceService(self.project)
+        data = pd.read_csv(self.paths.default_sources_savefile)
         for i in range(len(data)):
             row = data.iloc[i]
-            self.sources.append(Source(
+            sources.append(Source(
                 self.project,
                 str(row["SourceName"]),
                 int(row["SourceChannel"]),
                 int(row["SourceIndex"]),
             ))
+        return sources
 
-    def save_sources(self, save_file: Path):
+    @require_project_loaded
+    def save_sources(self):
         """Save sources to a csv file"""
         self.paths.create_folders()
-
-        if not self.has_project_loaded():
-            raise RuntimeError("You really shouldn't be trying to save when nothing is loaded.")
-
         data = pd.DataFrame([{"SourceName": s.name, "SourceChannel": s.channel, "SourceIndex": s.index} for s in self.sources])
-        data.to_csv(save_file)
+        data.to_csv(self.paths.default_sources_savefile)
 
     def reload_plugins(self, api, gui):
         local_plugin_modules = self.load_local_plugins()

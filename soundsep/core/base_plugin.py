@@ -25,3 +25,9 @@ class BasePlugin(QObject):
 
     def setup_plugin_shortcuts(self):
         return None
+
+    def needs_saving(self) -> bool:
+        return False
+
+    def save(self):
+        pass

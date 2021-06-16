@@ -35,6 +35,7 @@ class SoundsepControllerApi(QObject):
     workspaceChanged = pyqtSignal(StftIndex, StftIndex)
     sourcesChanged = pyqtSignal(SourceService)
     selectionChanged = pyqtSignal()
+    projectReady = pyqtSignal()
 
     def __init__(self, app: SoundsepController):
         super().__init__()
@@ -42,6 +43,13 @@ class SoundsepControllerApi(QObject):
 
         self._cache = {}
         self._plugins = {}
+
+        self.projectReady.connect(self._on_project_ready)
+
+    def _on_project_ready(self):
+        """Emit signals that apps would have missed
+        """
+        self.sourcesChanged.emit(self._app.sources)
 
     def load_project(self, directory: Path):
         """Load a new project from a directory
@@ -59,6 +67,10 @@ class SoundsepControllerApi(QObject):
             self.projectClosed.emit()
         else:
             self.projectLoaded.emit()
+
+    @require_project_loaded
+    def paths(self):
+        return self._app.paths
 
     @require_project_loaded
     def get_current_project(self):
@@ -359,11 +371,22 @@ class SoundsepControllerApi(QObject):
     def check_if_sources_need_saving(self) -> bool:
         """Returns True if Sources have unsaved changes
         """
-        return self._app.sources.needs_saving()
+        if any([self._app.sources.needs_saving()] + [p.needs_saving() for p in self._app.plugins.values()]):
+            return True
+        else:
+            return False
 
-    def save_sources(self):
-        self._app.save_sources(self._app.paths.default_sources_savefile)
-        return True
+    def save(self):
+        try:
+            self._app.save_sources()
+            for name, plugin in self._app.plugins.items():
+                plugin.save()
+        except Exception as e:
+            logger.exception("Exception while saving")
+            return False
+        else:
+            return True
+
 
 class SoundsepGuiApi(QObject):
     """Soundsep GUI API exposed to plugins

@@ -1,4 +1,5 @@
 import logging
+from typing import Tuple
 
 import PyQt5.QtWidgets as widgets
 import pyqtgraph as pg
@@ -50,20 +51,31 @@ class SegmentPanel(widgets.QWidget):
 
 
 class SegmentVisualizer(QtGui.QGraphicsRectItem):
-    def __init__(self, segment, spectrogram, plugin):
+    def __init__(
+            self,
+            segment,
+            parent_plot: pg.PlotWidget,
+            color,
+            opacity,
+            draw_fractions: Tuple[float, float],
+            plugin):
+        y0, y1 = parent_plot.viewRange()[1]
+        dy = y1 - y0
         super().__init__(
             segment.start,
-            spectrogram.viewRange()[1][0],
+            y0 + draw_fractions[0] * dy,
             segment.stop - segment.start,
-            spectrogram.viewRange()[1][1],
-            spectrogram.image
+            (draw_fractions[1] - draw_fractions[0]) * dy,
+            parent_plot.plotItem
         )
         self.segment_plugin = plugin
         self.segment = segment
-        self.spectrogram = spectrogram
+        self.opacity = opacity
+        self.color = color
+        self.draw_fractions = draw_fractions
 
-        self.setPen(pg.mkPen("#00ff00", width=2))
-        self.setOpacity(0.3)
+        self.setPen(pg.mkPen(self.color, width=2))
+        self.setOpacity(self.opacity)
         self.setBrush(pg.mkBrush(None))
         self.setAcceptHoverEvents(True)
 
@@ -72,6 +84,18 @@ class SegmentVisualizer(QtGui.QGraphicsRectItem):
             self.segment.start.to_timestamp(),
             self.segment.stop.to_timestamp(),
         ))
+
+        parent_plot.sigYRangeChanged.connect(self.adjust_ylims)
+
+    def adjust_ylims(self, _, yrange):
+        y0, y1 = yrange
+        dy = y1 - y0
+        self.setRect(
+            self.segment.start,
+            y0 + self.draw_fractions[0] * dy,
+            self.segment.stop - self.segment.start,
+            (self.draw_fractions[1] - self.draw_fractions[0]) * dy
+        )
 
     def mouseClickEvent(self, event):
         pass
@@ -89,12 +113,14 @@ class SegmentVisualizer(QtGui.QGraphicsRectItem):
     def hoverEnterEvent(self, event):
         """Draw vertical lines as boundaries"""
         self.setOpacity(1.0)
+        self.setPen(pg.mkPen(self.color, width=4))
         self.segment_plugin.gui.show_status(
             "Segment from {} to {} on {}".format(self.segment.start, self.segment.stop, self.segment.source)
         )
 
     def hoverLeaveEvent(self, event):
-        self.setOpacity(0.3)
+        self.setPen(pg.mkPen(self.color, width=2))
+        self.setOpacity(self.opacity)
 
 
 class SegmentPlugin(BasePlugin):
@@ -125,6 +151,7 @@ class SegmentPlugin(BasePlugin):
 
         self.api.projectReady.connect(self.on_project_ready)
         self.api.workspaceChanged.connect(self.on_workspace_changed)
+        self.api.selectionChanged.connect(self.on_selection_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
 
     @property
@@ -205,6 +232,9 @@ class SegmentPlugin(BasePlugin):
     def on_workspace_changed(self, x: StftIndex, y: StftIndex):
         self.refresh()
 
+    def on_selection_changed(self):
+        self.refresh()
+
     def refresh(self):
         """Keeps the table pointed at a visible segment
 
@@ -231,11 +261,18 @@ class SegmentPlugin(BasePlugin):
         index = self.panel.table.model().index(first_segment_idx, 0)
         self.panel.table.scrollTo(index)
 
+        selection = self.api.get_selection()
+
         for segment in self._segmentation_datastore[first_segment_idx:last_segment_idx]:
             source_view = self.gui.source_views[segment.source.index]
-            rect = SegmentVisualizer(segment, source_view.spectrogram, self)
+            rect = SegmentVisualizer(segment, source_view.spectrogram, "#00ff00", 0.3, (0.05, 0.95), self)
             source_view.spectrogram.addItem(rect)
             self._annotations.append((source_view.spectrogram, rect))
+
+            if selection and segment.source == selection.source:
+                rect = SegmentVisualizer(segment, self.gui.preview_plot_widget, "#00aa00", 0.3, (0.4, 0.6), self)
+                self.gui.preview_plot_widget.addItem(rect)
+                self._annotations.append((self.gui.preview_plot_widget, rect))
 
     def on_delete_segment_activated(self):
         selection = self.api.get_selection()

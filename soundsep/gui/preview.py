@@ -13,6 +13,7 @@ class PreviewPlot(pg.PlotWidget):
         self.project = project
         self.setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
+        self.disableAutoRange()
         self.hideButtons()
 
         self.waveform_plot = pg.PlotCurveItem()
@@ -22,3 +23,16 @@ class PreviewPlot(pg.PlotWidget):
         self.ampenv_plot = pg.PlotCurveItem()
         self.ampenv_plot.setPen(pg.mkPen((200, 20, 20), width=3))
         self.addItem(self.ampenv_plot)
+
+        self.waveform_plot.sigPlotChanged.connect(self.on_plot_change)
+        self.ampenv_plot.sigPlotChanged.connect(self.on_plot_change)
+
+    def on_plot_change(self):
+        xrange, yrange = self.waveform_plot.getData()
+        xrange_ampenv, yrange_ampenv = self.ampenv_plot.getData()
+
+        xmin = xrange[0]
+        xmax = xrange[-1]
+        ymax = np.max(np.abs(np.concatenate([yrange, yrange_ampenv])))
+        self.setXRange(xmin, xmax)
+        self.setYRange(-ymax, ymax)

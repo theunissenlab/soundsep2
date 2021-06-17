@@ -318,7 +318,7 @@ class StftCache(QObject):
         """Move the left edge of the active range to the given position
         """
         if int(pos) < 0 or int(pos) > self._project_stft_steps - self.n_active:
-            raise ValueError
+            pos = StftIndex(self._pos.project, self._pos.step, self._project_stft_steps - self.n_active)
 
         if pos == self._pos:
             return

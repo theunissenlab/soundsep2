@@ -48,5 +48,5 @@ class ProjectScrollbar(pg.PlotWidget):
         self.positionChanged.emit(pos.x(), pos.x() + size.x())
 
     def set_current_range(self, x0, x1):
-        self.rect.setSize((x1 - x0, 0.8))
-        self.rect.setPos((x0, 0.1))
+        self.rect.setSize((x1 - x0, 0.8), update=False)
+        self.rect.setPos((x0, 0.1), update=False)

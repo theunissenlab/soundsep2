@@ -402,6 +402,7 @@ class SoundsepGui(widgets.QMainWindow):
 
     def _zoom(self):
         if self._accumulated_zoom == 0:
+            self._zoom_timer.stop()
             return
 
         x0, x1 = self.api.workspace_get_lim()

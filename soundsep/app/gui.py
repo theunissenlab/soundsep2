@@ -294,7 +294,6 @@ class SoundsepGui(widgets.QMainWindow):
         # self.preview_plot_widget.waveform_plot.setData(t_arr, data[:, 0])
         # self.preview_plot_widget.setXRange(int(x.to_project_index()), int(y.to_project_index()))
 
-    @diagnose
     def draw_sources(self):
         self._draw_sources_timer.stop()
         x0, x1 = self.api.workspace_get_lim()

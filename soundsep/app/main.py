@@ -64,9 +64,27 @@ class Splash(widgets.QWidget):
         self.setLayout(layout)
         self.setMinimumSize(500, 300)
 
+        self.new_project_button.clicked.connect(self.create_new_project_directory)
         self.open_button.clicked.connect(self.run_directory_loader)
         self.recent_button.clicked.connect(self.open_most_recent)
         self.quit_button.clicked.connect(self.close)
+
+    def create_new_project_directory(self):
+        """Basically the same as opening one except it does some checks for you"""
+        options = widgets.QFileDialog.Options()
+        selected_file = widgets.QFileDialog.getExistingDirectory(
+            self,
+            "Initialize a new project folder",
+            ".",
+            options=options
+        )
+        if selected_file:
+            selected_file = Path(selected_file)
+            if len(list(selected_file.glob("*"))):
+                pass  # Warn user that they might be overwriting an existnig folder
+            # TODO: see if there isa  project yaml in the folder already...
+            # TODO: call the import wav file function here...
+            self.loadDirectory.emit(selected_file)
 
     def run_directory_loader(self):
         """Dialog to read in a directory of wav files and intervals """

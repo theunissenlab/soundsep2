@@ -223,7 +223,7 @@ def _load_project_by_blocks(
         blocks.append(new_block)
         channel_ids[tuple([g["channel_id"] for g in group])].append(new_block)
 
-    if len(channel_ids) != 1:
+    if channel_keys is not None and len(channel_ids) != 1:
         raise LoadProjectError("Channel ids were not consistent over read blocks. "
             "Check the filename_pattern, block_keys, and channel_keys;\n"
             "For example:\n{}".format(

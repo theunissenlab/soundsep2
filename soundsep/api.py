@@ -62,7 +62,8 @@ class SoundsepControllerApi(QObject):
         try:
             self._app.load_project(directory)
         except Exception as e:
-            logger.error("Failed to open project {}".format(directory))
+            logger.exception("Failed to open project {}".format(directory))
+
             self._app.clear_project()
             self.projectClosed.emit()
         else:

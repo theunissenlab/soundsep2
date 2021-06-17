@@ -64,6 +64,9 @@ class SoundsepGui(widgets.QMainWindow):
 
         self.scrollbarToolbar = widgets.QToolBar()
         self.ui.leftVLayout.addWidget(self.scrollbarToolbar)
+        self.ui.leftVLayout.setSpacing(0)
+        self.ui.leftVLayout.setContentsMargins(0, 0, 0, 0)
+
         self.scrollbar = ProjectScrollbar(self.api.get_current_project(), self)
         self.scrollbarToolbar.addWidget(self.scrollbar)
         x0, x1 = self.api.workspace_get_lim()
@@ -71,7 +74,8 @@ class SoundsepGui(widgets.QMainWindow):
         self.scrollbar.positionChanged.connect(self.on_scrollbar_position_changed)
 
         self.setMinimumSize(1000, 500)
-        self.ui.mainSplitter.setSizes([1000, 600])
+        self.ui.mainSplitter.setSizes([1200, 600])
+        self.ui.splitter.setSizes([500, 500])
 
         self.roi = None
 

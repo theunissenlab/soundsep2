@@ -285,6 +285,18 @@ class SoundsepController(QObject):
     def has_project_loaded(self):
         return self.project is not None
 
+    def _write_default_project_config(self):
+        from soundsep.core.default_config import default_config
+        with open(self.paths.config_file, "w+") as f:
+            return f.write(yaml.dump(default_config))
+
+    def initialize_project(self, base_dir: Path):
+        self.paths = FileLocations(base_dir)
+        if not self.paths.config_file.exists():
+            self._write_default_project_config()
+        config = self.read_config(self.paths.config_file)
+        self.paths.create_folders()
+
     def load_project(self, base_dir: Path):
         self.paths = FileLocations(base_dir)
         if not self.paths.config_file.exists():
@@ -305,6 +317,10 @@ class SoundsepController(QObject):
             StftIndex(self.project, step, config.get("workspace.default_size", 2000)),
         )
 
+        # TODO: we should consider delaying the instantiation of services
+        # because it might be useful to have a project instantiated and then have files
+        # imported later...
+
         # Initialize Services
         self.ampenv = AmpenvService(self.project)
         self.sources = self.load_sources()
@@ -313,7 +329,7 @@ class SoundsepController(QObject):
         self.stft = StftCache(
             self.project,
             self.workspace.size,
-            pad=config.get("stft.cache.size", 4 * self.workspace.size),  # TODO whats a good default?
+            pad=config.get("stft.cache.size", 8 * self.workspace.size),  # TODO whats a good default?
             stft_config=StftConfig(window=config.get("stft.window", 302), step=step)
         )
         self.selection = SelectionService(self.project)

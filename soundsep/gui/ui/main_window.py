@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/media/storage/Projects/soundsep2/soundsep/gui/ui/main_window.ui'
+# Form implementation generated from reading ui file 'd:\projects\soundsep2\soundsep\gui\ui\main_window.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #
@@ -18,6 +18,8 @@ class Ui_MainWindow(object):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout_2 = QtWidgets.QGridLayout(self.centralwidget)
+        self.gridLayout_2.setContentsMargins(0, 0, 0, 0)
+        self.gridLayout_2.setSpacing(0)
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.mainSplitter = QtWidgets.QSplitter(self.centralwidget)
         self.mainSplitter.setOrientation(QtCore.Qt.Horizontal)
@@ -41,7 +43,7 @@ class Ui_MainWindow(object):
         self.mainScrollArea.setWidgetResizable(True)
         self.mainScrollArea.setObjectName("mainScrollArea")
         self.scrollAreaWidgetContents_5 = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents_5.setGeometry(QtCore.QRect(0, 0, 583, 965))
+        self.scrollAreaWidgetContents_5.setGeometry(QtCore.QRect(0, 0, 527, 982))
         self.scrollAreaWidgetContents_5.setObjectName("scrollAreaWidgetContents_5")
         self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents_5)
         self.verticalLayout_3.setObjectName("verticalLayout_3")
@@ -94,7 +96,7 @@ class Ui_MainWindow(object):
         self.gridLayout_2.addWidget(self.mainSplitter, 0, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1672, 20))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1672, 22))
         self.menubar.setObjectName("menubar")
         self.menuFile = QtWidgets.QMenu(self.menubar)
         self.menuFile.setObjectName("menuFile")

@@ -1,22 +1,17 @@
+import inspect
+import os
 from pathlib import Path
 
 import click
 
 
+__location__ = os.path.join(os.getcwd(), os.path.dirname(
+        inspect.getfile(inspect.currentframe())))
+
+
 @click.group()
 def cli():
     pass
-
-
-@click.command(help="Run SoundSep GUI")
-@click.option("-d", "--dir", "_dir", type=Path, default="data")
-def run_old(_dir):
-    from soundsep.core.app import Workspace
-    from soundsep.gui.main import run_app
-    from soundsep.app import MainApp
-
-    project = Workspace(_dir)
-    run_app(MainApp, project)
 
 
 @click.command(help="Run SoundSep GUI")
@@ -31,17 +26,12 @@ def run(_dir):
 @click.command(help="Open sphinx documentation in browser")
 def open_doc():
     import webbrowser
-    webbrowser.open('docs/_build/html/index.html', new=2)
+    webbrowser.open("file://" + os.path.realpath(os.path.join(__location__, "docs", "_build", "html", "index.html")), new=2)
 
 
 @click.command("pyuic", help="Run pyuic for QtDesigner .ui -> .py conversion")
 def build_ui():
-    import os
-    import inspect
     import subprocess
-
-    __location__ = os.path.join(os.getcwd(), os.path.dirname(
-        inspect.getfile(inspect.currentframe())))
     p = subprocess.Popen([
         "pyuic5",
         os.path.join(__location__, "soundsep", "gui", "ui", "main_window.ui"),
@@ -53,12 +43,7 @@ def build_ui():
 
 @click.command(help="Build sphinx documentation")
 def build_doc():
-    import os
-    import inspect
     import subprocess
-
-    __location__ = os.path.join(os.getcwd(), os.path.dirname(
-        inspect.getfile(inspect.currentframe())))
     p = subprocess.Popen(["make", "html"], cwd=os.path.join(__location__, "docs"))
     p.communicate()
 
@@ -68,7 +53,6 @@ def build_doc():
 @click.option("-v", "--verbose", type=int, default=1)
 @click.option("-c", "--coverage", "_coverage", help="Save coverage report", is_flag=True)
 def unittest(_dir, verbose, _coverage):
-    import os
     import unittest
 
     if _coverage:
@@ -83,9 +67,10 @@ def unittest(_dir, verbose, _coverage):
     unittest.TextTestRunner(verbosity=verbose).run(testsuite)
 
     if _coverage:
+        import webbrowser
         cov.stop()
-        cov.html_report(directory="coverage_html")
-        click.echo("Open coverage_html/index.html")
+        cov.html_report(directory=os.path.join(__location__, "coverage_html"))
+        webbrowser.open("file://" + os.path.realpath(os.path.join(__location__, "coverage_html", "index.html")), new=2)
     
 
 cli.add_command(run)

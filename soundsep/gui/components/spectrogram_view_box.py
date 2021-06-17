@@ -41,11 +41,3 @@ class SpectrogramViewBox(pg.ViewBox):
             self.zoomEvent.emit(1, pos)
         elif event.delta() < 0:
             self.zoomEvent.emit(-1, pos)
-        return
-        xmax = self.viewRange()[0][1]
-        ymax = self.viewRange()[1][1]
-        xy = (pos.x() / xmax, pos.y() / ymax)
-        if event.delta() > 0:
-            self.zoomEvent.emit(1, xy)
-        elif event.delta() < 0:
-            self.zoomEvent.emit(-1, xy)

@@ -15,8 +15,7 @@ def cli():
 
 
 @click.command(help="Run SoundSep GUI")
-@click.option("-d", "--dir", "_dir", type=Path, default="data")
-def run(_dir):
+def run():
     from soundsep.app.main import SoundsepApp, run_app
     from soundsep.app.app import SoundsepController
 

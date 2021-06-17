@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
@@ -17,8 +18,6 @@ logger = logging.getLogger(__name__)
 def run_app(*args, MainWindow=None, **kwargs):
     """Run an app using asyncio event loop
     """
-    import sys
-
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')

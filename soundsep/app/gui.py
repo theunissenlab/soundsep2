@@ -124,16 +124,11 @@ class SoundsepGui(widgets.QMainWindow):
         self.toggle_ampenv_action.setCheckable(True)
         self.toggle_ampenv_action.triggered.connect(self.draw_ampenv_plots)
 
-        # self.save_as_action = widgets.QAction("Save &As")
-        # self.save_as_action.setToolTip("Save the current segments")
-        # self.save_as_action.triggered.connect(self.on_save_as)
-
         # User events
         self.ui.menuFile.addAction(self.open_action)
         self.ui.menuFile.addAction(self.import_action)
         self.ui.menuFile.addSeparator()
         self.ui.menuFile.addAction(self.save_action)
-        # self.ui.menuFile.addAction(self.save_as_action)
         self.ui.menuFile.addSeparator()
         self.ui.menuFile.addAction(self.close_action)
 
@@ -156,7 +151,6 @@ class SoundsepGui(widgets.QMainWindow):
         self.close_action.setShortcut(QtGui.QKeySequence("Ctrl+W"))
         self.save_action.setShortcut(QtGui.QKeySequence.Save)
         self.create_source_action.setShortcut(QtGui.QKeySequence("Ctrl+N"))
-        # self.save_as_action.setShortcut(QtGui.QKeySequence.SaveAs)
 
     def closeEvent(self, event):
         if not self.api.check_if_sources_need_saving():
@@ -189,9 +183,6 @@ class SoundsepGui(widgets.QMainWindow):
         """Attempt save. Returns True if successful"""
         return self.api.save()
 
-    # def on_save_as(self):
-    #     self.api.save_sources()
-
     def draw_ampenv_plots(self):
         # TODO: This desperately needs to be made faster by caching/threading
         if self.toggle_ampenv_action.isChecked():
@@ -219,14 +210,11 @@ class SoundsepGui(widgets.QMainWindow):
             self.api.load_project(Path(selected_file))
 
     def next(self):
-        # TODO: If we plot the full extent of the spec cache and manipulate xrange we can update
-        # the plot here even as we accumulate move increments for a snappier response
         self._accumulated_movement += 1
         if not self._move_timer.isActive():
             self._move_timer.start(10)
 
     def prev(self):
-        """Move the workspace by a fixed amount. Accumulates over 200ms windows"""
         self._accumulated_movement -= 1
         if not self._move_timer.isActive():
             self._move_timer.start(10)
@@ -267,10 +255,7 @@ class SoundsepGui(widgets.QMainWindow):
         if selection:
             t, signal = self.api.get_signal(selection.x0, selection.x1)
             signal = signal[:, selection.source.channel]
-
             filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
-
-            # filtered = filtered[:, selection.source.channel]
             self.preview_plot_widget.waveform_plot.setData(t, filtered)
             self.preview_plot_widget.ampenv_plot.setData(t, ampenv)
 
@@ -295,6 +280,7 @@ class SoundsepGui(widgets.QMainWindow):
         # self.preview_plot_widget.setXRange(int(x.to_project_index()), int(y.to_project_index()))
 
     def draw_sources(self):
+        """Draw the current spectrogram position on all source views"""
         self._draw_sources_timer.stop()
         x0, x1 = self.api.workspace_get_lim()
         stft_data, _stale, freqs = self.api.get_workspace_stft()
@@ -302,7 +288,7 @@ class SoundsepGui(widgets.QMainWindow):
             source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel, :], freqs)
 
         if np.any(_stale):
-            self._draw_sources_timer.start(250)
+            self._draw_sources_timer.start(200)
 
     def on_sources_changed(self, sources: SourceService):
         for i in reversed(range(self.workspace_layout.count())):
@@ -314,14 +300,12 @@ class SoundsepGui(widgets.QMainWindow):
         self.source_views = []
         for source in sources:
             source_view = SourceView(source)
-            # for ch in range(self.api.get_current_project().channels):
             source_view.editSourceSignal.connect(partial(self.on_edit_source_signal, source))
             source_view.deleteSourceSignal.connect(partial(self.on_delete_source_signal, source))
 
             source_view.spectrogram.set_view_mode(STFTViewMode.DERIVATIVE if self.spectrogram_view_mode_button.isChecked() else STFTViewMode.NORMAL)
 
             # TODO: have a class for all the sources manage these?
-            source_view.spectrogram.getViewBox().dragComplete.connect(partial(self.on_drag_complete, source))
             source_view.spectrogram.getViewBox().dragInProgress.connect(partial(self.on_drag_in_progress, source))
             source_view.spectrogram.getViewBox().clicked.connect(partial(self.on_spectrogram_clicked, source))
             source_view.hover.connect(partial(self.on_spectrogram_hover, source))
@@ -338,9 +322,6 @@ class SoundsepGui(widgets.QMainWindow):
 
     def on_edit_source_signal(self, source):
         self.api.edit_source(source.index, source.name, source.channel)
-
-    def on_drag_complete(self, source):
-        pass
 
     def on_drag_in_progress(self, source, from_, to):
         if self.roi is None:
@@ -400,7 +381,6 @@ class SoundsepGui(widgets.QMainWindow):
             y,
             *self.api.get_current_project().to_block_index(x).block.get_channel_info(source.channel)
         ))
-        # TODO: show a indicator on all spectrograms of cursor position
 
     def on_spectrogram_zoom(self, source, direction: int, pos):
         """Buffer zoom events"""

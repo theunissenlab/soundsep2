@@ -18,37 +18,6 @@ class STFTViewMode(Enum):
     DERIVATIVE = 2
 
 
-# class FrequencyAxis(pg.AxisItem):
-#     """Frequency axis in kHz for spectrograms
-#     """
-#     def tickStrings(self, values, scale, spacing):
-#         return ["{}k".format(int(value // 1000)) for value in values]
-#
-#
-# class StftTimeAxis(pg.AxisItem):
-#     """Time axis converting StftIndex into timestamps
-#     """
-#
-#     def __init__(self, *args, project, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.project = project
-#
-#     def _format_time(self, t: float):
-#         """Format time in seconds to form hh:mm:ss"""
-#         h = int(t / 3600)
-#         t -= h * 3600
-#         m = int(t / 60)
-#         t -= m * 60
-#         s = t
-#         return "{}:{:02d}:{:.2f}".format(h, m, s)
-#
-#     def _to_timestamp(self, x):
-#         return ProjectIndex(self.project, x).to_timestamp()
-#
-#     def tickStrings(self, values, scale, spacing):
-#         return [self._format_time(self._to_timestamp(value)) for value in values]
-#
-
 class EditSourceModal(widgets.QDialog):
 
     deleteSourceSignal = pyqtSignal(Source)
@@ -188,6 +157,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
                 self.image.setImage(spectral_derivative(self._data))
                 self.image.setTransform(self._tr)
         elif self._view_mode == STFTViewMode.NORMAL:
+            # TODO: allow for configuration of the cmap
             self.set_cmap("turbo")
             if self._data is not None:
                 self.image.setImage(self._data)
@@ -238,6 +208,5 @@ class ScrollableSpectrogram(pg.PlotWidget):
         self.setYRange(freqs[0], freqs[-1], padding=0.0)
 
     def set_cmap(self, cmap):
-        # TODO this doesnt use config at all
         self._cmap = pg.colormap.get(cmap, source='matplotlib', skipCache=True)
         self.image.setLookupTable(self._cmap.getLookupTable(alpha=True))

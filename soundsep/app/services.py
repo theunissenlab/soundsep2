@@ -75,7 +75,6 @@ class SourceService(list):
         super().__init__()
 
     def create(self, name: str, channel: int) -> Source:
-        print("before", list(self))
         new_source = Source(self.project, name, channel, len(self))
         self.append(new_source)
         self._needs_saving = True
@@ -281,7 +280,6 @@ class StftCache(QObject):
         self._worker.start()
 
         self._trigger_jobs()  # Force it to populate the initial section
-        # self.destroyed.connect(self.on_destroy)
 
     def max_freq(self):
         """Return the largest frequency value in all the land"""

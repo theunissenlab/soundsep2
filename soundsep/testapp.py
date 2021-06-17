@@ -6,7 +6,7 @@ from PyQt5 import QtWidgets as widgets
 
 from qasync import QEventLoop
 
-from soundsep.gui.main import run_app
+from soundsep.app.main import run_app
 
 
 class ProjectLoader(widgets.QWidget):
@@ -24,12 +24,10 @@ class ProjectLoader(widgets.QWidget):
         button.clicked.connect(self.on_load)
 
     def on_load(self):
-        print("why2")
         self.loadDirectory.emit(Path("asdF"))
 
 
 class SoundsepGui(widgets.QWidget):
-
 
 
     def __init__(self, api, parent=None):

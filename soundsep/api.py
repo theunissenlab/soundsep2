@@ -309,7 +309,6 @@ class SoundsepControllerApi(QObject):
         # TODO: Clean this up along with the other workspace signal cache cleanup
         # For now, use it to see if we can just read from the cache
         xlim = self._app.workspace.get_lim(ProjectIndex)
-        # print(x0, x1, xlim, self._cache)
         if x0 >= xlim[0] and x1 <= xlim[1]:
             if not self._cache.get("get_workspace_signal"):
                 self._cache_workspace_signal()

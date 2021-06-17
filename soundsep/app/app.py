@@ -104,7 +104,7 @@ class FileLocations(dict):
 class Workspace(QObject):
     """Representation of the current working time range in StftIndex units
 
-    The workspace is represented by a start index (inclusive) and end index (exclusive)
+    The workspace is represented by a start index (inclusive) and end index (non-inclusive)
     """
     def __init__(self, start: StftIndex, stop: StftIndex):
         super().__init__()
@@ -266,7 +266,6 @@ class SoundsepController(QObject):
         self.project = None
         self.paths = None
         self.workspace = None
-        # self.services = None
 
         # TODO make these properties with require_project_loaded decorator?
         self.stft = None

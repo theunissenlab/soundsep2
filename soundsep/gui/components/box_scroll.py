@@ -21,8 +21,8 @@ class ProjectScrollbar(pg.PlotWidget):
         self.setMenuEnabled(False)
         self.hideAxis("left")
         self.disableAutoRange()
-        self.setMaximumHeight(100)
-        self.plotItem.setMaximumHeight(100)
+        self.setMaximumHeight(80)
+        self.plotItem.setMaximumHeight(80)
         self.setCursor(Qt.SplitHCursor)
         self.hideButtons()
 
@@ -35,7 +35,9 @@ class ProjectScrollbar(pg.PlotWidget):
         self.rect = pg.RectROI(0, 0, 1, 1,
             movable=True,
             pen=pg.mkPen("r", width=4),
-            hoverPen=pg.mkPen("r", width=6))
+            hoverPen=pg.mkPen("r", width=6),
+            resizable=False,
+        )
         self.addItem(self.rect)
         for handle in self.rect.getHandles():
             self.rect.removeHandle(handle)

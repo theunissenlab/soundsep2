@@ -204,6 +204,7 @@ class SegmentPlugin(BasePlugin):
             ))
 
         self._segmentation_datastore.sort()
+        self.panel.set_data(self._segmentation_datastore)
         self.refresh()
 
     def needs_saving(self):

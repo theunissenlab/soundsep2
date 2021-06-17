@@ -80,6 +80,7 @@ class SoundsepGui(widgets.QMainWindow):
         self.api.workspaceChanged.connect(self.on_workspace_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
         self.api.selectionChanged.connect(self.on_selection_changed)
+        self.api.projectReady.connect(self.draw_sources)
 
         # Rate limited events
         # TODO dynamically adjust the timeout based on the time it takes and or event backlog?
@@ -90,6 +91,9 @@ class SoundsepGui(widgets.QMainWindow):
         self._accumulated_zoom = 0
         self._zoom_timer = QTimer(self)
         self._zoom_timer.timeout.connect(self._zoom)
+
+        self._draw_sources_timer = QTimer(self)
+        self._draw_sources_timer.timeout.connect(self.draw_sources)
 
     def show_status(self, message: str, duration: int=1000):
         self.statusBar().showMessage(message, duration)
@@ -215,13 +219,13 @@ class SoundsepGui(widgets.QMainWindow):
         # the plot here even as we accumulate move increments for a snappier response
         self._accumulated_movement += 1
         if not self._move_timer.isActive():
-            self._move_timer.start(1)
+            self._move_timer.start(10)
 
     def prev(self):
         """Move the workspace by a fixed amount. Accumulates over 200ms windows"""
         self._accumulated_movement -= 1
         if not self._move_timer.isActive():
-            self._move_timer.start(1)
+            self._move_timer.start(10)
 
     def _move(self):
         x0, x1 = self.api.workspace_get_lim()
@@ -286,14 +290,16 @@ class SoundsepGui(widgets.QMainWindow):
         # self.preview_plot_widget.waveform_plot.setData(t_arr, data[:, 0])
         # self.preview_plot_widget.setXRange(int(x.to_project_index()), int(y.to_project_index()))
 
+    @diagnose
     def draw_sources(self):
+        self._draw_sources_timer.stop()
         x0, x1 = self.api.workspace_get_lim()
         stft_data, _stale, freqs = self.api.get_workspace_stft()
         for source_view in self.source_views:
             source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel, :], freqs)
 
         if np.any(_stale):
-            QTimer.singleShot(100, self.draw_sources)
+            self._draw_sources_timer.start(250)
 
     def on_sources_changed(self, sources: SourceService):
         for i in reversed(range(self.workspace_layout.count())):

@@ -313,7 +313,7 @@ class SoundsepController(QObject):
         self.stft = StftCache(
             self.project,
             self.workspace.size,
-            pad=config.get("stft.cache.size", 12 * self.workspace.size),  # TODO whats a good default?
+            pad=config.get("stft.cache.size", 4 * self.workspace.size),  # TODO whats a good default?
             stft_config=StftConfig(window=config.get("stft.window", 302), step=step)
         )
         self.selection = SelectionService(self.project)

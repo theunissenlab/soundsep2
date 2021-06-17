@@ -296,9 +296,18 @@ class StftCache(QObject):
         """
         potential_start = pos - self.pad
         start = max(potential_start, StftIndex(self.project, self.config.step, 0))
-        stop = min(potential_start + self.n_cache_total, StftIndex(self.project, self.config.step, self._project_stft_steps))
+        stop = min(start + self.n_cache_total, StftIndex(self.project, self.config.step, self._project_stft_steps))
 
         return (start, stop)
+
+    def set_active_size(self, n):
+        if n > self.n_cache_total:
+            raise RuntimeError("Cannot increase active size of cache greater than the cache was initaialized with")
+        if n < 0:
+            raise RuntimeError("Cannot set active size to zero")
+
+        self.pad = (self.n_cache_total - n) // 2
+        self.n_active = self.n_cache_total - 2 * self.pad
 
     def get_active_range_from_active_position(self, pos: StftIndex) -> Tuple[StftIndex, StftIndex]:
         """Get the active range from the active range's start position

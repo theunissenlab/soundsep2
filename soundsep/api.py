@@ -234,7 +234,13 @@ class SoundsepControllerApi(QObject):
         n : int
         """
         prev_size = self._app.workspace.size
+
+        max_size = self._app.stft.n_cache_total
+        if self._app.workspace.size + n >= max_size:
+            n = max_size - self._app.workspace.size
+
         self._app.workspace.scale(n)
+        self._app.stft.set_active_size(self._app.workspace.size)
         self._app.stft.set_position(self._app.workspace.start)
         self._cache["get_workspace_signal"] = None
         if n != 0:

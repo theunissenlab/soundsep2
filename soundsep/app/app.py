@@ -354,15 +354,16 @@ class SoundsepController(QObject):
     def load_sources(self) -> SourceService:
         """Read sources from a save file"""
         sources = SourceService(self.project)
-        data = pd.read_csv(self.paths.default_sources_savefile)
-        for i in range(len(data)):
-            row = data.iloc[i]
-            sources.append(Source(
-                self.project,
-                str(row["SourceName"]),
-                int(row["SourceChannel"]),
-                int(row["SourceIndex"]),
-            ))
+        if self.paths.default_sources_savefile.exists():
+            data = pd.read_csv(self.paths.default_sources_savefile)
+            for i in range(len(data)):
+                row = data.iloc[i]
+                sources.append(Source(
+                    self.project,
+                    str(row["SourceName"]),
+                    int(row["SourceChannel"]),
+                    int(row["SourceIndex"]),
+                ))
         return sources
 
     @require_project_loaded

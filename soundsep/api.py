@@ -66,6 +66,7 @@ class SoundsepControllerApi(QObject):
             self._app.clear_project()
             self.projectClosed.emit()
         else:
+            self.projectClosed.emit()
             self.projectLoaded.emit()
 
     @require_project_loaded

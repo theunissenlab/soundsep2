@@ -64,10 +64,27 @@ class Splash(widgets.QWidget):
         self.setLayout(layout)
         self.setMinimumSize(500, 300)
 
-        self.recent_button.clicked.connect(self.on_load)
+        self.open_button.clicked.connect(self.run_directory_loader)
+        self.recent_button.clicked.connect(self.open_most_recent)
         self.quit_button.clicked.connect(self.close)
 
-    def on_load(self):
+    def run_directory_loader(self):
+        """Dialog to read in a directory of wav files and intervals """
+
+        # TODO: this was copied directly from gui.py. can we put this in one spot?
+        options = widgets.QFileDialog.Options()
+        selected_file = widgets.QFileDialog.getExistingDirectory(
+            self,
+            "Load directory",
+            ".",
+            options=options
+        )
+
+        if selected_file:
+            self.loadDirectory.emit(Path(selected_file))
+
+    def open_most_recent(self):
+        # TODO: check if most recent exists (using qsettings?, otherwise grey out button)
         self.loadDirectory.emit(Path("data"))
 
 
@@ -119,12 +136,14 @@ class SoundsepApp(QObject):
         self.api.projectReady.emit()
 
     def remove_gui(self):
-        self.gui.close()
-        self.gui = None
-        self.show_loader()
+        if self.gui is not None:
+            self.gui.close()
+            self.gui = None
+
         self.splash.show()
 
     def replace_gui(self, new_gui: SoundsepGui):
+        self.remove_gui()
         self.splash.hide()
         self.gui = new_gui
         self.gui.showMaximized()

@@ -36,6 +36,14 @@ class ProjectPathFinder:
         return self.appdata_dir / "logs"
 
     @property
+    def recovery_dir(self):
+        return self.appdata_dir / "recovery"
+
+    @property
+    def recovery_file(self):
+        return self.recovery_dir / "recovery.pkl"
+
+    @property
     def _subdirectories(self) -> 'List[pathlib.Path]':
         return [
             self.appdata_dir,

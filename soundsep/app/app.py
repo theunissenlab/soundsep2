@@ -1,5 +1,6 @@
 import importlib
 import logging
+import pickle
 import pkgutil
 from typing import List
 
@@ -133,6 +134,18 @@ class SoundsepApp(QObject):
         ])
         data.to_csv(self.paths.sources_file)
         self.datastore["sources"].set_needs_saving(False)
+
+    def panic_save(self, e: Exception):
+        """Dumps the datastore, app state, etc to a pickle file"""
+        self.paths.recovery_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "services": self.services,
+            "state": self.state,
+            "datastore": self.datastore,
+            "exception": e,
+        }
+        with open(self.paths.recovery_file, "w+") as f:
+            pickle.dump(payload, f)
 
     def load_local_plugins(self) -> List[str]:
         logger.debug("Searching {} for plugin modules".format(

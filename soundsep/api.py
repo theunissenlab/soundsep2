@@ -433,8 +433,10 @@ class Api(QObject):
                 plugin.save()
         except Exception as e:
             logger.exception("Exception while saving")
+            self._app.panic_save(e)
             return False
         else:
+            logger.info("Saved data successfully")
             return True
 
     def filter_and_ampenv(

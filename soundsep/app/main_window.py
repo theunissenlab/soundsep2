@@ -174,8 +174,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
             event.ignore()
 
     def close(self):
-        super().close()
         self.api._close()
+        super().close()
 
     ################
     ## Api events ##
@@ -410,7 +410,11 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
     def on_save_requested(self) -> bool:
         """Attempt save. Return True if successful"""
-        return self.api.save()
+        result = self.api.save()
+        if result:
+            self.show_status("Save successful", 2000)
+        else:
+            widgets.QMessageBox.error("Save failed. See logs.")
 
     def on_toggle_view_mode(self):
         if self.spectrogram_view_mode_button.isChecked():

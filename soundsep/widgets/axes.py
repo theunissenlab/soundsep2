@@ -5,9 +5,19 @@ from soundsep.core.models import ProjectIndex
 
 class FrequencyAxis(pg.AxisItem):
     """Frequency axis in kHz for spectrograms
+
+    Drops the tick equalling zero if it is there
     """
     def tickStrings(self, values, scale, spacing):
         return ["{}k".format(int(value // 1000)) for value in values]
+
+    def tickValues(self, *args, **kwargs):
+        vals = super().tickValues(*args, **kwargs)
+        vals = [
+            (_spacing, ticks[1:] if ticks[0] == 0 else ticks)
+            for _spacing, ticks in vals
+        ]
+        return vals
 
 
 class ProjectIndexTimeAxis(pg.AxisItem):

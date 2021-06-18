@@ -1,13 +1,14 @@
 from enum import Enum
 from functools import partial
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5 import QtWidgets as widgets
 
 from soundsep.app.app import SoundsepApp
 from soundsep.app.main_window import SoundsepMainWindow
 from soundsep.app.project_creator import ProjectCreator
 from soundsep.app.project_loader import ProjectLoader
+from soundsep.ui.splash import Ui_SplashPage
 from soundsep.widgets.utils import not_implemented
 
 
@@ -27,20 +28,17 @@ class Splash(widgets.QWidget):
         self.connect_events()
 
     def init_ui(self):
-        layout = widgets.QVBoxLayout(self)
-        self.new_project_button = widgets.QPushButton("Create new project", self)
-        self.open_button = widgets.QPushButton("Open Directory", self)
-        self.quit_button = widgets.QPushButton("Quit", self)
-        layout.addWidget(self.new_project_button)
-        layout.addWidget(self.open_button)
-        layout.addWidget(self.quit_button)
-        self.setLayout(layout)
-        self.setMinimumSize(800, 600)
+        self.ui = Ui_SplashPage()
+        self.ui.setupUi(self)
+
+        # TODO: maybe this is too much
+        # self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setFixedSize(self.sizeHint())
 
     def connect_events(self):
-        self.new_project_button.clicked.connect(partial(self.choiceMade.emit, Splash.Option.CREATE_PROJECT))
-        self.open_button.clicked.connect(partial(self.choiceMade.emit, Splash.Option.OPEN_PROJECT))
-        self.quit_button.clicked.connect(partial(self.choiceMade.emit, Splash.Option.QUIT))
+        self.ui.createProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.CREATE_PROJECT))
+        self.ui.openProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.OPEN_PROJECT))
+        self.ui.exitButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.QUIT))
 
 
 class Launcher(QObject):

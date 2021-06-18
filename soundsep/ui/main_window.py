@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'd:\projects\soundsep2\soundsep\gui\ui\main_window.ui'
+# Form implementation generated from reading ui file 'd:\projects\soundsep2\soundsep\ui\main_window.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #

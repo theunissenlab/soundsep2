@@ -29,13 +29,17 @@ def open_doc():
 
 @click.command("pyuic", help="Run pyuic for QtDesigner .ui -> .py conversion")
 def build_ui():
+    import glob
     import subprocess
-    p = subprocess.Popen([
-        "pyuic5",
-        os.path.join(__location__, "soundsep", "ui", "main_window.ui"),
-        "-o",
-        os.path.join(__location__, "soundsep", "ui", "main_window.py"),
-    ])
+    ui_dir = os.path.join(__location__, "soundsep", "ui")
+    for ui_file in glob.glob(os.path.join(ui_dir, "*.ui")):
+        basename = os.path.splitext(os.path.basename(ui_file))[0]
+        p = subprocess.Popen([
+            "pyuic5",
+            os.path.join(ui_dir, "{}.ui".format(basename)),
+            "-o",
+            os.path.join(ui_dir, "{}.py".format(basename)),
+        ])
     p.communicate()
 
 

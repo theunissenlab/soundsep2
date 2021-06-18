@@ -9,6 +9,7 @@ import yaml
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from soundsep.api import Api
+from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
 from soundsep.app.services import (
     AmpenvService,
     SelectionService,
@@ -50,7 +51,15 @@ class SoundsepApp(QObject):
         self.project_dir = project_dir
         self.api = Api(self)
         self.paths = ProjectPathFinder(project_dir)
-        self.config = SoundsepApp.read_config(self.paths.config)
+
+        if not self.paths.config.exists():
+            raise ConfigDoesNotExist
+
+        try:
+            self.config = SoundsepApp.read_config(self.paths.config)
+        except:
+            raise BadConfigFormat
+
         self.project = load_project(
             self.paths.audio_dir,
             self.config["filename_pattern"],

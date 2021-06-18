@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from functools import partial
 
@@ -5,11 +6,15 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5 import QtWidgets as widgets
 
 from soundsep.app.app import SoundsepApp
+from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
 from soundsep.app.main_window import SoundsepMainWindow
 from soundsep.app.project_creator import ProjectCreator
 from soundsep.app.project_loader import ProjectLoader
 from soundsep.ui.splash import Ui_SplashPage
 from soundsep.widgets.utils import not_implemented
+
+
+logger = logging.getLogger(__name__)
 
 
 class Splash(widgets.QWidget):
@@ -52,6 +57,7 @@ class Launcher(QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current_window = None
+        self.splash = None
 
     def _center_on(self, w):
         rect = w.frameGeometry()
@@ -67,6 +73,8 @@ class Launcher(QObject):
     def show_splash(self):
         if self.current_window:
             self.current_window.close()
+        if self.splash:
+            self.splash.close()
 
         self.splash = Splash()
         self.splash.choiceMade.connect(self.on_splash_choice)
@@ -97,7 +105,36 @@ class Launcher(QObject):
             self.splash.close()
 
         # TODO: We should catch every possible error here we can think of...
-        app = SoundsepApp(project_dir)
+        try:
+            app = SoundsepApp(project_dir)
+        except ConfigDoesNotExist:
+            self.show_splash()
+            widgets.QMessageBox.critical(
+                self.splash,
+                "Config not found",
+                "soundsep.yaml in {} not found.".format(project_dir),
+            )
+            return
+        except BadConfigFormat:
+            self.show_splash()
+            widgets.QMessageBox.critical(
+                self.splash,
+                "Config not readable",
+                "Config file {} could not be read. Check syntax.".format(project_dir),
+            )
+            self.show_splash()
+            return
+        except Exception:
+            self.show_splash()
+            logger.exception("Error loading project")
+            widgets.QMessageBox.critical(
+                self.splash,
+                "Error",
+                "An unexpected error occured loading {}. See logs.".format(project_dir),
+            )
+            self.show_splash()
+            return
+
         self.current_window = SoundsepMainWindow(app.api)
         app.instantiate_plugins(gui=self.current_window)
         app.setup()

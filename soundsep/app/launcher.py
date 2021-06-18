@@ -1,7 +1,7 @@
 from enum import Enum
 from functools import partial
 
-from PyQt5.QtCore import QObject, Qt, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5 import QtWidgets as widgets
 
 from soundsep.app.app import SoundsepApp

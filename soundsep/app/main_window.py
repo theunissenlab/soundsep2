@@ -22,7 +22,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
     def __init__(self, api):
         super().__init__()
         self.api = api
-        self.title = "SoundSep"
+        self.setWindowTitle("SoundSep")
         self.source_views = []
         self.roi = None
 

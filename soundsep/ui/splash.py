@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'd:\projects\soundsep2\soundsep\ui\splash.ui'
+# Form implementation generated from reading ui file '/media/storage/Projects/soundsep2/soundsep/ui/splash.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #
@@ -14,12 +14,15 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_SplashPage(object):
     def setupUi(self, SplashPage):
         SplashPage.setObjectName("SplashPage")
-        SplashPage.resize(934, 360)
+        SplashPage.resize(934, 357)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(SplashPage.sizePolicy().hasHeightForWidth())
         SplashPage.setSizePolicy(sizePolicy)
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(":/icons/assets/icons/linux/512.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        SplashPage.setWindowIcon(icon)
         SplashPage.setStyleSheet("")
         self.gridLayout = QtWidgets.QGridLayout(SplashPage)
         self.gridLayout.setObjectName("gridLayout")
@@ -38,7 +41,7 @@ class Ui_SplashPage(object):
         self.verticalLayout.setObjectName("verticalLayout")
         self.label = QtWidgets.QLabel(self.widget)
         self.label.setText("")
-        self.label.setPixmap(QtGui.QPixmap("d:\\projects\\soundsep2\\soundsep\\ui\\../../../soundsep/src/main/icons/linux/256.png"))
+        self.label.setPixmap(QtGui.QPixmap(":/icons/assets/icons/linux/256.png"))
         self.label.setAlignment(QtCore.Qt.AlignCenter)
         self.label.setObjectName("label")
         self.verticalLayout.addWidget(self.label)
@@ -162,3 +165,4 @@ class Ui_SplashPage(object):
         self.openProjectButton.setText(_translate("SplashPage", "Open existing project..."))
         self.debugProjectButton.setText(_translate("SplashPage", "Debug project files"))
         self.exitButton.setText(_translate("SplashPage", "Exit"))
+from soundsep.ui import icons_rc

@@ -11,7 +11,11 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>SoundSep</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="icons.qrc">
+    <normaloff>:/icons/assets/icons/linux/512.png</normaloff>:/icons/assets/icons/linux/512.png</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout_2">
@@ -59,8 +63,8 @@
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>310</width>
-                <height>975</height>
+                <width>346</width>
+                <height>976</height>
                </rect>
               </property>
               <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -141,7 +145,7 @@
      <x>0</x>
      <y>0</y>
      <width>1670</width>
-     <height>22</height>
+     <height>20</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -296,6 +300,8 @@
    <header>soundsep.widgets.preview_plot</header>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="icons.qrc"/>
+ </resources>
  <connections/>
 </ui>

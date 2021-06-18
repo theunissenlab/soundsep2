@@ -31,7 +31,18 @@ def open_doc():
 def build_ui():
     import glob
     import subprocess
+
     ui_dir = os.path.join(__location__, "soundsep", "ui")
+
+    for ui_file in glob.glob(os.path.join(ui_dir, "*.qrc")):
+        basename = os.path.splitext(os.path.basename(ui_file))[0]
+        p = subprocess.Popen([
+            "pyrcc5",
+            os.path.join(ui_dir, "{}.qrc".format(basename)),
+            "-o",
+            os.path.join(ui_dir, "{}_rc.py".format(basename)),
+        ])
+
     for ui_file in glob.glob(os.path.join(ui_dir, "*.ui")):
         basename = os.path.splitext(os.path.basename(ui_file))[0]
         p = subprocess.Popen([
@@ -39,7 +50,10 @@ def build_ui():
             os.path.join(ui_dir, "{}.ui".format(basename)),
             "-o",
             os.path.join(ui_dir, "{}.py".format(basename)),
+            "--import-from=soundsep.ui",
+            "--resource-suffix=_rc",
         ])
+
     p.communicate()
 
 

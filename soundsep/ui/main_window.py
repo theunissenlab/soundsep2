@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'd:\projects\soundsep2\soundsep\ui\main_window.ui'
+# Form implementation generated from reading ui file '/media/storage/Projects/soundsep2/soundsep/ui/main_window.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #
@@ -15,6 +15,9 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1670, 1040)
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(":/icons/assets/icons/linux/512.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        MainWindow.setWindowIcon(icon)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout_2 = QtWidgets.QGridLayout(self.centralwidget)
@@ -43,7 +46,7 @@ class Ui_MainWindow(object):
         self.mainScrollArea.setWidgetResizable(True)
         self.mainScrollArea.setObjectName("mainScrollArea")
         self.mainScrollAreaWidget = QtWidgets.QWidget()
-        self.mainScrollAreaWidget.setGeometry(QtCore.QRect(0, 0, 310, 975))
+        self.mainScrollAreaWidget.setGeometry(QtCore.QRect(0, 0, 346, 976))
         self.mainScrollAreaWidget.setObjectName("mainScrollAreaWidget")
         self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.mainScrollAreaWidget)
         self.verticalLayout_3.setObjectName("verticalLayout_3")
@@ -99,7 +102,7 @@ class Ui_MainWindow(object):
         self.gridLayout_2.addWidget(self.mainSplitter, 0, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1670, 22))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1670, 20))
         self.menubar.setObjectName("menubar")
         self.menuFile = QtWidgets.QMenu(self.menubar)
         self.menuFile.setObjectName("menuFile")
@@ -181,7 +184,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "SoundSep"))
         self.previewBox.setTitle(_translate("MainWindow", "Selection"))
         self.menuFile.setTitle(_translate("MainWindow", "&File"))
         self.menuSources.setTitle(_translate("MainWindow", "&Sources"))
@@ -208,3 +211,4 @@ class Ui_MainWindow(object):
         self.actionExport_to_Raven.setText(_translate("MainWindow", "Export to Raven TSV"))
         self.actionGithub.setText(_translate("MainWindow", "Source code"))
 from soundsep.widgets.preview_plot import PreviewPlot
+from soundsep.ui import icons_rc

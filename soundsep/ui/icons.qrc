@@ -1,0 +1,18 @@
+<RCC>
+  <qresource prefix="icons">
+    <file>assets/icons/base/16.png</file>
+    <file>assets/icons/base/24.png</file>
+    <file>assets/icons/base/32.png</file>
+    <file>assets/icons/base/48.png</file>
+    <file>assets/icons/base/64.png</file>
+    <file>assets/icons/linux/128.png</file>
+    <file>assets/icons/linux/256.png</file>
+    <file>assets/icons/linux/512.png</file>
+    <file>assets/icons/linux/1024.png</file>
+    <file>assets/icons/mac/128.png</file>
+    <file>assets/icons/mac/256.png</file>
+    <file>assets/icons/mac/512.png</file>
+    <file>assets/icons/mac/1024.png</file>
+    <file>assets/icons/Icon.ico</file>
+  </qresource>
+</RCC>

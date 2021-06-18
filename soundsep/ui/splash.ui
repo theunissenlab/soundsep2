@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>934</width>
-    <height>360</height>
+    <height>357</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -18,6 +18,10 @@
   </property>
   <property name="windowTitle">
    <string>SoundSep</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="icons.qrc">
+    <normaloff>:/icons/assets/icons/linux/512.png</normaloff>:/icons/assets/icons/linux/512.png</iconset>
   </property>
   <property name="styleSheet">
    <string notr="true"/>
@@ -42,7 +46,7 @@
              <string/>
             </property>
             <property name="pixmap">
-             <pixmap>../../../soundsep/src/main/icons/linux/256.png</pixmap>
+             <pixmap resource="icons.qrc">:/icons/assets/icons/linux/256.png</pixmap>
             </property>
             <property name="alignment">
              <set>Qt::AlignCenter</set>
@@ -220,6 +224,8 @@ QPushButton:hover {
    </item>
   </layout>
  </widget>
- <resources/>
+ <resources>
+  <include location="icons.qrc"/>
+ </resources>
  <connections/>
 </ui>

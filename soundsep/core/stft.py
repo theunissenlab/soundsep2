@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.fft import fft, fftfreq, next_fast_len
 
 
 def create_gaussian_window(half_window: int, nstd: float):

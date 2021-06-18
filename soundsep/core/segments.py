@@ -118,4 +118,3 @@ class BlockSegment(OrderableSegment):
 
     def read(self) -> np.ndarray:
         return self.project[self.start:self.stop]
-

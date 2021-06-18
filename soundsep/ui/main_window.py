@@ -43,7 +43,7 @@ class Ui_MainWindow(object):
         self.mainScrollArea.setWidgetResizable(True)
         self.mainScrollArea.setObjectName("mainScrollArea")
         self.mainScrollAreaWidget = QtWidgets.QWidget()
-        self.mainScrollAreaWidget.setGeometry(QtCore.QRect(0, 0, 526, 975))
+        self.mainScrollAreaWidget.setGeometry(QtCore.QRect(0, 0, 310, 975))
         self.mainScrollAreaWidget.setObjectName("mainScrollAreaWidget")
         self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.mainScrollAreaWidget)
         self.verticalLayout_3.setObjectName("verticalLayout_3")
@@ -207,4 +207,4 @@ class Ui_MainWindow(object):
         self.actionMatch_to_selection.setText(_translate("MainWindow", "Match to selection"))
         self.actionExport_to_Raven.setText(_translate("MainWindow", "Export to Raven TSV"))
         self.actionGithub.setText(_translate("MainWindow", "Source code"))
-from soundsep.gui.preview import PreviewPlot
+from soundsep.widgets.preview_plot import PreviewPlot

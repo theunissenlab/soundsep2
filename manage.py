@@ -32,9 +32,9 @@ def build_ui():
     import subprocess
     p = subprocess.Popen([
         "pyuic5",
-        os.path.join(__location__, "soundsep", "gui", "ui", "main_window.ui"),
+        os.path.join(__location__, "soundsep", "ui", "main_window.ui"),
         "-o",
-        os.path.join(__location__, "soundsep", "gui", "ui", "main_window.py"),
+        os.path.join(__location__, "soundsep", "ui", "main_window.py"),
     ])
     p.communicate()
 

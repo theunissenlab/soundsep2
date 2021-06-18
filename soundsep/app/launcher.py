@@ -1,6 +1,5 @@
 from enum import Enum
 from functools import partial
-from pathlib import Path
 
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5 import QtWidgets as widgets
@@ -9,7 +8,6 @@ from soundsep.app.app import SoundsepApp
 from soundsep.app.main_window import SoundsepMainWindow
 from soundsep.app.project_creator import ProjectCreator
 from soundsep.app.project_loader import ProjectLoader
-from soundsep.config.paths import ProjectPathFinder
 from soundsep.widgets.utils import not_implemented
 
 

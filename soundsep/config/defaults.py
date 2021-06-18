@@ -3,6 +3,8 @@ DEFAULTS = {
     "channel_keys": None,
     "block_keys": None,
 
+    # App/gui config
+    "source_view.minimum_height": 300,
     "workspace.default_size": 2000,
 
     # Ampenv defaults

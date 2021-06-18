@@ -1,16 +1,12 @@
 """Module for reading and writing data to and from the Project/Block/AudioFile organization
 """
 import collections
-import glob
 import itertools
 import os
 import parse
 from collections.abc import Iterable
-from enum import Enum
 from pathlib import Path
 from typing import List
-
-import soundfile
 
 from soundsep.core.models import AudioFile, Block, Project
 

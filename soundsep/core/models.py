@@ -264,7 +264,7 @@ class Block:
 
         return output
 
-    def read_one(self, i, channels:List[int]) -> np.typing.ArrayLike:
+    def read_one(self, i, channels: List[int]) -> np.typing.ArrayLike:
         """Read a single sample at index i
 
         Arguments
@@ -370,7 +370,7 @@ class Project:
         """List[Block]: An ordered list of the Blocks in the Project"""
         return self._blocks
 
-    def iter_blocks(self) -> Iterable[Tuple['ProjectIndex', 'ProjectIndex', 'Block']] :
+    def iter_blocks(self) -> Iterable[Tuple['ProjectIndex', 'ProjectIndex', 'Block']]:
         """Iterate over blocks in the Project
 
         Returns

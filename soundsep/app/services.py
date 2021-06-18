@@ -1,11 +1,11 @@
 import logging
 from collections import namedtuple
 from enum import Enum
-from queue import Queue
+from queue import Empty, Queue
 from typing import Optional, Tuple, Union
 
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
-from scipy.fft import fft, fftfreq, next_fast_len
+from scipy.fft import fft, fftfreq
 import numpy as np
 
 from soundsep.core.models import Project, ProjectIndex, Source, StftIndex
@@ -567,7 +567,7 @@ class Workspace(QObject):
         else:
             raise TypeError
 
-    def set_position(self, start: StftIndex, stop: StftIndex, preserve_requested_size: bool=False):
+    def set_position(self, start: StftIndex, stop: StftIndex, preserve_requested_size: bool = False):
         """Attempt to set a new start and stop position
 
         Arguments

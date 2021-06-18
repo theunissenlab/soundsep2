@@ -2,16 +2,16 @@ from collections import namedtuple
 from functools import partial
 
 import numpy as np
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import QTimer
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
 
 from soundsep.app.project_loader import ProjectLoader
-from soundsep.core.models import ProjectIndex, StftIndex
-from soundsep.gui.components.box_scroll import ProjectScrollbar
-from soundsep.gui.components.selection_box import SelectionBox
-from soundsep.gui.source_view import SourceView, STFTViewMode
-from soundsep.gui.ui.main_window import Ui_MainWindow
+from soundsep.core.models import ProjectIndex
+from soundsep.ui.main_window import Ui_MainWindow
+from soundsep.widgets.selection_box import SelectionBox
+from soundsep.widgets.box_scroll import ProjectScrollbar
+from soundsep.widgets.source_view import SourceView, STFTViewMode
 
 
 Roi = namedtuple("Roi", ["roi", "source"])
@@ -131,7 +131,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
     #########################
     ### Utility functions ###
     #########################
-    def show_status(self, message: str, duration: int=1000):
+    def show_status(self, message: str, duration: int = 1000):
         self.statusBar().showMessage(message, duration)
 
     def run_directory_loader(self):
@@ -210,6 +210,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
         for source in self.api.get_sources():
             source_view = SourceView(source)
+            source_view.setMinimumHeight(self.api.config["source_view.minimum_height"])
             source_view.editSourceSignal.connect(partial(self.on_edit_source_signal, source))
             source_view.deleteSourceSignal.connect(partial(self.on_delete_source_signal, source))
 
@@ -337,7 +338,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
         if not self.roi:
             self.api.clear_selection()
         else:
-            source_view = self.source_views[source.index]
             pos = self.roi.roi.pos()
             size = self.roi.roi.size()
             self.api.set_selection(
@@ -347,6 +347,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
                 pos.y() + size.y(),
                 source,
             )
+
     ##########################
     ### Navigation / Other ###
     ##########################
@@ -427,4 +428,5 @@ class SoundsepMainWindow(widgets.QMainWindow):
         panel = plugin.plugin_panel_widget()
         if panel:
             self.ui.pluginPanelToolbox.addTab(panel, panel.__class__.__name__)
-        menu = plugin.add_plugin_menu(self.ui.menuPlugins)
+
+        plugin.add_plugin_menu(self.ui.menuPlugins)

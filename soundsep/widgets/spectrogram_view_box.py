@@ -3,7 +3,7 @@
 
 import pyqtgraph as pg
 
-from PyQt5.QtCore import (Qt, QPointF, pyqtSignal, pyqtSlot)
+from PyQt5.QtCore import Qt, QPointF, pyqtSignal
 
 
 class SpectrogramViewBox(pg.ViewBox):

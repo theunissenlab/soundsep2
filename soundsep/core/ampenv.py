@@ -1,5 +1,5 @@
 import numpy as np
-from soundsig.signal import lowpass_filter, highpass_filter, bandpass_filter
+from soundsig.signal import lowpass_filter, highpass_filter
 
 
 def filter_and_ampenv(

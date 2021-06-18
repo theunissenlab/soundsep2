@@ -38,9 +38,11 @@ class ExportPlugin(BasePlugin):
         if "segments" not in datastore:
             logger.error("Attempted to but segments data not found. Is the SegmentPlugin loaded?")
             msg = widgets.QMessageBox()
-            msg.setIcon(QMessageBox.Critical)
+            msg.setIcon(widgets.QMessageBox.Critical)
             msg.setText("Error")
-            msg.setInformativeText(e)
+            msg.setInformativeText(
+                "Segment data not found in datastore. Keys: {}".format(list(datastore.keys()))
+            )
             msg.setWindowTitle("Error")
             return
 

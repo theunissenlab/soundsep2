@@ -2,9 +2,6 @@
 
 Could be used like a minimap kind of thing at some point
 """
-
-
-
 import pyqtgraph as pg
 from PyQt5.QtCore import Qt, QRectF, pyqtSignal
 

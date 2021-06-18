@@ -1,0 +1,5 @@
+[flake8]
+ignore = E226,E302,E41,E121,E125,E266,E126,E128
+max-line-length = 160
+exclude = soundsep/tests/*
+max-complexity = 10

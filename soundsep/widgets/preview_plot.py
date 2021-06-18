@@ -1,9 +1,6 @@
 import pyqtgraph as pg
 import numpy as np
 
-from PyQt5 import QtWidgets as widgets
-from PyQt5 import QtGui
-
 
 class PreviewPlot(pg.PlotWidget):
     """Preview plot. Has an automatic

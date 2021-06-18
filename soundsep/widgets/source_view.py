@@ -4,13 +4,14 @@ import pyqtgraph as pg
 import numpy as np
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
-from PyQt5.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt5.QtCore import QRectF, Qt, pyqtSignal
 
-from soundsep.gui.components.overlays import FloatingButton, FloatingComboBox
-from soundsep.gui.components.spectrogram_view_box import SpectrogramViewBox
 from soundsep.core.models import ProjectIndex, StftIndex, Source
 from soundsep.core.stft import spectral_derivative
-from soundsep.gui.components.axes import ProjectIndexTimeAxis, FrequencyAxis
+from soundsep.widgets.overlays import FloatingButton, FloatingComboBox
+from soundsep.widgets.spectrogram_view_box import SpectrogramViewBox
+
+from .axes import ProjectIndexTimeAxis, FrequencyAxis
 
 
 class STFTViewMode(Enum):

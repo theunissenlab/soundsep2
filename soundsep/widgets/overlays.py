@@ -1,5 +1,4 @@
 import PyQt5.QtWidgets as widgets
-from PyQt5.QtCore import Qt, QSize
 
 
 class FloatingButton(widgets.QPushButton):

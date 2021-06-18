@@ -8,7 +8,7 @@ import pandas as pd
 from PyQt5 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
-from soundsep.core.models import Source, ProjectIndex, StftIndex
+from soundsep.core.models import Source, ProjectIndex
 from soundsep.core.segments import Segment
 
 

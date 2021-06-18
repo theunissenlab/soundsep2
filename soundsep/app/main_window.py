@@ -223,9 +223,12 @@ class SoundsepMainWindow(widgets.QMainWindow):
             source_view.spectrogram.getViewBox().clicked.connect(partial(self.on_source_spectrogram_clicked, source))
             source_view.hover.connect(partial(self.on_source_spectrogram_hover, source))
             source_view.spectrogram.getViewBox().zoomEvent.connect(partial(self.on_source_spectrogram_zoom, source))
+            source_view.spectrogram.hideAxis("bottom")
 
             self.ui.workspaceLayout.addWidget(source_view)
             self.source_views.append(source_view)
+
+        self.source_views[-1].spectrogram.showAxis("bottom")
 
         self.draw_sources()
         self.draw_ampenv_plots()

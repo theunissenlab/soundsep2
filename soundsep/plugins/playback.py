@@ -55,8 +55,7 @@ class PlaybackPlugin(BasePlugin):
         self.play_audio()
 
     def stop_playback(self):
-        if self.output.state() == QAudio.ActiveState:
-            self.output.stop()
+        self.output.stop()
         if self.buffer.isOpen():
             self.buffer.close()
         self.data.clear()

@@ -20,6 +20,10 @@ class ProjectPathFinder:
         return self.project_dir / "audio"
 
     @property
+    def export_dir(self):
+        return self.project_dir / "export"
+
+    @property
     def plugin_dir(self):
         return self.project_dir / "plugins"
 
@@ -48,6 +52,7 @@ class ProjectPathFinder:
         return [
             self.appdata_dir,
             self.audio_dir,
+            self.export_dir,
             self.plugin_dir,
             self.save_dir,
             self.logs_dir

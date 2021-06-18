@@ -73,7 +73,7 @@ class SoundsepApp(QObject):
         """
         with open(path, "r") as f:
             local_config = yaml.load(f, Loader=yaml.SafeLoader)
-        return DEFAULTS | local_config
+        return {**DEFAULTS, **local_config}
 
     def instantiate_plugins(self, gui: 'soundsep.app.main_window.SoundsepMainWindow'):
         local_plugin_modules = self.load_local_plugins()

@@ -46,6 +46,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
     def init_ui(self):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        self.ui.verticalLayout_3.setSpacing(0)
+        self.ui.verticalLayout_3.setContentsMargins(0, 0, 0, 0)
 
         # Cleanup plugin panel
         self.ui.pluginPanelToolbox.clear()
@@ -142,7 +144,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
     ##################
     ### Close hook ###
     ##################
-
     def confirm_close(self):
         """Returns True if a close action should be completed"""
         if not self.api.needs_saving():
@@ -323,11 +324,13 @@ class SoundsepMainWindow(widgets.QMainWindow):
     def draw_roi(self, source, from_, to):
         source_view = self.source_views[source.index]
 
+        disp = to - from_
+
         self.roi = Roi(
             source=source,
             roi=SelectionBox(
-                pos=from_,
-                size=to - from_,
+                pos=(min(to.x(), from_.x()), min(to.y(), from_.y())),
+                size=(np.abs(disp.x()), np.abs(disp.y())),
                 pen=(156, 156, 100),
                 rotatable=False,
                 removable=False,

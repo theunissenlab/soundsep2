@@ -125,6 +125,8 @@ class SegmentVisualizer(QtGui.QGraphicsRectItem):
 
 class SegmentPlugin(BasePlugin):
 
+    SAVE_FILENAME = "segments.csv"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.panel = SegmentPanel()
@@ -149,7 +151,7 @@ class SegmentPlugin(BasePlugin):
         self.delete_button = widgets.QPushButton("-Segments")
         self.delete_button.clicked.connect(self.on_delete_segment_activated)
 
-        self.api.projectReady.connect(self.on_project_ready)
+        self.api.projectLoaded.connect(self.on_project_ready)
         self.api.workspaceChanged.connect(self.on_workspace_changed)
         self.api.selectionChanged.connect(self.on_selection_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
@@ -169,9 +171,7 @@ class SegmentPlugin(BasePlugin):
 
     def on_project_ready(self):
         """Called once"""
-        save_file = self.api.paths().save_dir / "segments.csv"
-        project = self.api.get_current_project()
-
+        save_file = self.api.paths.save_dir / self.SAVE_FILENAME
         if not save_file.exists():
             return
 
@@ -198,8 +198,8 @@ class SegmentPlugin(BasePlugin):
         }
         for source_key, (start, stop) in zip(sources, indices):
             self._segmentation_datastore.append(Segment(
-                ProjectIndex(project, start),
-                ProjectIndex(project, stop),
+                self.api.make_project_index(start),
+                self.api.make_project_index(stop),
                 source_dict[source_key]
             ))
 
@@ -216,7 +216,6 @@ class SegmentPlugin(BasePlugin):
         # Can we recover from this? or should we hash the project so we can at least
         # warn the user when things dont match up to when the file was saved?
         segment_dicts = []
-        project = self.api.get_current_project()
         for segment in self._segmentation_datastore:
             segment_dicts.append({
                 "SourceName": segment.source.name,
@@ -224,13 +223,13 @@ class SegmentPlugin(BasePlugin):
                 "StartIndex": int(segment.start),
                 "StopIndex": int(segment.stop),
             })
-        pd.DataFrame(segment_dicts).to_csv(self.api.paths().save_dir / "segments.csv")
+        pd.DataFrame(segment_dicts).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
         self._needs_saving = False
 
-    def on_sources_changed(self, sources):
+    def on_sources_changed(self):
         self.refresh()
 
-    def on_workspace_changed(self, x: StftIndex, y: StftIndex):
+    def on_workspace_changed(self):
         self.refresh()
 
     def on_selection_changed(self):
@@ -264,6 +263,8 @@ class SegmentPlugin(BasePlugin):
 
         selection = self.api.get_selection()
 
+        # TODO: BUG; deleting a source should delete all its segments!
+
         for segment in self._segmentation_datastore[first_segment_idx:last_segment_idx]:
             source_view = self.gui.source_views[segment.source.index]
             rect = SegmentVisualizer(segment, source_view.spectrogram, "#00ff00", 0.3, (0.05, 0.95), self)
@@ -271,9 +272,9 @@ class SegmentPlugin(BasePlugin):
             self._annotations.append((source_view.spectrogram, rect))
 
             if selection and segment.source == selection.source:
-                rect = SegmentVisualizer(segment, self.gui.preview_plot_widget, "#00aa00", 0.3, (0.4, 0.6), self)
-                self.gui.preview_plot_widget.addItem(rect)
-                self._annotations.append((self.gui.preview_plot_widget, rect))
+                rect = SegmentVisualizer(segment, self.gui.ui.previewPlot, "#00aa00", 0.3, (0.4, 0.6), self)
+                self.gui.ui.previewPlot.addItem(rect)
+                self._annotations.append((self.gui.ui.previewPlot, rect))
 
     def on_delete_segment_activated(self):
         selection = self.api.get_selection()

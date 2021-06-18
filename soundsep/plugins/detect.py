@@ -99,7 +99,7 @@ class DetectPlugin(BasePlugin):
         self.threshold_preview_plot = pg.InfiniteLine(pos=0, angle=0, movable=True)
         self.threshold_preview_plot.setCursor(Qt.SplitVCursor)
         self.threshold_preview_plot.setPen(pg.mkPen((20, 20, 20), width=3))
-        self.gui.preview_plot_widget.addItem(self.threshold_preview_plot)
+        self.gui.ui.previewPlot.addItem(self.threshold_preview_plot)
 
     def init_actions(self):
         self.detect_action = widgets.QAction("Detect in selection", self)
@@ -150,7 +150,7 @@ class DetectPlugin(BasePlugin):
         if not selection:
             return
 
-        self.api.plugins()["SegmentPlugin"].delete_segments(
+        self.api.plugins["SegmentPlugin"].delete_segments(
             selection.x0,
             selection.x1,
             selection.source
@@ -161,19 +161,17 @@ class DetectPlugin(BasePlugin):
         filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
         threshold = self.compute_threshold(signal, ampenv)
 
-        config = self.api.read_config()
-
         intervals = threshold_events(
             ampenv,
             threshold,
-            sampling_rate=self.api.get_current_project().sampling_rate,
-            ignore_width=config.get("detection.ignore_width", 0.01),
-            min_size=config.get("detection.min_size", 0.01),
-            fuse_duration=config.get("detection.fuse_duration", 0.01)
+            sampling_rate=self.api.project.sampling_rate,
+            ignore_width=self.api.config.get("detection.ignore_width", 0.01),
+            min_size=self.api.config.get("detection.min_size", 0.01),
+            fuse_duration=self.api.config.get("detection.fuse_duration", 0.01)
         )
 
         for interval0, interval1 in intervals:
-            self.api.plugins()["SegmentPlugin"].create_segment(
+            self.api.plugins["SegmentPlugin"].create_segment(
                 selection.x0 + int(interval0),
                 selection.x0 + int(interval1),
                 selection.source

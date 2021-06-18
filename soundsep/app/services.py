@@ -1,5 +1,6 @@
 import logging
 from collections import namedtuple
+from enum import Enum
 from queue import Queue
 from typing import Optional, Tuple, Union
 
@@ -74,7 +75,14 @@ class SourceService(list):
         self._needs_saving = False
         super().__init__()
 
+    @property
+    def _existing_names(self):
+        return set([s.name for s in self])
+
     def create(self, name: str, channel: int) -> Source:
+        if name in self._existing_names:
+            raise ValueError("Cannot create a Source with a non-unique name")
+
         new_source = Source(self.project, name, channel, len(self))
         self.append(new_source)
         self._needs_saving = True
@@ -98,6 +106,27 @@ class SourceService(list):
 
     def needs_saving(self) -> bool:
         return self._needs_saving
+
+    def create_template_source(self) -> 'Source':
+        """Creates a new source with a generic name on the next available channel
+        """
+        if len(self):
+            next_channel = int(np.max([s.channel for s in self])) + 1
+        else:
+            next_channel = 0
+
+        if next_channel >= self.project.channels:
+            next_channel = 0
+
+        existing_names = self._existing_names
+        # Try names until we get a unique one
+        name_idx = next_channel
+        try_name = "New Source {}".format(name_idx)
+        while try_name in existing_names:
+            name_idx += 1
+            try_name = "New Source {}".format(name_idx)
+
+        return self.create(try_name, next_channel)
 
 
 class AmpenvService:
@@ -281,6 +310,9 @@ class StftCache(QObject):
 
         self._trigger_jobs()  # Force it to populate the initial section
 
+    def close(self):
+        self._worker.cancel()
+
     def max_freq(self):
         """Return the largest frequency value in all the land"""
         return self._max_freq
@@ -414,3 +446,156 @@ class StftCache(QObject):
         stop_idx = stop - self._start_ptr
 
         return self._data[start_idx:stop_idx], self._stale[start_idx:stop_idx]
+
+
+class Workspace(QObject):
+    """Representation of the current working time range in StftIndex units
+
+    The workspace is represented by a start index (inclusive) and end index (non-inclusive)
+    """
+
+    class Alignment(Enum):
+        Left = "left"
+        Center = "center"
+        Right = "right"
+
+    def __init__(self, start: StftIndex, stop: StftIndex):
+        super().__init__()
+        if start.project != stop.project:
+            raise TypeError("Cannot instantiate Workspace with StftIndex values from different projects")
+        if start.step != stop.step:
+            raise TypeError("Cannot instantiate Workspace with StftIndex values with different step sizes")
+
+        self.start = start
+        self.stop = stop
+        self.set_position(start, stop)
+
+    def __repr__(self):
+        return "Workspace<{}, {}>".format(self.start, self.stop)
+
+    @property
+    def project(self) -> Project:
+        """The project the Workspace is referencing"""
+        return self.start.project
+
+    @property
+    def step(self) -> int:
+        """The step size of the Workspace's StftIndex units"""
+        return self.start.step
+
+    @property
+    def max_size(self) -> int:
+        """Total number of StftIndex frames available in project"""
+        return (self.project.frames // self.step) + 1
+
+    @property
+    def min_index(self) -> StftIndex:
+        return StftIndex(self.project, self.step, 0)
+
+    @property
+    def max_index(self) -> StftIndex:
+        return StftIndex(self.project, self.step, self.max_size)
+
+    @property
+    def size(self) -> int:
+        """Return the size of the Workspace in StftIndex units"""
+        return self.stop - self.start
+
+    def move_to(self, start: StftIndex):
+        """Move the starting point of the Workspace to the given index, preseving size
+
+        Movement will stop when an endpoint is reached
+
+        Arguments
+        ---------
+        start : StftIndex
+        """
+        dx = start - self.start
+        return self.move_by(dx)
+
+    def move_by(self, dx: int):
+        """Move the starting point of the Workspace by the given amount, preserving size
+
+        Movement will stop when an endpoint is reached
+
+        Arguments
+        ---------
+        dx : int
+        """
+        self.set_position(self.start + dx, self.stop + dx, preserve_requested_size=True)
+
+    def scale(self, n: int):
+        """Increase or decrease the extent of this Workspace by n StftIndex units
+
+        The increments are made alternating endpoints (starting with self.stop) and
+        increasing/decreasing the size of the Workspace until the size has changed by n StftIndex
+        units. If the endpoints reach 0 or the end of the project, the remainder is added
+        to the other end.
+
+        Arguments
+        ---------
+        n : int
+        """
+        if n < 0:
+            n = max(n, 1 - self.size)
+        else:
+            n = min(n, self.max_size - self.size)
+
+        start = int(self.start)
+        stop = int(self.stop)
+        sign = np.sign(n)
+
+        for i in range(abs(n)):
+            if i % 2 == 0:
+                if int(stop) < self.max_size:
+                    stop += sign
+                else:
+                    start -= sign
+            else:
+                if int(start) > 0:
+                    start -= sign
+                else:
+                    stop += sign
+
+        self.set_position(StftIndex(self.project, self.step, start), StftIndex(self.project, self.step, stop))
+
+    def get_lim(self, as_: Union[ProjectIndex, StftIndex]) -> Tuple:
+        if as_ == ProjectIndex:
+            return (self.start.to_project_index(), self.stop.to_project_index())
+        elif as_ == StftIndex:
+            return (self.start, self.stop)
+        else:
+            raise TypeError
+
+    def set_position(self, start: StftIndex, stop: StftIndex, preserve_requested_size: bool=False):
+        """Attempt to set a new start and stop position
+
+        Arguments
+        ---------
+        start : StftIndex
+        stop : StftIndex
+        preserve_requested_size : bool (default False)
+            If False, will truncate the endpoints if they flow beyond the ends of the project.
+            If True, if the Workspace would overflow the bounds of the project, will adjust the start
+            or stop points to guarantee the Workspace size equals the requested stop - start.
+        """
+        new_start = self.min_index if start < self.min_index else start
+        new_stop = self.max_index if stop > self.max_index else stop
+
+        if stop - start < 1:
+            raise ValueError("Workspace stop must be after start: got {} to {}".format(start, stop))
+
+        if preserve_requested_size:
+            requested_size = stop - start
+            if new_stop - new_start == requested_size:
+                self.start = new_start
+                self.stop = new_stop
+            elif new_start == self.min_index:
+                self.start = new_start
+                self.stop = min(new_start + requested_size, self.max_index)
+            elif new_stop == self.max_index:
+                self.start = max(new_stop - requested_size, self.min_index)
+                self.stop = new_stop
+        else:
+            self.start = new_start
+            self.stop = new_stop

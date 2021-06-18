@@ -44,12 +44,10 @@ class ExportPlugin(BasePlugin):
             msg.setWindowTitle("Error")
             return
 
-        project = self.api.get_current_project()
-
         segment_dicts = []
         for segment in datastore["segments"]:
-            block_start = project.to_block_index(segment.start)
-            block_stop = project.to_block_index(segment.stop)
+            block_start = self.api.project.to_block_index(segment.start)
+            block_stop = self.api.project.to_block_index(segment.stop)
             original_file, original_channel = block_start.block.get_channel_info(segment.source.channel)
 
             segment_dicts.append({
@@ -65,7 +63,7 @@ class ExportPlugin(BasePlugin):
             })
 
         df = pd.DataFrame(segment_dicts)
-        
+
         # TODO: where to save this?
         logger.info("Saving exported segment data to {}".format("TBD"))
         print(df)

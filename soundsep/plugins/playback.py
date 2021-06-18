@@ -27,7 +27,7 @@ class PlaybackPlugin(BasePlugin):
         # Set up audio playback
         format = QAudioFormat()
         format.setChannelCount(1)
-        format.setSampleRate(self.api.get_current_project().sampling_rate)
+        format.setSampleRate(self.api.project.sampling_rate)
         format.setSampleSize(16)
         format.setCodec("audio/pcm")
         format.setByteOrder(QAudioFormat.LittleEndian)
@@ -76,7 +76,7 @@ class PlaybackPlugin(BasePlugin):
     def play_audio(self):
         if self.button.isChecked():
             # Fetch the visible data to play
-            _, y_data = self.gui.preview_plot_widget.waveform_plot.getData()
+            _, y_data = self.gui.ui.previewPlot.waveform_plot.getData()
 
             if self.output.state() == QAudio.ActiveState:
                 self.output.stop()

@@ -136,6 +136,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
         super().__init__(viewBox=SpectrogramViewBox(), background=None, parent=parent)
         self.setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
+        self.disableAutoRange()
         # self.setCursor(Qt.CrossCursor)
         self.hideButtons()
 

@@ -1,10 +1,16 @@
-default_config = {
+DEFAULTS = {
     "filename_pattern": "{filename}.wav",
     "channel_keys": None,
-    "block_keys": ["filename"],
+    "block_keys": None,
 
     "workspace.default_size": 2000,
 
+    # Ampenv defaults
+    "filter.low": 250,
+    "filter.high": 10000,
+    "filter.ampenv_rectify": 200.0,
+
+    # Stft defaults
     "stft.window": 302,
     "stft.step": 44,
     "stft.cache.size": 8 * 2000,

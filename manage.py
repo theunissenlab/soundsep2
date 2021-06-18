@@ -16,10 +16,9 @@ def cli():
 
 @click.command(help="Run SoundSep GUI")
 def run():
-    from soundsep.app.main import SoundsepApp, run_app
-    from soundsep.app.app import SoundsepController
-
-    run_app(SoundsepController(), None, MainWindow=SoundsepApp)
+    from soundsep.app.launcher import Launcher
+    from soundsep.app.start import run_app
+    run_app(MainWindow=Launcher)
 
 
 @click.command(help="Open sphinx documentation in browser")

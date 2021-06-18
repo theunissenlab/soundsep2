@@ -143,4 +143,11 @@ class Launcher(QObject):
         app.api._closeProject.connect(self.show_splash)
         app.api._switchProject.connect(self.open_project_directory)
 
+        # By default lets open to 3/4 screen size and center
+        screen = widgets.QApplication.primaryScreen()
+        size = screen.size()
+        rect = screen.availableGeometry()
+        self.current_window.resize(rect.width() * 0.75, rect.height() * 0.75)
+        self._center_on(self.current_window)
+
         self.current_window.show()

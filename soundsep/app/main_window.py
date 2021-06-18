@@ -246,7 +246,15 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.api.edit_source(source.index, source.name, source.channel)
 
     def on_delete_source_signal(self, source):
-        self.api.delete_source(source.index)
+        reply = widgets.QMessageBox.question(
+            self,
+            "Confirm delete source",
+            "Are you sure you want to delete {}? This will delete all labeled"
+            " segments on this source as well.".format(source.name),
+            widgets.QMessageBox.Yes | widgets.QMessageBox.Cancel
+        )
+        if reply == widgets.QMessageBox.Yes:
+            self.api.delete_source(source.index)
 
     def on_source_drag_in_progress(self, source, from_, to):
         if self.roi is None:

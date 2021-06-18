@@ -169,6 +169,10 @@ class SegmentPlugin(BasePlugin):
             datastore["segments"] = []
             return datastore["segments"]
 
+    @_segmentation_datastore.setter
+    def _segmentation_datastore(self, value):
+        self._datastore["segments"] = value
+
     def on_project_ready(self):
         """Called once"""
         save_file = self.api.paths.save_dir / self.SAVE_FILENAME
@@ -227,6 +231,11 @@ class SegmentPlugin(BasePlugin):
         self._needs_saving = False
 
     def on_sources_changed(self):
+        # We need to check if any sources have been deleted
+        existing_sources = set(self.api.get_sources())
+        self._segmentation_datastore = [
+            s for s in self._segmentation_datastore if s.source in existing_sources
+        ]
         self.refresh()
 
     def on_workspace_changed(self):

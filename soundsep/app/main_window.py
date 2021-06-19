@@ -1,3 +1,4 @@
+import logging
 from collections import namedtuple
 from functools import partial
 
@@ -16,6 +17,9 @@ from soundsep.widgets.source_view import SourceView, STFTViewMode
 
 
 Roi = namedtuple("Roi", ["roi", "source"])
+
+
+logger = logging.getLogger(__name__)
 
 
 class SoundsepMainWindow(widgets.QMainWindow):

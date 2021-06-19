@@ -301,7 +301,7 @@ class Api(QObject):
             Frequency axis of data
         """
         data, stale = self._app.services["stft"].read(start, stop)
-        return data, stale, self._app.services["stft"].get_freqs()
+        return data, stale, self._app.services["stft"].positive_freqs
 
     def get_workspace_signal(self) -> Tuple[list, np.ndarray]:
         """Return the xrange and signal of the current workspace
@@ -323,7 +323,7 @@ class Api(QObject):
         # the entire workspace signal at at time, just what we don't already
         # have...
         xlim = self._app.state["workspace"].get_lim(ProjectIndex)
-        data = self._app.project[xlim[0]:xlim[1]]
+        data = self._app.project[xlim[0]:xlim[1]].astype(np.float32)
         result = list(ProjectIndex.range(xlim[0], xlim[1])), data
         self._cache["get_workspace_signal"] = result
         return result
@@ -350,7 +350,7 @@ class Api(QObject):
             i1 = x1 - xlim[0]
             return cached_t[i0:i1], cached_data[i0:i1]
 
-        data = self._app.project[x0:x1]
+        data = self._app.project[x0:x1].astype(np.float32)
         return list(ProjectIndex.range(x0, x1)), data
 
     def set_selection(

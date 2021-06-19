@@ -11,6 +11,7 @@ import numpy as np
 from soundsep.core.models import Project, ProjectIndex, Source, StftIndex
 from soundsep.core.ampenv import filter_and_ampenv
 from soundsep.core.stft import create_gaussian_window
+from soundsep.core.utils import DuplicatedRingBuffer, get_blocks_of_ones
 
 
 logger = logging.getLogger(__name__)
@@ -299,9 +300,15 @@ class StftCache(QObject):
         # What index should the active window start on (relative to project)
         self._start_ptr = StftIndex(project, stft_config.step, 0)
 
+        self._positive_freqs_filter = self._all_freqs() > 0
+        self.positive_freqs = self._all_freqs()[self._positive_freqs_filter]
+
         self._max_freq = (self.project.sampling_rate * 0.5) * (1 - (1 / (2 * self.config.window + 1)))
-        self._data = np.zeros((self.n_cache_total, self.project.channels, 2 * self.config.window + 1))
-        self._stale = np.ones(len(self._data)).astype(np.bool)
+        self._data = DuplicatedRingBuffer(np.zeros(
+            (self.n_cache_total, self.project.channels, len(self.positive_freqs)),
+            dtype=np.float32
+        ))
+        self._stale = DuplicatedRingBuffer(np.ones(len(self._data), dtype=np.bool))
 
         self.queue = Queue()
         self._worker = StftWorker(self.queue, project, self.config)
@@ -317,7 +324,7 @@ class StftCache(QObject):
         """Return the largest frequency value in all the land"""
         return self._max_freq
 
-    def get_freqs(self):
+    def _all_freqs(self):
         """Return the frequency range of the ffts, this includes negative frequencies"""
         return fftfreq(2 * self.config.window + 1, 1 / self.project.sampling_rate)
 
@@ -357,16 +364,8 @@ class StftCache(QObject):
         new_cache_bounds = self.get_cache_range_from_active_position(pos)
         offset = new_cache_bounds[0] - self._start_ptr
 
-        self._data = np.roll(self._data, -offset, axis=0)
-        self._stale = np.roll(self._stale, -offset)
-
-        n = np.abs(offset)
-        if offset < 0:
-            self._data[:n] = 0
-            self._stale[:n] = True
-        elif offset > 0:
-            self._data[-n:] = 0
-            self._stale[-n:] = True
+        self._data.roll(offset, fill=0)
+        self._stale.roll(offset, fill=True)
 
         self._start_ptr = new_cache_bounds[0]
         self._pos = pos
@@ -375,7 +374,7 @@ class StftCache(QObject):
 
     def _on_worker_result(self, idx: StftIndex, ch: int, fft_result):
         if 0 <= int(idx - self._start_ptr) < len(self._data):
-            self._data[idx - self._start_ptr, ch] = fft_result
+            self._data[idx - self._start_ptr, ch] = fft_result[self._positive_freqs_filter]
             self._stale[idx - self._start_ptr] = False
 
     def _trigger_jobs(self):
@@ -392,23 +391,18 @@ class StftCache(QObject):
 
         request_ranges = [
             (active_bounds[0], active_bounds[1]),
+            (active_bounds[1], cache_bounds[1]),
             (cache_bounds[0], active_bounds[0]),
-            (active_bounds[1], cache_bounds[1])
         ]
 
         for start, stop in request_ranges:
-            current_range_start = None
-            for stft_idx in StftIndex.range(start, stop):
-                i = stft_idx - self._start_ptr
-                if self._stale[i] and current_range_start is None:
-                    current_range_start = stft_idx
-                elif not self._stale[i] and current_range_start is not None:
-                    jobs.append((current_range_start, stft_idx))
-                    current_range_start = None
-            if current_range_start is not None:
-                jobs.append((current_range_start, stft_idx + 1))
-
-        logger.debug("Requesting STFT data from {}".format(jobs))
+            for a, b in get_blocks_of_ones(
+                    self._stale[start - self._start_ptr:stop - self._start_ptr]
+                    ):
+                jobs.append((
+                    start + int(a),
+                    start + int(b)
+                ))
 
         for job in jobs:
             self._worker.queue.put((

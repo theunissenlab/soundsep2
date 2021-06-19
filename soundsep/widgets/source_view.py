@@ -187,10 +187,6 @@ class ScrollableSpectrogram(pg.PlotWidget):
         return QRectF(x0, y0, x1 - x0, y1 - y0)
 
     def set_data(self, i0: StftIndex, i1: StftIndex, data: np.ndarray, freqs: np.ndarray):
-        positive_freqs = freqs >= 0
-        data = data[:, positive_freqs]
-        freqs = freqs[positive_freqs]
-
         df = freqs[1] - freqs[0]
         self._tr = QtGui.QTransform()
         self._tr.translate(i0.to_project_index(), 0)

@@ -18,4 +18,4 @@ def filter_and_ampenv(
     rectified = np.abs(filtered)
     ampenv = lowpass_filter(rectified.T, sampling_rate, rectify_lowpass, filter_order=10).T
 
-    return filtered, ampenv
+    return filtered.astype(np.float32), ampenv.astype(np.float32)

@@ -35,7 +35,7 @@ class ProjectIndexTimeAxis(pg.AxisItem):
         m = int(t / 60)
         t -= m * 60
         s = t
-        return "{}:{:02d}:{:.02f}".format(h, m, s)
+        return "{}:{:02d}:{:05.02f}".format(h, m, s)
 
     def _to_timestamp(self, x):
         return ProjectIndex(self.project, x).to_timestamp()

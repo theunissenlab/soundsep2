@@ -14,6 +14,10 @@ from soundsep.core.models import ProjectIndex, StftIndex, Source
 logger = logging.getLogger(__name__)
 
 
+class SignalTooShort(Exception):
+    """Signal was too short to compute ampenv"""
+
+
 class Api(QObject):
 
     # These signals are propogated up to the Loader
@@ -472,5 +476,9 @@ class Api(QObject):
         if f0 > f1:
             raise ValueError("Cannot filter with f0 > f1")
 
+        if len(signal) <= 33:
+            raise SignalTooShort
+
         return self._app.services["ampenv"].filter_and_ampenv(
-                signal, f0, f1, self._app.config["filter.ampenv_rectify"])
+                signal, f0, f1, self._app.config["filter.ampenv_rectify"]
+        )

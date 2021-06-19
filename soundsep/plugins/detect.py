@@ -6,6 +6,7 @@ import pyqtgraph as pg
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 
+from soundsep.api import SignalTooShort
 from soundsep.core.base_plugin import BasePlugin
 
 
@@ -138,7 +139,11 @@ class DetectPlugin(BasePlugin):
             # we call it back to back here and on detect
             t, signal = self.api.get_signal(selection.x0, selection.x1)
             signal = signal[:, selection.source.channel]
-            filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
+            try:
+                filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
+            except SignalTooShort:
+                logger.debug("Signal was too short for ampenv: {}".format(signal.size))
+                return
             threshold = self.compute_threshold(signal, ampenv)
             self.threshold_preview_plot.setValue(threshold)
 

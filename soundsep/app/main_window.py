@@ -6,6 +6,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
 
+from soundsep.api import SignalTooShort
 from soundsep.app.project_loader import ProjectLoader
 from soundsep.core.models import ProjectIndex
 from soundsep.ui.main_window import Ui_MainWindow
@@ -238,7 +239,11 @@ class SoundsepMainWindow(widgets.QMainWindow):
         if selection:
             t, signal = self.api.get_signal(selection.x0, selection.x1)
             signal = signal[:, selection.source.channel]
-            filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
+            try:
+                filtered, ampenv = self.api.filter_and_ampenv(signal, selection.f0, selection.f1)
+            except SignalTooShort:
+                logger.debug("Signal was too short for ampenv: {}".format(signal.size))
+                return
             self.ui.previewPlot.waveform_plot.setData(t, filtered)
             self.ui.previewPlot.ampenv_plot.setData(t, ampenv)
 

@@ -12,6 +12,7 @@ from soundsep.app.project_creator import ProjectCreator
 from soundsep.app.project_loader import ProjectLoader
 from soundsep.ui.splash import Ui_SplashPage
 from soundsep.widgets.utils import not_implemented
+from soundsep.app.creation_wizard import ProjectDebugView
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class Splash(widgets.QWidget):
     def connect_events(self):
         self.ui.createProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.CREATE_PROJECT))
         self.ui.openProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.OPEN_PROJECT))
+        self.ui.debugProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.DEBUG_PROJECT))
         self.ui.exitButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.QUIT))
 
 
@@ -58,6 +60,7 @@ class Launcher(QObject):
         super().__init__(*args, **kwargs)
         self.current_window = None
         self.splash = None
+        self.debug_view = None
 
     def _center_on(self, w):
         rect = w.frameGeometry()
@@ -94,8 +97,10 @@ class Launcher(QObject):
             self.current_window.openProjectCanceled.connect(self.show_splash)
             self.current_window.show()
         elif choice == Splash.Option.DEBUG_PROJECT:
-            not_implemented("Debugger not implemented")
-            self.show_splash()
+            self.debug_view = ProjectDebugView()
+            self.debug_view.show()
+            # not_implemented("Debugger not implemented")
+            # self.show_splash()
         elif choice == Splash.Option.QUIT:
             self.splash.close()
 
@@ -103,6 +108,8 @@ class Launcher(QObject):
         if self.current_window:
             self.current_window.close()
             self.splash.close()
+        if self.debug_view:
+            self.debug_view.close()
 
         # TODO: We should catch every possible error here we can think of...
         try:

@@ -270,7 +270,7 @@ class SegmentPlugin(BasePlugin):
         index = self.panel.table.model().index(first_segment_idx, 0)
         self.panel.table.scrollTo(index)
 
-        selection = self.api.get_selection()
+        selection = self.api.get_fine_selection()
 
         # TODO: BUG; deleting a source should delete all its segments!
 
@@ -286,12 +286,12 @@ class SegmentPlugin(BasePlugin):
                 self._annotations.append((self.gui.ui.previewPlot, rect))
 
     def on_delete_segment_activated(self):
-        selection = self.api.get_selection()
+        selection = self.api.get_fine_selection()
         if selection:
             self.delete_segments(selection.x0, selection.x1, selection.source)
 
     def on_create_segment_activated(self):
-        selection = self.api.get_selection()
+        selection = self.api.get_fine_selection()
         if selection:
             self.create_segment(
                 selection.x0,

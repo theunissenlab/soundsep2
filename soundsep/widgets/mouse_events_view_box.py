@@ -6,7 +6,7 @@ import pyqtgraph as pg
 from PyQt5.QtCore import Qt, QPointF, pyqtSignal
 
 
-class SpectrogramViewBox(pg.ViewBox):
+class MouseEventsViewBox(pg.ViewBox):
     """A ViewBox for the Spectrogram viewer to handle user interactions
 
     This object manages click, drag, and wheel events on the spectrogram

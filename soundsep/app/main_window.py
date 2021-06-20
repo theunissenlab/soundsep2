@@ -11,8 +11,9 @@ from soundsep.api import SignalTooShort
 from soundsep.app.project_loader import ProjectLoader
 from soundsep.core.models import ProjectIndex
 from soundsep.ui.main_window import Ui_MainWindow
-from soundsep.widgets.selection_box import SelectionBox
+from soundsep.widgets.axes import ProjectIndexTimeAxis
 from soundsep.widgets.box_scroll import ProjectScrollbar
+from soundsep.widgets.selection_box import SelectionBox
 from soundsep.widgets.source_view import SourceView, STFTViewMode
 
 
@@ -42,6 +43,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.close_action = widgets.QAction("&Close")
         self.save_action = widgets.QAction("&Save")
         self.save_action.setToolTip("Save the current segements")
+        self.clear_selection_action = widgets.QAction("&Clear Current Selection")
+        self.clear_selection_action.setToolTip("Clear the currently selected data ranges")
         self.create_source_action = widgets.QAction("&Add source...")
         self.create_source_action.setToolTip("Create a new source")
         self.toggle_ampenv_action = widgets.QAction("Show &Amplitude Envelope")
@@ -53,6 +56,11 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.ui.setupUi(self)
         self.ui.verticalLayout_3.setSpacing(0)
         self.ui.verticalLayout_3.setContentsMargins(0, 0, 0, 0)
+
+        # Set plot axes
+        self.ui.previewPlot.setAxisItems({
+            "bottom": ProjectIndexTimeAxis(project=self.api.project, orientation="bottom")
+        })
 
         # Cleanup plugin panel
         self.ui.pluginPanelToolbox.clear()
@@ -88,6 +96,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.ui.menuFile.addAction(self.close_action)
         self.ui.menuSources.addAction(self.create_source_action)
         self.ui.menuView.addAction(self.toggle_ampenv_action)
+        self.ui.menuView.addAction(self.clear_selection_action)
 
         # Set screen sizes
         self.setMinimumSize(1400, 800)
@@ -101,6 +110,10 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.save_action.triggered.connect(self.on_save_requested)
         self.create_source_action.triggered.connect(self.on_add_source)
         self.toggle_ampenv_action.triggered.connect(self.on_toggle_view_mode)
+        self.clear_selection_action.triggered.connect(self.on_clear_selection_requested)
+
+        self.ui.previewPlot.fineSelectionMade.connect(self.on_fine_selection)
+        self.ui.previewPlot.fineSelectionCleared.connect(self.on_fine_selection_cleared)
 
         # API Events
         self.api.projectLoaded.connect(self.on_api_project_ready)
@@ -130,6 +143,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.prev_shortcut_arrow = widgets.QShortcut(QtGui.QKeySequence("left"), self)
         self.prev_shortcut_arrow.activated.connect(self.on_prev)
         self.toggle_ampenv_action.setShortcut(QtGui.QKeySequence("Ctrl+A"))
+        self.clear_selection_action.setShortcut(QtGui.QKeySequence("Escape"))
         self.open_action.setShortcut(QtGui.QKeySequence.Open)
         self.close_action.setShortcut(QtGui.QKeySequence("Ctrl+W"))
         self.save_action.setShortcut(QtGui.QKeySequence.Save)
@@ -250,6 +264,9 @@ class SoundsepMainWindow(widgets.QMainWindow):
                 return
             self.ui.previewPlot.waveform_plot.setData(t, filtered)
             self.ui.previewPlot.ampenv_plot.setData(t, ampenv)
+        else:
+            self.ui.previewPlot.waveform_plot.setData([], [])
+            self.ui.previewPlot.ampenv_plot.setData([], [])
 
     #################
     ## User events ##
@@ -371,6 +388,16 @@ class SoundsepMainWindow(widgets.QMainWindow):
                 source,
             )
 
+    def on_fine_selection(self, x0: float, x1: float):
+        if self.api.get_selection() is not None:
+            self.api.set_fine_selection(
+                self.api.make_project_index(x0),
+                self.api.make_project_index(x1)
+            )
+
+    def on_fine_selection_cleared(self):
+        self.api.clear_fine_selection()
+
     ##########################
     ### Navigation / Other ###
     ##########################
@@ -438,6 +465,9 @@ class SoundsepMainWindow(widgets.QMainWindow):
         else:
             for source_view in self.source_views:
                 source_view.spectrogram.set_view_mode(STFTViewMode.NORMAL)
+
+    def on_clear_selection_requested(self):
+        self.api.clear_selection()
 
     def attach_plugin(self, plugin: 'soundsep.core.base_plugin.BasePlugin'):
         """Put plugin widgets in their places

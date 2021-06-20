@@ -8,10 +8,9 @@ from PyQt5.QtCore import QRectF, Qt, pyqtSignal
 
 from soundsep.core.models import ProjectIndex, StftIndex, Source
 from soundsep.core.stft import spectral_derivative
-from soundsep.widgets.overlays import FloatingButton, FloatingComboBox
-from soundsep.widgets.spectrogram_view_box import SpectrogramViewBox
-
 from .axes import ProjectIndexTimeAxis, FrequencyAxis
+from .mouse_events_view_box import MouseEventsViewBox
+from .overlays import FloatingButton, FloatingComboBox
 
 
 class STFTViewMode(Enum):
@@ -134,7 +133,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
     """
 
     def __init__(self, parent=None):
-        super().__init__(viewBox=SpectrogramViewBox(), background=None, parent=parent)
+        super().__init__(viewBox=MouseEventsViewBox(), background=None, parent=parent)
         self.setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
         self.disableAutoRange()

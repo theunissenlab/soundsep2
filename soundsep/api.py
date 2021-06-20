@@ -30,6 +30,7 @@ class Api(QObject):
     configChanged = pyqtSignal(object)  # Not implemented yet
     workspaceChanged = pyqtSignal()
     selectionChanged = pyqtSignal()
+    fineSelectionChanged = pyqtSignal()
 
     def __init__(self, app: 'soundsep.app.app.SoundsepApp'):
         super().__init__()
@@ -384,18 +385,45 @@ class Api(QObject):
         self._app.state["selection"].set_selection(x0, x1, f0, f1, source)
         self.selectionChanged.emit()
 
+    def set_fine_selection(self, x0: ProjectIndex, x1: ProjectIndex):
+        """Set the current fine selection's time bounds, inheriting the existing selections frequency band
+
+        Arguments
+        ---------
+        x0 : ProjectIndex
+        x1 : ProjectIndex
+
+        Emits
+        -----
+        fineSelectionChanged
+        """
+        self._app.state["selection"].set_fine_selection(x0, x1)
+        self.fineSelectionChanged.emit()
+
     def clear_selection(self):
         """Clear the current selection
 
         Emits
         -----
         selectionChanged
+        fineSelectionChanged
         """
         self._app.state["selection"].clear()
         self.selectionChanged.emit()
+        self.fineSelectionChanged.emit()
+
+    def clear_fine_selection(self):
+        """Clear the current fine selection
+
+        Emits
+        -----
+        fineSelectionChanged
+        """
+        self._app.state["selection"].clear_fine_selection()
+        self.fineSelectionChanged.emit()
 
     def get_selection(self) -> 'Optional[Selection]':
-        """Clear the current selection
+        """Get the current selection
 
         Returns
         -------
@@ -403,6 +431,18 @@ class Api(QObject):
         """
         if self._app.state["selection"].is_set():
             return self._app.state["selection"].get_selection()
+        else:
+            return None
+
+    def get_fine_selection(self):
+        """Get the current fine selection
+
+        Returns
+        -------
+        selection : Optional[soundsep.app.services.Selection]
+        """
+        if self._app.state["selection"].is_set():
+            return self._app.state["selection"].get_fine_selection()
         else:
             return None
 

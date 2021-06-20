@@ -180,11 +180,9 @@ class Block:
         self._channel_mapping = Block.make_channel_mapping(self._files)
 
     def __repr__(self):
-        return "<Block: {} files; {} Hz; {} Ch; {} frames>".format(
+        return "<Block: {} files; {} Ch>".format(
             len(self._files),
-            self.sampling_rate,
             self.channels,
-            self.frames,
         )
 
     def __eq__(self, other_block: 'Block') -> bool:
@@ -343,12 +341,7 @@ class Project:
             warnings.warn("Blocks in Project have mismatched channel profiles but same number of channels per block.")
 
     def __repr__(self):
-        return "<Project: {} blocks; {} Hz; {} Ch; {} frames>".format(
-            len(self.blocks),
-            self.sampling_rate,
-            self.channels,
-            self.frames,
-        )
+        return "<Project: {} blocks>".format(len(self.blocks))
 
     @property
     def channels(self) -> int:

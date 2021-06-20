@@ -131,7 +131,7 @@ class DetectPlugin(BasePlugin):
 
     def on_selection_changed(self):
         """Update the preview plot with an ampenv"""
-        selection = self.api.get_selection()
+        selection = self.api.get_fine_selection()
         if not selection:
             self.threshold_preview_plot.setValue(0)
         else:
@@ -151,7 +151,7 @@ class DetectPlugin(BasePlugin):
         return self._threshold or 0.5 * np.mean(np.abs(ampenv))
 
     def on_detect_activated(self):
-        selection = self.api.get_selection()
+        selection = self.api.get_fine_selection()
         if not selection:
             return
 

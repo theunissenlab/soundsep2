@@ -27,15 +27,22 @@ class StftConfig(dict):
 
 
 class SelectionService:
+    """Keeps track of selection state, a rectangle of time and frequency bounds
+
+    Includes a "fine selection", which is a smaller ROI on top of the main roi
+    that can be accessed with get_fine_selection()
+    """
     def __init__(self, project: Project):
         self.project = project
         self._selection = None
+        self._fine_selection = None
 
     def is_set(self) -> bool:
         return self._selection is not None
 
     def clear(self):
         self._selection = None
+        self._fine_selection = None
 
     def set_selection(
             self,
@@ -67,6 +74,18 @@ class SelectionService:
 
     def get_selection(self) -> Optional[Selection]:
         return self._selection
+
+    def set_fine_selection(self, x0: ProjectIndex, x1: ProjectIndex):
+        if not self._selection:
+            raise ValueError("Cannot set a fine selection if no current selection exists")
+
+        self._fine_selection = Selection(x0, x1, self._selection.f0, self._selection.f1, self._selection.source)
+
+    def clear_fine_selection(self):
+        self._fine_selection = None
+
+    def get_fine_selection(self) -> Optional[Selection]:
+        return self._fine_selection or self._selection
 
 
 class SourceService(list):

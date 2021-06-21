@@ -190,12 +190,9 @@ class SoundsepMainWindow(widgets.QMainWindow):
     def closeEvent(self, event):
         if self.confirm_close():
             event.accept()
+            self.api._close()
         else:
             event.ignore()
-
-    def close(self):
-        self.api._close()
-        super().close()
 
     ################
     ## Api events ##

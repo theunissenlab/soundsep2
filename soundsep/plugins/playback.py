@@ -40,6 +40,7 @@ class PlaybackPlugin(BasePlugin):
         self.api.workspaceChanged.connect(self.stop_playback)
         self.api.selectionChanged.connect(self.stop_playback)
         self.api.sourcesChanged.connect(self.stop_playback)
+        self.api.closingProgram.connect(self.cleanup)
         self.output.stateChanged.connect(self.on_state_changed)
 
     def on_state_changed(self, state):
@@ -53,6 +54,9 @@ class PlaybackPlugin(BasePlugin):
         self.button.setChecked(not self.button.isChecked())
         self.playback_action.setChecked(self.button.isChecked())
         self.play_audio()
+
+    def cleanup(self):
+        self.stop_playback()
 
     def stop_playback(self):
         self.output.stop()

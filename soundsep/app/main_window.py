@@ -9,7 +9,7 @@ from PyQt5 import QtGui
 
 from soundsep.api import SignalTooShort
 from soundsep.app.project_loader import ProjectLoader
-from soundsep.core.models import ProjectIndex
+from soundsep.core.models import StftIndex, ProjectIndex
 from soundsep.ui.main_window import Ui_MainWindow
 from soundsep.widgets.axes import ProjectIndexTimeAxis
 from soundsep.widgets.box_scroll import ProjectScrollbar
@@ -109,7 +109,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.close_action.triggered.connect(self.close)
         self.save_action.triggered.connect(self.on_save_requested)
         self.create_source_action.triggered.connect(self.on_add_source)
-        self.toggle_ampenv_action.triggered.connect(self.on_toggle_view_mode)
+        self.toggle_ampenv_action.triggered.connect(self.on_toggle_ampenv)
         self.clear_selection_action.triggered.connect(self.on_clear_selection_requested)
 
         self.ui.previewPlot.fineSelectionMade.connect(self.on_fine_selection)
@@ -213,8 +213,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
             source_view = self.source_views[self.roi.source.index]
             self.roi.roi.maxBounds = source_view.spectrogram.get_limits_rect()
 
-        self.draw_ampenv_plots()
-
     def on_api_sources_changed(self):
         """Renders SourceView for each Source"""
         for i in reversed(range(self.ui.workspaceLayout.count())):
@@ -247,7 +245,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.source_views[-1].spectrogram.showAxis("bottom")
 
         self.draw_sources()
-        self.draw_ampenv_plots()
 
     def on_api_selection_changed(self):
         selection = self.api.get_selection()
@@ -336,13 +333,26 @@ class SoundsepMainWindow(widgets.QMainWindow):
         x0, x1 = self.api.workspace_get_lim()
         stft_data, _stale, freqs = self.api.read_stft(x0, x1)
         for source_view in self.source_views:
-            source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel, :], freqs)
+            source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel], freqs)
+
+        if self.toggle_ampenv_action.isChecked():
+            xarr = np.array([x.to_project_index() for x in StftIndex.range(x0, x1)])
+            summed_over_freqs = np.sum(stft_data, axis=2)
+            max_value = np.max(summed_over_freqs)
+            if max_value == 0:
+                # The STFTs have not loaded yet
+                return
+            for source_view in self.source_views:
+                source_view.spectrogram.overlay(
+                    xarr,
+                    summed_over_freqs[:, source_view.source.channel] / max_value
+                )
+        else:
+            for source_view in self.source_views:
+                source_view.spectrogram.clear_overlay()
 
         if np.any(_stale):
             self._draw_sources_timer.start(200)
-
-    def draw_ampenv_plots(self):
-        pass
 
     ##########################
     ### Drawing selections ###
@@ -462,6 +472,9 @@ class SoundsepMainWindow(widgets.QMainWindow):
         else:
             for source_view in self.source_views:
                 source_view.spectrogram.set_view_mode(STFTViewMode.NORMAL)
+
+    def on_toggle_ampenv(self):
+        self.draw_sources()
 
     def on_clear_selection_requested(self):
         self.api.clear_selection()

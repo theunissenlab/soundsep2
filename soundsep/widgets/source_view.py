@@ -145,6 +145,9 @@ class ScrollableSpectrogram(pg.PlotWidget):
         self.init_ui()
 
     def overlay(self, x, y):
+        """y should already be normalized from 0 to 1"""
+        _, (_, y1) = self.viewRange()
+        y = (y1 / 2) * y
         self._overlay_plot.setData(x, y)
 
     def clear_overlay(self):

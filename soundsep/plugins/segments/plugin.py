@@ -138,11 +138,14 @@ class SegmentPlugin(BasePlugin):
         self._annotations = []
 
     def init_actions(self):
-        self.create_segment_action = widgets.QAction("Create segment from selection", self)
+        self.create_segment_action = widgets.QAction("&Create segment from selection", self)
         self.create_segment_action.triggered.connect(self.on_create_segment_activated)
 
-        self.delete_selection_action = widgets.QAction("Delete segments in selection", self)
+        self.delete_selection_action = widgets.QAction("&Delete segments in selection", self)
         self.delete_selection_action.triggered.connect(self.on_delete_segment_activated)
+
+        self.merge_selection_action = widgets.QAction("&Merge segments in selection", self)
+        self.merge_selection_action.triggered.connect(self.on_merge_segments_activated)
 
     def connect_events(self):
         self.button = widgets.QPushButton("+Segment")
@@ -150,6 +153,9 @@ class SegmentPlugin(BasePlugin):
 
         self.delete_button = widgets.QPushButton("-Segments")
         self.delete_button.clicked.connect(self.on_delete_segment_activated)
+
+        self.merge_button = widgets.QPushButton("Merge")
+        self.merge_button.clicked.connect(self.on_merge_segments_activated)
 
         self.api.projectLoaded.connect(self.on_project_ready)
         self.api.workspaceChanged.connect(self.on_workspace_changed)
@@ -290,6 +296,11 @@ class SegmentPlugin(BasePlugin):
         if selection:
             self.delete_segments(selection.x0, selection.x1, selection.source)
 
+    def on_merge_segments_activated(self):
+        selection = self.api.get_fine_selection()
+        if selection:
+            self.merge_segments(selection.x0, selection.x1, selection.source)
+
     def on_create_segment_activated(self):
         selection = self.api.get_fine_selection()
         if selection:
@@ -331,18 +342,51 @@ class SegmentPlugin(BasePlugin):
                 (segment.start >= stop and segment.stop >= stop)
             ) or source != segment.source
         ]
+        n_deleted = len(self._segmentation_datastore) - len(filtered_segments)
+        self.gui.show_status("Deleting {} segments from {} to {}".format(n_deleted, start, stop))
+        logger.debug("Deleting {} segments from {} to {}".format(n_deleted, start, stop))
         self._segmentation_datastore.clear()
         self._segmentation_datastore.extend(filtered_segments)
         self._needs_saving = True
         self.refresh()
 
+    def merge_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
+        to_merge = [
+            segment for segment in self._segmentation_datastore
+            if (
+                (segment.start <= start and segment.stop >= start) or
+                (segment.start <= stop and segment.stop >= stop) or
+                (segment.start >= start and segment.stop <= stop)
+            ) and source == segment.source
+        ]
+        if not len(to_merge):
+            return
+
+        self.gui.show_status("Merging {} segments from {} to {}".format(len(to_merge), start, stop))
+        logger.debug("Merging {} segments from {} to {}".format(len(to_merge), start, stop))
+
+        new_segment = Segment(to_merge[0].start, to_merge[-1].stop, source)
+        filtered_segments = [
+            segment for segment in self._segmentation_datastore
+            if (
+                (segment.start <= start and segment.stop <= start) or
+                (segment.start >= stop and segment.stop >= stop)
+            ) or source != segment.source
+        ]
+        self._segmentation_datastore.clear()
+        self._segmentation_datastore.extend(filtered_segments + [new_segment])
+        self._segmentation_datastore.sort()
+        self._needs_saving = True
+        self.refresh()
+
     def plugin_toolbar_items(self):
-        return [self.button]
+        return [self.button, self.delete_button, self.merge_button]
 
     def add_plugin_menu(self, menu_parent):
         menu = menu_parent.addMenu("&Segments")
         menu.addAction(self.create_segment_action)
         menu.addAction(self.delete_selection_action)
+        menu.addAction(self.merge_selection_action)
         return menu
 
     def plugin_panel_widget(self):
@@ -351,3 +395,4 @@ class SegmentPlugin(BasePlugin):
     def setup_plugin_shortcuts(self):
         self.create_segment_action.setShortcut(QtGui.QKeySequence("F"))
         self.delete_selection_action.setShortcut(QtGui.QKeySequence("X"))
+        self.merge_selection_action.setShortcut(QtGui.QKeySequence("Q"))

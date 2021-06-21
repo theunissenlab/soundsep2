@@ -7,6 +7,5 @@ pyqtgraph
 qasync
 scipy
 SoundFile
-soundsig
 pyyaml
 parse

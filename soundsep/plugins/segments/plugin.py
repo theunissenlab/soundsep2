@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import List, Tuple
 
 import PyQt5.QtWidgets as widgets
 import pyqtgraph as pg
@@ -298,6 +298,19 @@ class SegmentPlugin(BasePlugin):
                 selection.x1,
                 selection.source
             )
+
+    def create_segments_batch(self, segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]]):
+        """Create multiple segments, only updating the display one time at the end"""
+        for start, stop, source in segment_data:
+            self.delete_segments(start, stop, source)
+            new_segment = Segment(start, stop, source)
+            self._segmentation_datastore.append(new_segment)
+        self._segmentation_datastore.sort()
+        self.panel.set_data(self._segmentation_datastore)
+        self.gui.show_status("Created {} segments".format(len(segment_data)))
+        logger.debug("Created {} segments".format(len(segment_data)))
+        self._needs_saving = True
+        self.refresh()
 
     def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
         self.delete_segments(start, stop, source)

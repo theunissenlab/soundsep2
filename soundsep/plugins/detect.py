@@ -151,6 +151,7 @@ class DetectPlugin(BasePlugin):
         return self._threshold or 0.5 * np.mean(np.abs(ampenv))
 
     def on_detect_activated(self):
+        # TODO: throttle this function so it can't be called non-stop (i.e. if shortcut held down)
         selection = self.api.get_fine_selection()
         if not selection:
             return
@@ -175,15 +176,13 @@ class DetectPlugin(BasePlugin):
             fuse_duration=self.api.config.get("detection.fuse_duration", 0.01)
         )
 
-        for interval0, interval1 in intervals:
-            self.api.plugins["SegmentPlugin"].create_segment(
+        self.api.plugins["SegmentPlugin"].create_segments_batch([
+            (
                 selection.x0 + int(interval0),
                 selection.x0 + int(interval1),
                 selection.source
-            )
-
-        logger.info("Detected {} segments".format(len(intervals)))
-        self.gui.show_status("Detected {} segments".format(len(intervals)), 2000)
+            ) for interval0, interval1 in intervals
+        ])
 
     def plugin_toolbar_items(self):
         return [self.button]

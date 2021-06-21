@@ -115,6 +115,13 @@ class DuplicatedRingBuffer:
         fill
             Value to fill in samples that rolled over the opposite end
         """
+        # If we are trying to roll the entire array, just blank it all out
+        # and reset
+        if offset >= self._n:
+            self._ptr = 0
+            self[:] = fill
+            return
+
         self._ptr += offset
         self._ptr %= self._n
         if offset > 0:

@@ -31,6 +31,7 @@ class Api(QObject):
     workspaceChanged = pyqtSignal()
     selectionChanged = pyqtSignal()
     fineSelectionChanged = pyqtSignal()
+    closingProgram = pyqtSignal()
 
     def __init__(self, app: 'soundsep.app.app.SoundsepApp'):
         super().__init__()
@@ -55,6 +56,7 @@ class Api(QObject):
         return self._app.config
 
     def _close(self):
+        self.closingProgram.emit()
         self._app.close()
 
     def switch_project(self, project_dir: Path):

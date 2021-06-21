@@ -36,31 +36,44 @@ class EditSourceModal(widgets.QDialog):
         self.line_edit.setText(self.source.name)
         layout.addWidget(self.line_edit)
 
-        button_box = widgets.QDialogButtonBox(
-            widgets.QDialogButtonBox.Help
-            | widgets.QDialogButtonBox.Ok
-            | widgets.QDialogButtonBox.Cancel
-        )
-        button_box.button(widgets.QDialogButtonBox.Help).setText("Delete Source")
-
-        layout.addWidget(button_box)
+        button_box = widgets.QHBoxLayout()
+        self.delete_button = widgets.QPushButton("Delete Source")
+        self.save_button = widgets.QPushButton("Save")
+        self.cancel_button = widgets.QPushButton("Cancel")
+        button_box.addWidget(self.save_button)
+        button_box.addWidget(self.delete_button)
+        button_box.addWidget(self.cancel_button)
+        layout.addLayout(button_box)
         self.setLayout(layout)
 
-        # Im just using helpRequested as the delete signal
-        button_box.helpRequested.connect(self.delete)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
+        self.delete_button.clicked.connect(self.delete)
+        self.save_button.clicked.connect(self.save)
+        self.cancel_button.clicked.connect(self.cancel)
+
+        self.cancel_button.setFocus()
+        self.line_edit.setFocus()
 
     def delete(self):
         """Sends a delete signal"""
-        self.deleteSourceSignal.emit(self.source)
-        super().accept()
+        reply = widgets.QMessageBox.question(
+            self,
+            "Confirm delete source",
+            "Are you sure you want to delete {}? This will delete all labeled"
+            " segments on this source as well.".format(self.source.name),
+            widgets.QMessageBox.Yes | widgets.QMessageBox.Cancel
+        )
+        if reply == widgets.QMessageBox.Yes:
+            self.deleteSourceSignal.emit(self.source)
+            self.close()
 
-    def accept(self):
+    def save(self):
         """Sends signal to edit the source"""
         self.source.name = self.line_edit.text()
         self.editSourceSignal.emit(self.source)
-        super().accept()
+        self.close()
+
+    def cancel(self):
+        self.close()
 
 
 class SourceView(widgets.QWidget):
@@ -145,6 +158,9 @@ class ScrollableSpectrogram(pg.PlotWidget):
         self.init_ui()
 
     def overlay(self, x, y):
+        """y should already be normalized from 0 to 1"""
+        _, (_, y1) = self.viewRange()
+        y = (y1 / 2) * y
         self._overlay_plot.setData(x, y)
 
     def clear_overlay(self):

@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -7,13 +7,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name = "soundsep",
-    version = "0.1",
-    packages = [
-        "soundsep",
-        "soundsep.core",
-        "soundsep.gui",
-        "soundsep.examples"
-    ],
+    version = "0.1.0",
+    packages = find_packages(exclude=["examples*", "test*"]),
+    scripts = ["manage.py"],
     include_package_data = True,
     zip_safe = False,
     description = "GUI for manual separation of audio data on multiple mic channels",

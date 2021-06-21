@@ -272,8 +272,8 @@ class SegmentPlugin(BasePlugin):
 
         selection = self.api.get_fine_selection()
 
-        # TODO: BUG; deleting a source should delete all its segments!
-
+        # TODO: Its not that bad to draw every rectangle at once; but the annoying part is deleting them
+        # and redrawing them when something changes
         for segment in self._segmentation_datastore[first_segment_idx:last_segment_idx]:
             source_view = self.gui.source_views[segment.source.index]
             rect = SegmentVisualizer(segment, source_view.spectrogram, "#00ff00", 0.3, (0.05, 0.95), self)

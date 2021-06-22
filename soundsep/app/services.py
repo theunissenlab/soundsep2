@@ -352,7 +352,12 @@ class StftCache(QObject):
         """
         potential_start = pos - self.pad
         start = max(potential_start, StftIndex(self.project, self.config.step, 0))
-        stop = min(start + self.n_cache_total, StftIndex(self.project, self.config.step, self._project_stft_steps))
+
+        if start + self.n_cache_total > StftIndex(self.project, self.config.step, self._project_stft_steps):
+            stop = StftIndex(self.project, self.config.step, self._project_stft_steps)
+            start = stop - self.n_cache_total
+        else:
+            stop = start + self.n_cache_total
 
         return (start, stop)
 

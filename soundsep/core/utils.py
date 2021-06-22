@@ -31,6 +31,7 @@ def get_blocks_of_ones(vec: np.ndarray):
         breaks = np.concatenate([[0], breaks])
     if vec[-1] == 1:
         breaks = np.concatenate([breaks, [len(vec)]])
+
     return breaks.reshape((-1, 2))
 
 
@@ -137,13 +138,18 @@ class DuplicatedRingBuffer:
     def size(self):
         return self._data.size // 2
 
-    def _convert_index(self, i):
-        """Convert an external index into an internal index
+    @staticmethod
+    def _convert_index(i, ptr, N):
+        """Convert an external index into an internal index for a DuplicatedRingBuffer
 
         Arguments
         ---------
         i : int
-            The external index you want to access
+            The index you want to access, in range [0, N)
+        ptr : int
+            The pointer to the zero index in the internal array from 0 to N
+        N : int
+            The length of the ringbuffer
 
         Returns
         -------
@@ -152,75 +158,100 @@ class DuplicatedRingBuffer:
 
         Example
         -------
-        >>> roll = DuplicatedRingBuffer(...)
-        >>> roll._ptr
-        0
-        >>> roll._convert_index(10)
+        >>> DuplicatedRingBuffer._convert_index(0, 10, 100)
         10
-        >>> roll.roll(15, ...)
-        >>> roll._ptr
-        15
-        >>> roll._convert_index(10)
+        >>> DuplicatedRingBuffer._convert_index(10, 15, 100)
         25
+        >>> DuplicatedRingBuffer._convert_index(60, 50, 100)
+        10
         """
-        return (self._ptr + i) % len(self)
+        return (ptr + i) % N
 
-    def _duplicated_index(self, i):
-        """Get internal index to duplicate data at i at
+    @staticmethod
+    def _duplicated_index(i, N):
+        """Get internal index to duplicate data at i at for a given buffer size
 
         Arguments
         ---------
         i : int
-            The internal index that you want to write at
+            The internal index you want to write at, must be in range [0, 2N)
+        N : int
+            The size of the ring buffer (half the size of the internal array)
 
         Returns
         -------
         j : int
-            The internal index you want to duplicate writes at i at
+            The internal index you should duplicate writes at i at
         """
-        N = len(self)
         return (i + N) % (2 * N)
 
-    def _convert_slice(self, slice_):
+    @staticmethod
+    def _convert_slice(slice_, ptr, N):
         """Convert a slice into the internal slice coordinates to read/write at
 
         Arguments
         ---------
         slice_ : slice
-            The external slice of data you want to access
+            The slice of data you want to access
+        ptr : int
+            The pointer to the zero index in the internal array from 0 to N
+        N : int
+            The length of the ringbuffer
 
         Returns
         -------
         internal_slice : slice
             The internal slice of data you would use to read data of slice_ at
         """
-        N = len(self)
         start, stop, step = slice_.indices(N)
-        start += self._ptr
-        stop += self._ptr
+        start += ptr
+        stop += ptr
+
+        if stop > 2 * N:
+            raise RuntimeError("The converted slice should never go outside the bounds [0, 2N), got {} to {}".format(start, stop))
+
         return slice(start, stop, step)
 
-    def _duplicated_slice(self, slice_):
+    @staticmethod
+    def _duplicated_slice(slice_, N):
         """Convert an internal slice of data where you would write into the slices of data you would duplicate at
 
         Arguments
         ---------
         slice_ : slice
             The internal slice of data you want to write to
+            The start and stop values must be between 0 and 2N, and stop >= start
+        N : int
+            The size of the ring buffer (half the size of the internal array)
 
         Returns
         -------
-        duplicated_slice : np.ndarray[int]
-            The indices (using np.r_) of where the data should be duplicated
+        slice0 : slice
+        slice1 : slice
+            The slices designating where to dulicated the data written to slice_. It is split into two
+            because the duplication may extend over the bound of the internal array if the start
+            of the duplication occurs before 2N but the end goes past 2N.
         """
-        N = len(self)
         start, stop, step = slice_.indices(2 * N)
-        wrapped_stop = stop % N
-        wrapped_start = (start + step - N) % step
-        return np.r_[
-            slice(start + N, 2 * N, step),
-            slice(wrapped_start, wrapped_start, step)
-        ]
+        start = (start + N)
+        stop = (stop + N)
+        if start >= 2 * N:
+            start = start % (2 * N)
+            stop = stop % (2 * N)
+            wrapped_start = 0
+            wrapped_stop = 0
+        elif stop >= 2 * N:
+            wrapped_start = (step - (2 * N - start) % step) % step
+            wrapped_stop = stop % (2 * N)
+            stop = 2 * N
+        else:
+            wrapped_start = 0
+            wrapped_stop = 0
+
+        return (
+            slice(start, stop, step),
+            slice(wrapped_start, wrapped_stop, step)
+        )
 
     def __getitem__(self, selectors):
         if isinstance(selectors, (int, slice)):
@@ -231,9 +262,9 @@ class DuplicatedRingBuffer:
             s1 = selectors[1:]
 
         if isinstance(s0, slice):
-            s0 = self._convert_slice(s0)
+            s0 = DuplicatedRingBuffer._convert_slice(s0, self._ptr, self._n)
         else:
-            s0 = self._convert_index(s0)
+            s0 = DuplicatedRingBuffer._convert_index(s0, self._ptr, self._n)
 
         return self._data.__getitem__((s0,) + s1)
 
@@ -247,11 +278,12 @@ class DuplicatedRingBuffer:
             s1 = selectors[1:]
 
         if isinstance(s0, slice):
-            write_to = self._convert_slice(s0)
-            duplicate_to= self._duplicated_slice(write_to)
+            write_to = DuplicatedRingBuffer._convert_slice(s0, self._ptr, self._n)
+            duplicate_to = DuplicatedRingBuffer._duplicated_slice(write_to, self._n)
+            duplicate_to = np.r_[duplicate_to[0], duplicate_to[1]]
         else:
-            write_to = self._convert_index(s0)
-            duplicate_to = self._duplicated_index(write_to)
+            write_to = DuplicatedRingBuffer._convert_index(s0, self._ptr, self._n)
+            duplicate_to = DuplicatedRingBuffer._duplicated_index(write_to, self._n)
 
         self._data.__setitem__((write_to,) + s1, value)
         self._data.__setitem__((duplicate_to,) + s1, value)

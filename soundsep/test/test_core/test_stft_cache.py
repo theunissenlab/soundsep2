@@ -50,54 +50,39 @@ class TestStftCache(unittest.TestCase):
     def tearDown(self):
         self.cache._worker.cancel()
 
-    # @mock.patch("soundsep.core.stft_cache.fft")
     def test_threading(self):
         self.assertEqual(self.cache._start_ptr, self.stftidx(0))
-        expected_freq_channels = 2 * self.config.window + 1
-        # mock_fft.return_value = np.ones((expected_freq_channels,))
+        expected_freq_channels = (2 * self.config.window + 1) // 2  # Expected only positive freqs
         self.assertEqual(self.cache._data.shape, (8820 * 2 + 4410, 2, expected_freq_channels))
 
         self.cache.set_position(self.stftidx(10000))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
 
         self.cache.set_position(self.stftidx(11000))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(500)
         a, b = self.cache.read()
-        print("AFter 500", np.sum(b == False), print(len(b)))
 
         self.cache.set_position(self.stftidx(10000))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
 
         self.cache.set_position(self.stftidx(20000))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print("Big Jump", np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
         QtTest.QTest.qWait(100)
         a, b = self.cache.read()
-        print(np.sum(b == False), len(b))
-

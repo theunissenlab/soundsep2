@@ -66,7 +66,7 @@ def build_doc():
 
 
 @click.command(help="Run unittests")
-@click.option("-d", "--dir", "_dir", type=str, default=".")
+@click.option("-d", "--dir", "_dir", type=str, default="soundsep/test")
 @click.option("-v", "--verbose", type=int, default=1)
 @click.option("-c", "--coverage", "_coverage", help="Save coverage report", is_flag=True)
 def unittest(_dir, verbose, _coverage):
@@ -78,7 +78,7 @@ def unittest(_dir, verbose, _coverage):
         cov.start()
 
     if os.path.isdir(_dir):
-        testsuite = unittest.TestLoader().discover(".")
+        testsuite = unittest.TestLoader().discover(_dir)
     else:
         testsuite = unittest.TestLoader().loadTestsFromName(_dir)
     unittest.TextTestRunner(verbosity=verbose).run(testsuite)
@@ -105,7 +105,7 @@ def create_plugin(name):
         click.echo("File or directory already exists at {}. Choose a different --name or move the existing plugin.".format(target_location))
         return
 
-    with open(os.path.join(__location__, "soundsep", "develop", "template_plugin.py"), "r") as f:
+    with open(os.path.join(__location__, "soundsep", "develop", "template_plugin.py.txt"), "r") as f:
         contents = f.read()
 
     with open(os.path.join(target_location + ".py"), "w+") as f:

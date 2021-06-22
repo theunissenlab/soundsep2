@@ -88,6 +88,29 @@ def unittest(_dir, verbose, _coverage):
         cov.stop()
         cov.html_report(directory=os.path.join(__location__, "coverage_html"))
         webbrowser.open("file://" + os.path.realpath(os.path.join(__location__, "coverage_html", "index.html")), new=2)
+
+
+@click.command(help="Create a new plugin from template")
+@click.option("-n", "--name", type=str, required=True, help="New plugin name in snake case, e.g. new_plugin")
+def create_plugin(name):
+    def _to_camel(s):
+        return "".join([part.capitalize() for part in s.split("_")])
+
+    if name.endswith(".py"):
+        name = name[:-3]
+    camel_name = _to_camel(name)
+
+    target_location = os.path.join(__location__, "soundsep", "plugins", name)
+    if os.path.exists(target_location) or os.path.exists(target_location + ".py"):
+        click.echo("File or directory already exists at {}. Choose a different --name or move the existing plugin.".format(target_location))
+        return
+
+    with open(os.path.join(__location__, "soundsep", "develop", "template_plugin.py"), "r") as f:
+        contents = f.read()
+
+    with open(os.path.join(target_location + ".py"), "w+") as f:
+        f.write(contents.format(PluginName=camel_name))
+    click.echo("Wrote new plugin {} at {}".format(camel_name, target_location + ".py"))
     
 
 cli.add_command(run)
@@ -95,6 +118,7 @@ cli.add_command(unittest)
 cli.add_command(build_doc)
 cli.add_command(open_doc)
 cli.add_command(build_ui)
+cli.add_command(create_plugin)
 
 
 if __name__ == "__main__":

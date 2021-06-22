@@ -24,6 +24,7 @@ class ProjectLoader(QObject):
 
         project_dir = Path(project_dir)
         # TODO: use config file to validate if the project is openable
+        # alternate TODO: open a project by config file rather than folder
         config_file = ProjectPathFinder(project_dir).config
         self.openProject.emit(Path(project_dir))
 

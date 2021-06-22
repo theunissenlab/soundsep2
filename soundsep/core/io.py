@@ -3,10 +3,11 @@
 import collections
 import itertools
 import os
-import parse
 from collections.abc import Iterable
 from pathlib import Path
 from typing import List
+
+import parse
 
 from soundsep.core.models import AudioFile, Block, Project
 
@@ -76,33 +77,37 @@ def load_project(
     if filename_pattern is None and len(filelist) != 1:
         raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))
 
-    return _load_project_by_blocks(filelist, filename_pattern, block_keys, channel_keys)
+    return _load_project_by_blocks(directory, filelist, filename_pattern, block_keys, channel_keys)
 
 
 class LoadProjectError(Exception):
     pass
 
 
-'''
-class UnparseableFilename(LoadProjectError):
-    def __init__(self, filename, pattern):
-        self.info = (filename, pattern)
-        return super().__init__(
-            self,
-            "Failed to parse file {} using pattern {}".format(filename, pattern)
-        )
+def search_for_wavs(base_directory: Path, recursive: bool = False) -> Path:
+    """Look for WAV files in a directory with option to search all subdirectories
+
+    Arguments
+    ---------
+    base_directory : pathlib.Path
+        top level directory to start search from
+    recursive : bool (default False)
+        if set, will search for WAV files recursively through the directory structure.
+        otherwise, will only look for WAV files directly in base_directory
+
+    Returns
+    -------
+    filelist : List[pathlib.Path]
+        A list of paths to wav files relative to base_directory
+    """
+    if recursive:
+        return base_directory.rglob("*.wav")
+    else:
+        return base_directory.glob("*.wav")
 
 
-class InvalidKeys(LoadProjectError):
-    def __init__(self, filename, parse_result, block_keys):
-        self.info = (filename, pattern)
-        return super().__init__(
-            self,
-            "Failed to parse file {} using pattern {}".format(filename, pattern)
-        )
-'''
-
-def _group_files_by_pattern(
+def group_files_by_pattern(
+        base_directory: Path,
         filelist: List[str],
         filename_pattern: str,
         block_keys: List[str],
@@ -130,17 +135,12 @@ def _group_files_by_pattern(
     parsed_wav_files = []
     bad_wav_files = []    # List of tuples
     for path in filelist:
-        parse_result = parse.parse(filename_pattern, os.path.basename(path))
+        relpath = os.path.relpath(path, base_directory)
+        parse_result = parse.parse(filename_pattern, relpath)
 
         if parse_result is None:
-            bad_wav_files.append((os.path.basename(path), None))
+            bad_wav_files.append((relpath, parse_result))
             continue
-            '''
-            raise LoadProjectError("Filename was not parse-able under pattern {}: {}".format(
-                filename_pattern,
-                path
-            ))
-            '''
 
         try:
             if callable(block_keys):
@@ -163,11 +163,7 @@ def _group_files_by_pattern(
                 "channel_id": channel_id,
             })
         except KeyError:
-            bad_wav_files.append((os.path.basename(path), parse_result))
-            '''
-            raise ValueError("Block or channel information could not be parsed from {}\n"
-                    "{}\nblock_keys={}\nchannel_keys={}".format(path, parse_result, block_keys, channel_keys))
-            '''
+            bad_wav_files.append((relpath, parse_result))
 
     parsed_wav_files = sorted(parsed_wav_files, key=lambda x: (x["block_id"], x["channel_id"]))
 
@@ -184,12 +180,14 @@ def _group_files_by_pattern(
 
 
 def _load_project_by_blocks(
+        base_directory: Path,
         filelist: List[str],
         filename_pattern: str,
         block_keys: List[str],
         channel_keys: List[str],
     ):
-    block_groups, errors = _group_files_by_pattern(
+    block_groups, errors = group_files_by_pattern(
+            base_directory,
             filelist,
             filename_pattern,
             block_keys,

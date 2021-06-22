@@ -1,4 +1,6 @@
 DEFAULTS = {
+    "audio_directory": None,
+    "recursive_search": False,
     "filename_pattern": "{filename}.wav",
     "channel_keys": None,
     "block_keys": None,

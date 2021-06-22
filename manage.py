@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import inspect
 import os
-from pathlib import Path
 
 import click
 
@@ -16,10 +15,11 @@ def cli():
 
 
 @click.command(help="Run SoundSep GUI")
-def run():
+@click.option("-d", "--debug", help="Run with log level DEBUG", is_flag=True)
+def run(debug):
     from soundsep.app.launcher import Launcher
     from soundsep.app.start import run_app
-    run_app(MainWindow=Launcher)
+    run_app(MainWindow=Launcher, debug=debug)
 
 
 @click.command(help="Open sphinx documentation in browser")

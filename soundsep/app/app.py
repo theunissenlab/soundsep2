@@ -2,6 +2,7 @@ import importlib
 import logging
 import pickle
 import pkgutil
+from pathlib import Path
 from typing import List
 
 import pandas as pd
@@ -61,7 +62,7 @@ class SoundsepApp(QObject):
             raise BadConfigFormat
 
         self.project = load_project(
-            self.paths.audio_dir,
+            Path(self.config["audio_directory"]) if self.config["audio_directory"] else self.paths.audio_dir,
             self.config["filename_pattern"],
             self.config["block_keys"],
             self.config["channel_keys"],

@@ -256,3 +256,21 @@ class DuplicatedRingBuffer:
         self._data.__setitem__((write_to,) + s1, value)
         self._data.__setitem__((duplicate_to,) + s1, value)
 
+
+def hhmmss(t: float, dec=0):
+    """Format time in seconds to form hh:mm:ss
+
+    Arguments
+    ---------
+    t : float
+        Timestamp in seconds
+    dec : int (default 0)
+        number of decimal places to show for the seconds
+    """
+    h = int(t / 3600)
+    t -= h * 3600
+    m = int(t / 60)
+    t -= m * 60
+    s = t
+    template = "{{}}:{{:02d}}:{{:0{}.0{}f}}".format(dec + 2, dec)
+    return template.format(h, m, s)

@@ -2,9 +2,24 @@
 
 Extensible tool for visualizing and labeling WAV file data.
 
-## Install
+## Get started
 
 If instaling with pip, it is suggested to use a virtual environment
+
+```
+pip install git+https://github.com/kevinyu/soundsep2.git@main
+sep run
+```
+
+### Preparing files
+
+Prepare a folder that contains your audio data files. For SoundSep to group files recorded simultaneously, they should share common path elements (e.g. be stored in the same folders) or parts of the filename (e.g. a timestamp).
+
+### Loading project
+
+The project directory should contain a config file `soundsep.yaml`. When running the launcher, you should open the directory containing that config file.
+
+## Installing for development
 
 ```
 git clone git@github.com:kevinyu/soundsep2.git
@@ -12,13 +27,7 @@ cd soundsep2
 pip install -e .
 ```
 
-## Run Soundsep
-
-```shell
-sep run
-```
-
-## Develop commands
+## Scripts
 
 See `sep --help` for info. Includes scripts for
 
@@ -30,13 +39,4 @@ See `sep --help` for info. Includes scripts for
 
 * running unit tests
 
-## Planned Features
-
-* Load wav files recorded simultaneously and/or chunked in time
-
-* Visualze and label on temporally aligned spectrograms
-
-* Live view of user selection of frequency bands
-
-* Plugin system for extending functions on data manipulation, storage, and display
-
+* creating a template plugin

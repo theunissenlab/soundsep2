@@ -102,17 +102,17 @@ def search_for_wavs(base_directory: Path, recursive: bool = False) -> Path:
     Returns
     -------
     filelist : List[pathlib.Path]
-        A list of paths to wav files relative to base_directory
+        A list of **absolute paths** to wav files relative to base_directory
     """
     if recursive:
-        return base_directory.rglob("*.wav")
+        return list(base_directory.rglob("*.wav"))
     else:
-        return base_directory.glob("*.wav")
+        return list(base_directory.glob("*.wav"))
 
 
 def group_files_by_pattern(
         base_directory: Path,
-        filelist: List[str],
+        filelist: List[Path],
         filename_pattern: str,
         block_keys: List[str],
         channel_keys: List[str],

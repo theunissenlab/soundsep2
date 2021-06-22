@@ -297,5 +297,10 @@ def hhmmss(t: float, dec=0):
     m = int(t / 60)
     t -= m * 60
     s = t
-    template = "{{}}:{{:02d}}:{{:0{}.0{}f}}".format(dec + 2, dec)
+    if dec > 0:
+        template = "{{}}:{{:02d}}:{{:0{}.0{}f}}".format(dec + 3, dec)
+    elif dec == 0:
+        template = "{{}}:{{:02d}}:{{:0{}.0{}f}}".format(dec + 2, dec)
+    else:
+        raise ValueError("Decimal places must be >= 0 for hhmmss formatting")
     return template.format(h, m, s)

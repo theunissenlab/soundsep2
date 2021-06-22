@@ -77,11 +77,13 @@ class Ui_SplashPage(object):
         self.createProjectButton = QtWidgets.QPushButton(self.widget_2)
         font = QtGui.QFont()
         font.setFamily("Courier New")
-        font.setPointSize(-1)
+        font.setPointSize(20)
+        font.setBold(False)
+        font.setWeight(50)
         self.createProjectButton.setFont(font)
         self.createProjectButton.setStyleSheet("QPushButton {\n"
 "    color: rgb(73, 73, 181);\n"
-"    font-size: 30px;\n"
+"    font-size: 20pt;\n"
 "    padding: 10px;\n"
 "    border: 0;\n"
 "}\n"
@@ -96,11 +98,13 @@ class Ui_SplashPage(object):
         self.openProjectButton = QtWidgets.QPushButton(self.widget_2)
         font = QtGui.QFont()
         font.setFamily("Courier New")
-        font.setPointSize(-1)
+        font.setPointSize(20)
+        font.setBold(False)
+        font.setWeight(50)
         self.openProjectButton.setFont(font)
         self.openProjectButton.setStyleSheet("QPushButton {\n"
 "    color: rgb(73, 73, 181);\n"
-"    font-size: 30px;\n"
+"    font-size: 20pt;\n"
 "    padding: 10px;\n"
 "    border: 0;\n"
 "}\n"
@@ -115,11 +119,13 @@ class Ui_SplashPage(object):
         self.debugProjectButton = QtWidgets.QPushButton(self.widget_2)
         font = QtGui.QFont()
         font.setFamily("Courier New")
-        font.setPointSize(-1)
+        font.setPointSize(20)
+        font.setBold(False)
+        font.setWeight(50)
         self.debugProjectButton.setFont(font)
         self.debugProjectButton.setStyleSheet("QPushButton {\n"
 "    color: rgb(73, 73, 181);\n"
-"    font-size: 30px;\n"
+"    font-size: 20pt;\n"
 "    padding: 10px;\n"
 "    border: 0;\n"
 "}\n"
@@ -134,11 +140,13 @@ class Ui_SplashPage(object):
         self.exitButton = QtWidgets.QPushButton(self.widget_2)
         font = QtGui.QFont()
         font.setFamily("Courier New")
-        font.setPointSize(-1)
+        font.setPointSize(20)
+        font.setBold(False)
+        font.setWeight(50)
         self.exitButton.setFont(font)
         self.exitButton.setStyleSheet("QPushButton {\n"
 "    color: rgb(73, 73, 181);\n"
-"    font-size: 30px;\n"
+"    font-size: 20pt;\n"
 "    padding: 10px;\n"
 "    border: 0;\n"
 "}\n"

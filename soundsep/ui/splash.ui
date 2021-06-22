@@ -112,13 +112,15 @@
             <property name="font">
              <font>
               <family>Courier New</family>
-              <pointsize>-1</pointsize>
+              <pointsize>20</pointsize>
+              <weight>50</weight>
+              <bold>false</bold>
              </font>
             </property>
             <property name="styleSheet">
              <string notr="true">QPushButton {
     color: rgb(73, 73, 181);
-    font-size: 30px;
+    font-size: 20pt;
     padding: 10px;
     border: 0;
 }
@@ -139,13 +141,15 @@ QPushButton:hover {
             <property name="font">
              <font>
               <family>Courier New</family>
-              <pointsize>-1</pointsize>
+              <pointsize>20</pointsize>
+              <weight>50</weight>
+              <bold>false</bold>
              </font>
             </property>
             <property name="styleSheet">
              <string notr="true">QPushButton {
     color: rgb(73, 73, 181);
-    font-size: 30px;
+    font-size: 20pt;
     padding: 10px;
     border: 0;
 }
@@ -166,13 +170,15 @@ QPushButton:hover {
             <property name="font">
              <font>
               <family>Courier New</family>
-              <pointsize>-1</pointsize>
+              <pointsize>20</pointsize>
+              <weight>50</weight>
+              <bold>false</bold>
              </font>
             </property>
             <property name="styleSheet">
              <string notr="true">QPushButton {
     color: rgb(73, 73, 181);
-    font-size: 30px;
+    font-size: 20pt;
     padding: 10px;
     border: 0;
 }
@@ -193,13 +199,15 @@ QPushButton:hover {
             <property name="font">
              <font>
               <family>Courier New</family>
-              <pointsize>-1</pointsize>
+              <pointsize>20</pointsize>
+              <weight>50</weight>
+              <bold>false</bold>
              </font>
             </property>
             <property name="styleSheet">
              <string notr="true">QPushButton {
     color: rgb(73, 73, 181);
-    font-size: 30px;
+    font-size: 20pt;
     padding: 10px;
     border: 0;
 }

@@ -17,6 +17,7 @@ def load_project(
         filename_pattern: str = None,
         block_keys: List[str] = None,
         channel_keys: List[str] = None,
+        recursive: bool = False,
     ) -> Project:
     """Load a single WAV file or a directory of WAV files
 
@@ -62,6 +63,9 @@ def load_project(
         A list of keys in filename_pattern that define the ordering of channels.
         This is used to enforce a consistent mapping of file channels to Block
         channels.
+    recursive : bool
+        A flag to indicate if the function should search through all subdirectories
+        of directory for wav files.
 
     Returns
     -------
@@ -72,7 +76,7 @@ def load_project(
     if not directory.is_dir() and directory.suffix == ".wav":
         filelist = [directory]
     else:
-        filelist = list(directory.glob("*.wav"))
+        filelist = search_for_wavs(directory, recursive=recursive)
 
     if filename_pattern is None and len(filelist) != 1:
         raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))

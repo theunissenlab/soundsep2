@@ -207,6 +207,8 @@ class ProjectCreator(widgets.QWidget):
         """
         self.ui.errorTable.setRowCount(len(errors))
         for i, (bad_file, error_msg) in enumerate(errors):
+            if error_msg is None:
+                error_msg = "Could not parse filename using the given template"
             fileitem = widgets.QTableWidgetItem(str(bad_file))
             fileitem.setToolTip(str(bad_file))
             self.ui.errorTable.setItem(i, 0, fileitem)

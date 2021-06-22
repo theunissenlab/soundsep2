@@ -66,6 +66,7 @@ class SoundsepApp(QObject):
             self.config["filename_pattern"],
             self.config["block_keys"],
             self.config["channel_keys"],
+            recursive=self.config["recursive_search"]
         )
 
         self.plugins = {}

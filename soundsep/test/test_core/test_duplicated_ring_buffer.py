@@ -1,5 +1,4 @@
 import unittest
-from unittest import mock
 
 import numpy as np
 
@@ -100,3 +99,65 @@ class TestRingBuffer(unittest.TestCase):
         self.assertEqual(DuplicatedRingBuffer._duplicated_slice(slice(92, 110, 6), 100), (slice(192, 200, 6), slice(4, 10, 6)))
         self.assertEqual(DuplicatedRingBuffer._duplicated_slice(slice(92, 110, 7), 100), (slice(192, 200, 7), slice(6, 10, 7)))
         self.assertEqual(DuplicatedRingBuffer._duplicated_slice(slice(92, 110, 8), 100), (slice(192, 200, 8), slice(0, 10, 8)))
+
+    def test_roll(self):
+        base = np.arange(100)
+        buffer = DuplicatedRingBuffer(base)
+
+        buffer.roll(10, -1)
+        np.testing.assert_array_equal(buffer[:90], np.arange(10, 100))
+        np.testing.assert_array_equal(buffer[-10:], [-1] * 10)
+
+        buffer.roll(70, -1)
+        np.testing.assert_array_equal(buffer[:20], np.arange(80, 100))
+        np.testing.assert_array_equal(buffer[20:], [-1] * 80)
+
+        buffer.roll(15, -1)
+        np.testing.assert_array_equal(buffer[:5], np.arange(95, 100))
+        np.testing.assert_array_equal(buffer[5:], [-1] * 95)
+
+        buffer.roll(15, -1)
+        np.testing.assert_array_equal(buffer[:], [-1] * 100)
+
+        # now test rolling backward
+        base = np.arange(100)
+        buffer = DuplicatedRingBuffer(base)
+
+        buffer.roll(-10, -1)
+        np.testing.assert_array_equal(buffer[:10], [-1] * 10)
+        np.testing.assert_array_equal(buffer[10:], np.arange(90))
+
+        buffer.roll(-70, -1)
+        np.testing.assert_array_equal(buffer[:80], [-1] * 80)
+        np.testing.assert_array_equal(buffer[80:], np.arange(20))
+
+        buffer.roll(-30, -1)
+        np.testing.assert_array_equal(buffer[:], [-1] * 100)
+
+        # test roll a huge amount
+        base = np.arange(100)
+        buffer = DuplicatedRingBuffer(base)
+        buffer.roll(10000, -1)
+        np.testing.assert_array_equal(buffer[:], [-1] * 100)
+
+        base = np.arange(100)
+        buffer = DuplicatedRingBuffer(base)
+        buffer.roll(-10000, -1)
+        np.testing.assert_array_equal(buffer[:], [-1] * 100)
+
+    def test_roll_dtype(self):
+        """Test that rolling an array and filling matches the existing dtype"""
+        base = np.ones(100)
+        int_buffer = DuplicatedRingBuffer(base.astype(np.int))
+        assert int_buffer._data.dtype == np.int
+        int_buffer.roll(10, -1.0)
+        self.assertEqual(int_buffer[:].dtype, np.int)
+
+        base = np.ones(100)
+        bool_buffer = DuplicatedRingBuffer(base.astype(np.bool))
+        assert bool_buffer._data.dtype == np.bool
+        bool_buffer.roll(10, 0.0)
+        self.assertEqual(bool_buffer[:].dtype, np.bool)
+        np.testing.assert_array_equal(bool_buffer[-10:], [False] * 10)
+        bool_buffer.roll(10, -1.0)
+        np.testing.assert_array_equal(bool_buffer[-10:], [True] * 10)

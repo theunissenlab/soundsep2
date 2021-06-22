@@ -36,7 +36,6 @@ class DummyProject(Project):
         return self._frames
 
 
-
 class TestStftCache(unittest.TestCase):
 
     def setUp(self):

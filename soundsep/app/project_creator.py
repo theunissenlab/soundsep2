@@ -124,7 +124,7 @@ class ProjectCreator(widgets.QWidget):
         base_path = self.ui.basePathEdit.text()
         template_string = self.ui.templateEdit.text()
         recursive = self.ui.recursiveSearchCheckBox.checkState() == Qt.CheckState.Checked
-        
+
         def _parse_block(path):
             """Gets format variables in """
             result = parse.parse(template_string, str(path))
@@ -251,7 +251,10 @@ class ProjectCreator(widgets.QWidget):
         base_path = self.ui.basePathEdit.text()
         template_string = self.ui.templateEdit.text()
         try:
-            format_variables = [i[1] for i in Formatter().parse(template_string) if i[1]]
+            format_variables = [
+                i[1] for i in Formatter().parse(template_string)
+                if i[1]
+            ]
         except:
             return
 
@@ -263,7 +266,13 @@ class ProjectCreator(widgets.QWidget):
             if not result:
                 return []
             else:
-                return [result[v] for v in format_variables if v]
+                values = []
+                for v in filter(None, format_variables):
+                    try:
+                        values.append(result[v])
+                    except KeyError:
+                        pass
+                return values
 
         self.update_treeview_as_audio_files(_parse)
 

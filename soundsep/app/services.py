@@ -5,7 +5,7 @@ from queue import Empty, Queue
 from typing import Optional, Tuple, Union
 
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
-from scipy.fft import fft, fftfreq
+from scipy.fft import rfft, rfftfreq
 import numpy as np
 
 from soundsep.core.models import Project, ProjectIndex, Source, StftIndex
@@ -265,7 +265,7 @@ class StftWorker(QThread):
                     window_data = window_data * self.gaussian_window
 
                 # TODO: benchmark using next_fast_len here?
-                window_fft = np.abs(fft(window_data, n=2 * self.config.window + 1))
+                window_fft = np.abs(rfft(window_data, n=2 * self.config.window + 1))
 
                 self.resultReady.emit(window_center_stft, ch, window_fft)
 
@@ -345,7 +345,7 @@ class StftCache(QObject):
 
     def _all_freqs(self):
         """Return the frequency range of the ffts, this includes negative frequencies"""
-        return fftfreq(2 * self.config.window + 1, 1 / self.project.sampling_rate)
+        return rfftfreq(2 * self.config.window + 1, 1 / self.project.sampling_rate)
 
     def get_cache_range_from_active_position(self, pos: StftIndex) -> Tuple[StftIndex, StftIndex]:
         """Get the cache range from the active range's start position

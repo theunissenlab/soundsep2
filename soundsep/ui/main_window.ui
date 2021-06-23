@@ -139,6 +139,19 @@
     </item>
    </layout>
   </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QDockWidget" name="toolbarDock">
+   <attribute name="dockWidgetArea">
+    <number>1</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContents">
+    <layout class="QVBoxLayout" name="verticalLayout_10">
+     <item>
+      <layout class="QVBoxLayout" name="toolbarLayout"/>
+     </item>
+    </layout>
+   </widget>
+  </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
@@ -171,12 +184,6 @@
     </property>
     <addaction name="actionGithub"/>
    </widget>
-   <widget class="QMenu" name="menuSettings">
-    <property name="title">
-     <string>&amp;Settings</string>
-    </property>
-    <addaction name="actionKeymappings"/>
-   </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
      <string>&amp;View</string>
@@ -186,21 +193,7 @@
    <addaction name="menuSources"/>
    <addaction name="menuView"/>
    <addaction name="menuPlugins"/>
-   <addaction name="menuSettings"/>
    <addaction name="menuHelp"/>
-  </widget>
-  <widget class="QStatusBar" name="statusbar"/>
-  <widget class="QDockWidget" name="toolbarDock">
-   <attribute name="dockWidgetArea">
-    <number>1</number>
-   </attribute>
-   <widget class="QWidget" name="dockWidgetContents">
-    <layout class="QVBoxLayout" name="verticalLayout_10">
-     <item>
-      <layout class="QVBoxLayout" name="toolbarLayout"/>
-     </item>
-    </layout>
-   </widget>
   </widget>
   <action name="actionLoad_project">
    <property name="text">

@@ -3,10 +3,11 @@ from collections import namedtuple
 from functools import partial
 
 import numpy as np
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, QUrl
 from PyQt5 import QtWidgets as widgets
 from PyQt5 import QtGui
 
+from soundsep import settings
 from soundsep.api import SignalTooShort
 from soundsep.app.project_loader import ProjectLoader
 from soundsep.core.models import StftIndex, ProjectIndex
@@ -112,6 +113,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.toggle_ampenv_action.triggered.connect(self.on_toggle_ampenv)
         self.clear_selection_action.triggered.connect(self.on_clear_selection_requested)
 
+        self.ui.actionGithub.triggered.connect(self.on_click_help)
         self.ui.previewPlot.fineSelectionMade.connect(self.on_fine_selection)
         self.ui.previewPlot.fineSelectionCleared.connect(self.on_fine_selection_cleared)
 
@@ -470,6 +472,11 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
     def on_clear_selection_requested(self):
         self.api.clear_selection()
+
+    def on_click_help(self):
+        url = QUrl(settings.GITHUB_URL)
+        if not QtGui.QDesktopServices.openUrl(url):
+            QtGui.QMessageBox.warning(self, "", "Could not open link to {}".format(settings.GITHUB_URL))
 
     def attach_plugin(self, plugin: 'soundsep.core.base_plugin.BasePlugin'):
         """Put plugin widgets in their places

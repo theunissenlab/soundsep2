@@ -333,14 +333,13 @@ class SoundsepMainWindow(widgets.QMainWindow):
             xarr = np.array([x.to_project_index() for x in StftIndex.range(x0, x1)])
             summed_over_freqs = np.sum(stft_data, axis=2)
             max_value = np.max(summed_over_freqs)
-            if max_value == 0:
-                # The STFTs have not loaded yet
-                return
-            for source_view in self.source_views:
-                source_view.spectrogram.overlay(
-                    xarr,
-                    summed_over_freqs[:, source_view.source.channel] / max_value
-                )
+            if max_value != 0:
+                # Only draw overlaps if spectrograms have not loaded yet
+                for source_view in self.source_views:
+                    source_view.spectrogram.overlay(
+                        xarr,
+                        summed_over_freqs[:, source_view.source.channel] / max_value
+                    )
         else:
             for source_view in self.source_views:
                 source_view.spectrogram.clear_overlay()

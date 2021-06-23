@@ -16,7 +16,7 @@ class SelectionBox(pg.RectROI):
     _roi_color = (255, 255, 0)
     _handle_color = (200, 200, 220)
     _handle_hover_color = (255, 255, 0)
-    _handle_radius = 12
+    _handle_radius = 6
     _handle_type = "t"
 
     def __init__(self, *args, **kwargs):

@@ -4,7 +4,7 @@ from enum import Enum
 from queue import Empty, Queue
 from typing import Optional, Tuple, Union
 
-from PyQt5.QtCore import QObject, QThread, pyqtSignal
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from scipy.fft import fft, fftfreq
 import numpy as np
 
@@ -396,6 +396,7 @@ class StftCache(QObject):
 
         self._trigger_jobs()
 
+    @pyqtSlot(StftIndex, int, np.ndarray)
     def _on_worker_result(self, idx: StftIndex, ch: int, fft_result):
         if 0 <= int(idx - self._start_ptr) < len(self._data):
             self._data[idx - self._start_ptr, ch] = fft_result[self._positive_freqs_filter]

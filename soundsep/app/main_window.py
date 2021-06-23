@@ -40,7 +40,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
     def setup_actions(self):
         self.open_action = widgets.QAction("&Open Project")
-        self.import_action = widgets.QAction("&Import WAV files...")
         self.close_action = widgets.QAction("&Close")
         self.save_action = widgets.QAction("&Save")
         self.save_action.setToolTip("Save the current segements")
@@ -90,7 +89,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
         # Add to menu
         self.ui.menuFile.addAction(self.open_action)
-        self.ui.menuFile.addAction(self.import_action)
         self.ui.menuFile.addSeparator()
         self.ui.menuFile.addAction(self.save_action)
         self.ui.menuFile.addSeparator()

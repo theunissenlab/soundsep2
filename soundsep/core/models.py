@@ -25,11 +25,26 @@ class AudioFile:
     def __init__(self, path):
         self._path = path
         self._max_frame = None
+        self._file = None
 
         with soundfile.SoundFile(path) as f:
             self._sampling_rate = f.samplerate
             self._channels = f.channels
             self._actual_frames = f.frames
+
+    def is_open(self):
+        return self._file is not None and not self._file.closed
+
+    def is_closed(self):
+        return self._file is None or self._file.closed
+
+    def open(self):
+        if not self.is_open():
+            self._file = soundfile.SoundFile(self._path, "r")
+
+    def close(self):
+        if not self.is_open():
+            self._file.close()
 
     def __repr__(self):
         return "<AudioFile: {}; {} Hz; {} Ch; {} frames>".format(
@@ -67,6 +82,9 @@ class AudioFile:
         else:
             raise ValueError("Can only compare AudioFile equality with other AudioFiles")
 
+    def __hash__(self):
+        return id(self)
+
     @property
     def path(self) -> str:
         """str: Full path to audio file"""
@@ -87,7 +105,7 @@ class AudioFile:
         """int: Number of channels in audio file"""
         return self._channels
 
-    def read(self, i0: int, i1: int, channel: int) -> np.ndarray:
+    def read(self, i0: int, i1: int) -> np.ndarray:
         """Read samples from i0 to i1 on channel
 
         Arguments
@@ -96,28 +114,25 @@ class AudioFile:
             Starting index to read from (inclusive)
         i1 : int
             Ending index to read until (exclusive)
-        channel : int
-            Channel index to read
 
         Returns
         -------
         data : ndarray
-            A 2D array of shape (frames: int, 1) containing data from the requested channel.
+            A 2D array of shape (frames: int, channels: int) containing data from the requested channel.
             The first dimension is the sample index, the second dimension is the channel
-            axis, although this function only returns one channel.
+            axis.
         """
-        if channel >= self.channels or channel < 0:
-            raise ValueError("Invalid channel. AudioFile has {} channels, request channel {}".format(self.channels, channel))
+        # if channel >= self.channels or channel < 0:
+        #     raise ValueError("Invalid channel. AudioFile has {} channels, request channel {}".format(self.channels, channel))
 
         read_start = i0
         read_stop = min(i1, self.frames)
 
-        result, _ = soundfile.read(self.path, read_stop - read_start, read_start, dtype=np.float64)
+        if self.is_closed():
+            self.open()
 
-        if result.ndim == 1:
-            result = result[:, None]
-
-        return result[:, channel]
+        self._file.seek(read_start)
+        return self._file.read(read_stop - read_start, dtype=np.float32, always_2d=True)
 
 
 class Block:
@@ -237,6 +252,11 @@ class Block:
         """int: Number of channels in Block"""
         return len(self._channel_mapping)
 
+    def close_files(self):
+        for f in self._files:
+            if f.is_open():
+                f.close()
+
     def read(self, i0: int, i1: int, channels: List[int]) -> np.ndarray:
         """Read data from i0 to i1 in the block on the selected channels
 
@@ -256,9 +276,16 @@ class Block:
         """
         i1 = min(i1, self.frames)
         output = np.zeros((i1 - i0, len(channels)))
+
+        audio_files_needed = set([self.channel_mapping[ch][0] for ch in channels])
+        data_by_audio_file = {}
+
+        for f in audio_files_needed:
+            data_by_audio_file[f] = f.read(i0, i1)
+
         for i, ch in enumerate(channels):
             (audio_file, audio_file_ch) = self.channel_mapping[ch]
-            output[:, i] = audio_file.read(i0, i1, audio_file_ch)
+            output[:, i] = data_by_audio_file[audio_file][:, audio_file_ch]
 
         return output
 
@@ -377,6 +404,10 @@ class Project:
         for block in self.blocks:
             yield ((ProjectIndex(self, frame), ProjectIndex(self, frame + block.frames)), block)
             frame += block.frames
+
+    def close_files(self):
+        for block in self.blocks:
+            block.close_files()
 
     def read(
             self,

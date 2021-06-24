@@ -119,6 +119,7 @@ class SoundsepApp(QObject):
         self.datastore["sources"] = self.load_sources()
 
     def close(self):
+        self.project.close_files()
         self.services["stft"].close()
 
     def load_sources(self) -> SourceService:

@@ -17,7 +17,7 @@ DEFAULTS = {
     # Stft defaults
     "stft.window": 302,
     "stft.step": 44,
-    "stft.cache.size": 12 * 2000,
+    "stft.cache.size": 4 * 2000,
 
     # Detection plugin
     "detection.ampenv_rectify": 200.0,

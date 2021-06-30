@@ -1,6 +1,10 @@
 import numpy as np
 
 
+def ceil_div(a, b):
+    return (a + b - 1) // b
+
+
 def get_blocks_of_ones(vec: np.ndarray):
     """For a binary vector, return the indices surrounding contiguous blocks of ones
 

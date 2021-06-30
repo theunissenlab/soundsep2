@@ -323,9 +323,9 @@ class SoundsepMainWindow(widgets.QMainWindow):
         """Draw the current spectrogram position on all source views"""
         self._draw_sources_timer.stop()
         x0, x1 = self.api.workspace_get_lim()
-        stft_data, _stale, freqs = self.api.read_stft(x0, x1)
+        t, stft_data, _stale, freqs = self.api.read_stft(x0, x1)
         for source_view in self.source_views:
-            source_view.spectrogram.set_data(x0, x1, stft_data[:, source_view.source.channel], freqs)
+            source_view.spectrogram.set_data(x0, x1, t, stft_data[:, source_view.source.channel], freqs)
 
         if self.toggle_ampenv_action.isChecked():
             xarr = np.array([x.to_project_index() for x in StftIndex.range(x0, x1)])
@@ -434,12 +434,12 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
         x0, x1 = self.api.workspace_get_lim()
         if self._accumulated_zoom > 0:
-            # Zooming in to 2/3 of the current workspace
-            scale = 1 + (x1 - x0) // 3
+            # Zooming in to 4/5 of the current workspace
+            scale = 1 + (x1 - x0) // 5
         else:
-            # Zooming out to 3/2 of the current workspace
+            # Zooming out to 5/4 of the current workspace
             # 1 is added for when the workspace size is == 1, you can still zoom out
-            scale = 1 + (x1 - x0) // 2
+            scale = 1 + (x1 - x0) // 4
 
         self.api.workspace_scale(np.sign(self._accumulated_zoom) * -1 * scale)
         self._accumulated_zoom = 0

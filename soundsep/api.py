@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 from PyQt5.QtCore import QObject, pyqtSignal
-from scipy.interpolate import interp2d
 import numpy as np
 
 from soundsep.app.services import Selection, Workspace
@@ -310,22 +309,7 @@ class Api(QObject):
         """
         t, data, stale = self._app.services["stft"].read(start, stop)
 
-        # # Interpolate
-        # nonstale = stale == False
-        # t_valid = t[nonstale]
-        # data_valid = data[nonstale]
-        # freqs = self._app.services["stft"].positive_freqs
-        # print(t_valid.shape, data_valid.shape, freqs.shape)
-        #
-        # # result = np.zeros_like(data)
-        # # if len(t_valid):
-        # #     for ch in range(data_valid.shape[1]):
-        # #         fn = interp2d(t_valid, freqs, data_valid[:, ch].T)
-        # #         result[:, ch] = fn(t, freqs).T
-        # # else:
-        result = data
-
-        return t, result, stale, self._app.services["stft"].positive_freqs
+        return t, data, stale, self._app.services["stft"].positive_freqs
 
     def get_workspace_signal(self) -> Tuple[list, np.ndarray]:
         """Return the xrange and signal of the current workspace

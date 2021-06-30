@@ -36,17 +36,19 @@ def compute_pad_for_windowing(
     wanted_start = first_window_pos - half_window
     wanted_stop = last_window_pos + half_window + 1
 
-    if wanted_start < 0:
+    if wanted_start <= 0:
         pad_start = int(np.abs(wanted_start))
+        wanted_start = 0
     else:
         pad_start = 0
 
-    if wanted_stop > array_length:
+    if wanted_stop >= array_length:
         pad_stop = int(wanted_stop - array_length)
+        wanted_stop = array_length
     else:
         pad_stop = 0
 
-    return pad_start, pad_stop
+    return pad_start, pad_stop, wanted_start, wanted_stop
 
 
 def iter_lattice_windows(
@@ -78,15 +80,10 @@ def iter_lattice_windows(
         half_window
     )
     padding = ((pad_start, pad_stop),) + tuple([(0, 0) for _ in range(arr.ndim - 1)])
-    print(scaled_lattice)
-    print("padded front: {} to back {}".format(pad_start, pad_stop))
-    print("For window centers {} and {}".format(window_centers[0], window_centers[-1]))
 
     padded_arr = np.pad(arr, padding, mode="reflect")
     windows = sliding_window_view(padded_arr, 2 * half_window + 1, axis=0)
 
-    print(scaled_lattice.to_slice(relative_to=scaled_lattice.bound.start + half_window - pad_start))
-    print(windows.shape)
     for window_idx, window in zip(
             bounded_lattice,
             windows[scaled_lattice.to_slice(relative_to=scaled_lattice.bound.start + half_window - pad_start)]

@@ -131,6 +131,43 @@ class StftWorker(QThread):
 
 
 class StftService(QObject):
+    """A service for caching stft values in and around an active data range
+
+    The StftService provides access to a hierarchical cache of STFT data. The
+    hierarchy contains ``n_scales`` levels which increase in size while decreasing
+    in temporal resolution.
+
+    Each level contains data samples offset such that no frame number is computed
+    more than once across levels, and that computing frames from all levels gives
+    the full spectrogram.
+
+    Here is a visual depiction of how the layers are organized:
+
+      ```
+      1| . . . . . .
+      2|  .   .   .   .   .   .   .
+      3|    .       .       .       .       .       .       .       .
+      4|        .               .               .               .
+      5|.               .               .               .               .
+      ```
+
+    Arguments
+    ---------
+    project : Project
+    n_scales : int
+        Number of scales at which data can be viewed, each scale increasing by
+        a power of 2.
+    cache_size : int
+        The number of samples stored in each cache layer
+    fraction_cached : float
+        The fraction of the cache size which triggers reads at the next scale.
+        E.g. If each layer is 2000 samples wide and a range of data 1001 samples
+        wide is attempted to be read, the StftService will choose to read
+        at the 2nd level (every other sample)
+    stft_params : StftParameters
+        The stft config parameters including stft.half_window and stft.hop
+    """
+
     def __init__(self, project, n_scales: int, cache_size: int, fraction_cached: float, stft_params: 'StftParameters'):
         super().__init__()
         self.project = project

@@ -102,14 +102,14 @@ class SourceView(widgets.QWidget):
         self.spectrogram.scene().sigMouseMoved.connect(self.on_sig_mouse_moved)
 
         self.source_channel_dialog = FloatingComboBox(
-            paddingx=80,
-            paddingy=10,
+            paddingx=25,
+            paddingy=5,
             parent=self.spectrogram
         )
         self.source_name_dialog = FloatingButton(
             "▼ {}".format(self.source.name),
-            paddingx=140,
-            paddingy=10,
+            paddingx=85,
+            paddingy=5,
             parent=self.spectrogram
         )
         self.source_name_dialog.clicked.connect(self.open_edit_source_modal)

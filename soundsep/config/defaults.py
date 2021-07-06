@@ -17,8 +17,8 @@ DEFAULTS = {
     # Stft defaults
     "stft.window": 302,
     "stft.step": 22,
-    "stft.cache.fraction_cached": 0.5,
-    "stft.cache.n_scales": 7,
+    "stft.cache.fraction_cached": 0.75,
+    "stft.cache.n_scales": 8,
     "stft.cache.size": 2000,
 
     # Detection plugin

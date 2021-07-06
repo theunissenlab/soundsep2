@@ -8,25 +8,45 @@ import numpy as np
 from soundsep.core.models import AudioFile, Block, BlockIndex, Project, ProjectIndex
 
 
-def mock_soundfile_with(samplerate=44100, channels=1, frames=44100):
-    @contextmanager
-    def _mock_soundfile(*args, **kwargs):
-        yield mock.Mock(samplerate=samplerate, channels=channels, frames=frames)
-    return _mock_soundfile
+class MockSoundFileFactory:
+    """Mock SoundFile instance that can be used as context manager"""
+
+    def __init__(self, samplerate=44100, channels=1, frames=44100):
+        self.__kwargs = {
+            "samplerate": samplerate,
+            "channels": channels,
+            "frames": frames
+        }
+
+    def __call__(self, path, readonly="rw+"):
+        return MockSoundFile(**self.__kwargs)
+
+
+class MockSoundFile(mock.Mock):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.closed = False
+
+    def __enter__(self ):
+        self.closed = False
+        return self
+
+    def __exit__(self, *args):
+        self.closed = True
 
 
 class TestIndex(unittest.TestCase):
     """Test the BlockIndex and ProjectIndex types
     """
     def setUp(self):
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(frames=100)):
             b1f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(frames=100)):
             b1f2 = AudioFile("asdf_2.wav")
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(frames=100)):
             b2f1 = AudioFile("foo_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(frames=100)):
             b2f2 = AudioFile("foo_2.wav")
 
         self.block1 = Block([b1f1, b1f2], fix_uneven_frame_counts=False)
@@ -192,23 +212,22 @@ class TestAudioFile(unittest.TestCase):
         self.sampling_rate = 44100
         self.channels = 2
         self.frames = 22050
-        self.MockSoundFile = mock_soundfile_with(
+        self.MockSoundFileFactory = MockSoundFileFactory(
             samplerate=self.sampling_rate,
             channels=self.channels,
             frames=self.frames
         )
 
     def test_init(self):
-        with mock.patch("soundfile.SoundFile", self.MockSoundFile):
+        with mock.patch("soundfile.SoundFile", self.MockSoundFileFactory):
             f = AudioFile("asdf.wav")
-
-        self.assertEqual(f.sampling_rate, self.sampling_rate)
-        self.assertEqual(f.channels, self.channels)
-        self.assertEqual(f.frames, self.frames)
-        self.assertEqual(f.path, "asdf.wav")
+            self.assertEqual(f.sampling_rate, self.sampling_rate)
+            self.assertEqual(f.channels, self.channels)
+            self.assertEqual(f.frames, self.frames)
+            self.assertEqual(f.path, "asdf.wav")
 
     def test_set_max_frame(self):
-        with mock.patch("soundfile.SoundFile", self.MockSoundFile):
+        with mock.patch("soundfile.SoundFile", self.MockSoundFileFactory):
             f = AudioFile("asdf.wav")
 
         self.assertEqual(f.frames, self.frames)
@@ -229,7 +248,7 @@ class TestAudioFile(unittest.TestCase):
         self.assertEqual(f.frames, self.frames, "frames property should be default after max_frames is cleared")
 
     def test_equality(self):
-        with mock.patch("soundfile.SoundFile", self.MockSoundFile):
+        with mock.patch("soundfile.SoundFile", self.MockSoundFileFactory):
             f1 = AudioFile("asdf.wav")
             f2 = AudioFile("asdf.wav")
             f3 = AudioFile("notasdf.wav")
@@ -240,38 +259,27 @@ class TestAudioFile(unittest.TestCase):
         self.assertNotEqual(f1, f4, "Two AudioFiles should be == if and only if they have the same path")
 
     def test_read(self):
-        with mock.patch("soundfile.SoundFile", self.MockSoundFile):
+        with mock.patch("soundfile.SoundFile", self.MockSoundFileFactory):
             f1 = AudioFile("asdf.wav")
+            f1.open()
+            f1._file.read.return_value = np.random.random((10, 2))
+            result = f1.read(-5, 10)
+            f1._file.seek.assert_called_with(-5)
+            f1._file.read.assert_called_with(15, dtype=np.float32, always_2d=True)
 
-        with mock.patch("soundfile.read") as mock_read:
-            with self.assertRaises(ValueError):
-                f1.read(-5, 10, channel=-1)
-
-            with self.assertRaises(ValueError):
-                f1.read(-5, 10, channel=2)
-
-        with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((10, 2)), f1.sampling_rate
-            result = f1.read(-5, 10, channel=0)
-            mock_read.assert_called_with("asdf.wav", 15, -5, dtype=np.float64)
-
-        with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((self.frames - 10, self.channels)), f1.sampling_rate
-            result = f1.read(10, self.frames + 100, channel=0)
-            mock_read.assert_called_with("asdf.wav", self.frames - 10, 10, dtype=np.float64)
+            f1._file.read.return_value = np.random.random((self.frames - 10, self.channels))
+            result = f1.read(10, self.frames + 100)
+            f1._file.seek.assert_called_with(10)
+            f1._file.read.assert_called_with(self.frames - 10, dtype=np.float32, always_2d=True)
 
     def test_read_shape(self):
-        with mock.patch("soundfile.SoundFile", self.MockSoundFile):
+        with mock.patch("soundfile.SoundFile", self.MockSoundFileFactory):
             f1 = AudioFile("asdf.wav")
+            f1.open()
 
-        with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((10, 2)), f1.sampling_rate
-
-            result0 = f1.read(10, 20, channel=0)
-            np.testing.assert_array_equal(result0, mock_read.return_value[0][:, 0])
-
-            result1 = f1.read(10, 20, channel=1)
-            np.testing.assert_array_equal(result1, mock_read.return_value[0][:, 1])
+            f1._file.read.return_value = np.random.random((10, 2))
+            result0 = f1.read(10, 20)
+            np.testing.assert_array_equal(result0, f1._file.read.return_value)
 
 
 class TestBlock(unittest.TestCase):
@@ -282,13 +290,13 @@ class TestBlock(unittest.TestCase):
         Test with audio files with 2, 1 and 3 channels each. 6 channels should be created and assigned
         in order.
         """
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2)):
             f1 = AudioFile("asdf_1.wav")
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1)):
             f2 = AudioFile("asdf_2.wav")
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=3)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=3)):
             f3 = AudioFile("asdf_3.wav")
 
         mapping = Block.make_channel_mapping([f1, f2, f3])
@@ -305,9 +313,9 @@ class TestBlock(unittest.TestCase):
         expect_sr = 44100
         expect_frames = 2345
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(samplerate=expect_sr, channels=1, frames=expect_frames)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(samplerate=expect_sr, channels=1, frames=expect_frames)):
             f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(samplerate=expect_sr, channels=2, frames=expect_frames)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(samplerate=expect_sr, channels=2, frames=expect_frames)):
             f2 = AudioFile("asdf_2.wav")
 
         block = Block([f1, f2], fix_uneven_frame_counts=False)
@@ -321,10 +329,10 @@ class TestBlock(unittest.TestCase):
         expect_sr = 44100
         expect_frames = 2345
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(samplerate=expect_sr, channels=1, frames=expect_frames)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(samplerate=expect_sr, channels=1, frames=expect_frames)):
             f1 = AudioFile("asdf_1.wav")
             assert f1.frames == expect_frames
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(samplerate=expect_sr, channels=2, frames=expect_frames + 100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(samplerate=expect_sr, channels=2, frames=expect_frames + 100)):
             f2 = AudioFile("asdf_2.wav")
             assert f2.frames == expect_frames + 100
 
@@ -335,20 +343,20 @@ class TestBlock(unittest.TestCase):
         self.assertEqual(block.frames, expect_frames)
 
     def test_block_requires_equal_rates(self):
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(samplerate=1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(samplerate=1)):
             f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(samplerate=2)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(samplerate=2)):
             f2 = AudioFile("asdf_2.wav")
 
         with self.assertRaises(ValueError):
             Block([f1, f2], fix_uneven_frame_counts=False)
 
     def test_block_equality(self):
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with()):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory()):
             f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with()):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory()):
             f2 = AudioFile("asdf_2.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with()):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory()):
             f3 = AudioFile("asdf_2.wav")  # Has the same path as f2
 
         block_12 = Block([f1, f2], fix_uneven_frame_counts=False)
@@ -360,9 +368,9 @@ class TestBlock(unittest.TestCase):
         self.assertNotEqual(block_13, block_23)
 
     def test_get_channel_info(self):
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2)):
             f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2)):
             f2 = AudioFile("asdf_2.wav")
 
         block = Block([f1, f2], fix_uneven_frame_counts=False)
@@ -373,44 +381,61 @@ class TestBlock(unittest.TestCase):
         self.assertEqual(block.get_channel_info(3), ("asdf_2.wav", 1))
 
     def test_block_read(self):
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2)):
             f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2)):
+            f1.open()
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2)):
             f2 = AudioFile("asdf_2.wav")
+            f2.open()
 
         block = Block([f1, f2], fix_uneven_frame_counts=False)
 
-        with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((10, 2)), f1.sampling_rate
+        f1._file.read.return_value = np.random.random((10, 2))
+        f2._file.read.return_value = np.random.random((10, 2))
 
-            result = block.read(10, 20, [0, 1])
+        result = block.read(10, 20, [0, 1])
 
-            mock_read.assert_has_calls([
-                mock.call("asdf_1.wav", 10, 10, dtype=np.float64),
-                mock.call("asdf_1.wav", 10, 10, dtype=np.float64),
-            ])
-            self.assertEqual(result.shape, (10, 2))
+        f1._file.seek.assert_has_calls([
+            mock.call(10)
+        ])
+        f1._file.read.assert_has_calls([
+            mock.call(10, dtype=np.float32, always_2d=True),
+        ])
+        f2._file.seek.assert_not_called()
+        f2._file.read.assert_not_called()
+
+        self.assertEqual(result.shape, (10, 2))
 
     def test_block_read_with_max_frames(self):
         """Test a block read where the max frames is pinned to 15"""
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2, frames=15)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2, frames=15)):
             f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2)):
+            f1.open()
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2)):
             f2 = AudioFile("asdf_2.wav")
+            f2.open()
 
         block = Block([f1, f2], fix_uneven_frame_counts=True)
 
-        with mock.patch("soundfile.read") as mock_read:
-            mock_read.return_value = np.random.random((5, 2)), f1.sampling_rate
+        f1._file.read.return_value = np.random.random((5, 2))
+        f2._file.read.return_value = np.random.random((5, 2))
 
-            result = block.read(10, 20, [0, 3, 1])
+        result = block.read(10, 20, [0, 3, 1])
 
-            mock_read.assert_has_calls([
-                mock.call("asdf_1.wav", 5, 10, dtype=np.float64),
-                mock.call("asdf_2.wav", 5, 10, dtype=np.float64),
-                mock.call("asdf_1.wav", 5, 10, dtype=np.float64),
-            ])
-            self.assertEqual(result.shape, (5,  3))
+        f1._file.seek.assert_has_calls([
+            mock.call(10)
+        ])
+        f1._file.read.assert_has_calls([
+            mock.call(5, dtype=np.float32, always_2d=True),
+        ])
+        f2._file.seek.assert_has_calls([
+            mock.call(10)
+        ])
+        f2._file.read.assert_has_calls([
+            mock.call(5, dtype=np.float32, always_2d=True),
+        ])
+
+        self.assertEqual(result.shape, (5, 3))
 
 
 class TestProject(unittest.TestCase):
@@ -420,37 +445,37 @@ class TestProject(unittest.TestCase):
 
         Each block in the project should have two files, one with 1 channel and one with 2
         """
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1, frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1, frames=100)):
             b1f1 = AudioFile("asdf_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2, frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2, frames=100)):
             b1f2 = AudioFile("asdf_2.wav")
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1, frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1, frames=100)):
             b2f1 = AudioFile("foo_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2, frames=100)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2, frames=100)):
             b2f2 = AudioFile("foo_2.wav")
 
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1, frames=200)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1, frames=200)):
             b3f1 = AudioFile("bar_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2, frames=200)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2, frames=200)):
             b3f2 = AudioFile("bar_2.wav")
 
         # Block 4 will have a different sampling rate
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1, samplerate=b3f1.sampling_rate + 1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1, samplerate=b3f1.sampling_rate + 1)):
             b4f1 = AudioFile("bad_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=2, samplerate=b3f1.sampling_rate + 1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=2, samplerate=b3f1.sampling_rate + 1)):
             b4f2 = AudioFile("bad_2.wav")
 
         # Block 5 will have a different number of files but same number of channels (should be fine, but could raise an warnign)
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1)):
             b5f1 = AudioFile("woof_1.wav")
             b5f2 = AudioFile("woof_2.wav")
             b5f3 = AudioFile("woof_3.wav")
 
         # Block 6 will have a different number of channels in one file
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1)):
             b6f1 = AudioFile("baz_1.wav")
-        with mock.patch("soundfile.SoundFile", mock_soundfile_with(channels=1)):
+        with mock.patch("soundfile.SoundFile", MockSoundFileFactory(channels=1)):
             b6f2 = AudioFile("baz_2.wav")
 
         self.block1 = Block([b1f1, b1f2], fix_uneven_frame_counts=False)
@@ -512,7 +537,6 @@ class TestProject(unittest.TestCase):
         b1 = BlockIndex(self.block2, 50)
         p0 = ProjectIndex(project, 110)
         p1 = ProjectIndex(project, 150)
-
 
         with mock.patch.object(project, "_read_by_project_indices") as mock_fn:
             project.read(b0, b1, channels=[0])

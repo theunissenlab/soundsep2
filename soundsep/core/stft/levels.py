@@ -73,12 +73,13 @@ def iter_lattice_windows(
     """
     scaled_lattice = bounded_lattice * scale_factor
     window_centers = np.array(list(scaled_lattice))
-    pad_start, pad_stop = compute_pad_for_windowing(
+    pad_start, pad_stop, start_index, stop_index = compute_pad_for_windowing(
         len(arr),
         window_centers[0] - scaled_lattice.bound.start,
         window_centers[-1] - scaled_lattice.bound.start,
         half_window
     )
+    arr = arr[start_index:stop_index]
     padding = ((pad_start, pad_stop),) + tuple([(0, 0) for _ in range(arr.ndim - 1)])
 
     padded_arr = np.pad(arr, padding, mode="reflect")

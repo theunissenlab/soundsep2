@@ -75,7 +75,7 @@ class TestGroupFilesByPattern(unittest.TestCase):
         groups, errors = group_files_by_pattern(
             base_directory=self.base_directory,
             filelist=self.filelist,
-            filename_pattern="bar/baz_{timestamp}_ch{channel}.wav",
+            filename_pattern=str(Path("bar/baz_{timestamp}_ch{channel}.wav")),
             block_keys=["timestamp"],
             channel_keys=None
         )
@@ -106,7 +106,7 @@ class TestGroupFilesByPattern(unittest.TestCase):
         groups, errors = group_files_by_pattern(
             base_directory=self.base_directory,
             filelist=self.filelist,
-            filename_pattern="bar/baz_{timestamp}_ch{channel}.wav",
+            filename_pattern=str(Path("bar/baz_{timestamp}_ch{channel}.wav")),
             block_keys=["timestamp", "channel"],
             channel_keys=None
         )
@@ -152,7 +152,7 @@ class TestGroupFilesByPattern(unittest.TestCase):
         groups, errors = group_files_by_pattern(
             base_directory=self.base_directory,
             filelist=self.filelist,
-            filename_pattern="foo/bar/baz_{timestamp}_ch{channel}.wav",
+            filename_pattern=str(Path("foo/bar/baz_{timestamp}_ch{channel}.wav")),
             block_keys=None,
             channel_keys=None
         )
@@ -179,7 +179,7 @@ class TestGroupFilesByPattern(unittest.TestCase):
         groups, errors = group_files_by_pattern(
             base_directory=self.base_directory,
             filelist=self.filelist,
-            filename_pattern="bar/baz_{timestamp}_ch{channel}.wav",
+            filename_pattern=str(Path("bar/baz_{timestamp}_ch{channel}.wav")),
             block_keys=None,
             channel_keys=["channel"]
         )
@@ -198,7 +198,7 @@ class TestGroupFilesByPattern(unittest.TestCase):
         groups, errors = group_files_by_pattern(
             base_directory=self.base_directory,
             filelist=self.filelist,
-            filename_pattern="bar/baz_{timestamp}_ch{channel}.wav",
+            filename_pattern=str(Path("bar/baz_{timestamp}_ch{channel}.wav")),
             block_keys=["timestamp"],
             channel_keys=["channel"]
         )

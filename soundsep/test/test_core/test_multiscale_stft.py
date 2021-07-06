@@ -4,7 +4,7 @@ import warnings
 import numpy as np
 
 from soundsep.core.stft import lattice
-from soundsep.core.stft.cache import _CacheLayer, StftCache
+from soundsep.core.stft.cache import CacheLayer, StftCache
 from soundsep.core.stft.lattice import Bound, BoundedLattice, Lattice
 from soundsep.core.stft.levels import (
     _get_layer_offset,
@@ -74,7 +74,6 @@ class TestMultiScaleStft(unittest.TestCase):
             step=_get_layer_step(1, 5),
             bound=Bound(0, 100),
         ))
-        print(layers)
         self.assertEqual(layers[1], BoundedLattice(
             offset=_get_layer_offset(2),
             step=_get_layer_step(2, 5),
@@ -177,7 +176,8 @@ class TestMultiScaleStft(unittest.TestCase):
             ))
 
         for subresult in lattice.test_flood(10, 30, layers):
-            print(subresult)
+            pass
+            # print(subresult)
 
         layers = []
         for layer_idx in [3, 2, 1]:
@@ -187,28 +187,37 @@ class TestMultiScaleStft(unittest.TestCase):
             ))
 
         for subresult in lattice.test_flood(0, 100, layers):
-            print(subresult)
+            pass
+            # print(subresult)
 
     def test_compute_pad_for_windowing(self):
         input_arr = np.ones(90)
-        pad_start, pad_stop = compute_pad_for_windowing(len(input_arr), 10, 80, half_window=5)
+        pad_start, pad_stop, start_index, stop_index = compute_pad_for_windowing(len(input_arr), 10, 80, half_window=5)
         self.assertEqual(pad_start, 0)
         self.assertEqual(pad_stop, 0)
+        self.assertEqual(start_index, 5)
+        self.assertEqual(stop_index, 86)
 
         input_arr = np.ones(90)
-        pad_start, pad_stop = compute_pad_for_windowing(len(input_arr), 10, 80, half_window=10)
+        pad_start, pad_stop, start_index, stop_index = compute_pad_for_windowing(len(input_arr), 10, 80, half_window=10)
         self.assertEqual(pad_start, 0)
         self.assertEqual(pad_stop, 1)
+        self.assertEqual(start_index, 0)
+        self.assertEqual(stop_index, 90)
 
         input_arr = np.ones(90)
-        pad_start, pad_stop = compute_pad_for_windowing(len(input_arr), 10, 80, half_window=15)
+        pad_start, pad_stop, start_index, stop_index = compute_pad_for_windowing(len(input_arr), 10, 80, half_window=15)
         self.assertEqual(pad_start, 5)
         self.assertEqual(pad_stop, 6)
+        self.assertEqual(start_index, 0)
+        self.assertEqual(stop_index, 90)
 
         input_arr = np.ones(90)
-        pad_start, pad_stop = compute_pad_for_windowing(len(input_arr), 1, 80, half_window=20)
+        pad_start, pad_stop, start_index, stop_index = compute_pad_for_windowing(len(input_arr), 1, 80, half_window=20)
         self.assertEqual(pad_start, 19)
         self.assertEqual(pad_stop, 11)
+        self.assertEqual(start_index, 0)
+        self.assertEqual(stop_index, 90)
 
     def test_lattice_windows(self):
         input_arr = np.arange(100)
@@ -282,7 +291,7 @@ class TestMultiScaleStft(unittest.TestCase):
 
     def test_get_bounds_from_central_range(self):
         """Test method that centers a cache layer on a given region"""
-        layer = _CacheLayer(lattice=BoundedLattice(offset=0, step=1, bound=Bound(start=0, stop=6)))
+        layer = CacheLayer(lattice=BoundedLattice(offset=0, step=1, bound=Bound(start=0, stop=6)))
         self.assertEqual(
             layer.get_bounds_from_central_range(0, 2, full_size=20),
             Bound(0, 6),
@@ -316,7 +325,7 @@ class TestMultiScaleStft(unittest.TestCase):
 
         # Now test a more interesting one
         # This layer is size 7 and spans 14
-        layer = _CacheLayer(lattice=BoundedLattice(offset=1, step=2, bound=Bound(start=0, stop=15)))
+        layer = CacheLayer(lattice=BoundedLattice(offset=1, step=2, bound=Bound(start=0, stop=15)))
         self.assertEqual(
             layer.get_bounds_from_central_range(10, 16, full_size=50),
             Bound(5, 19),
@@ -338,7 +347,7 @@ class TestMultiScaleStft(unittest.TestCase):
         )
 
     def test_set_central_range(self):
-        layer = _CacheLayer(lattice=BoundedLattice(offset=1, step=2, bound=Bound(start=0, stop=15)))
+        layer = CacheLayer(lattice=BoundedLattice(offset=1, step=2, bound=Bound(start=0, stop=15)))
 
         layer.set_central_range(10, 16, full_size=50)
         # This layer should noe be aligned to Bound(5, 19)
@@ -348,7 +357,7 @@ class TestMultiScaleStft(unittest.TestCase):
         layers = gen_bounded_layers(5, 100)
         params = StftParameters(hop=6, half_window=4)
 
-        cache = StftCache([_CacheLayer(l) for l in layers])
+        cache = StftCache([CacheLayer(l) for l in layers])
         cache.set_shape(1, 1)
         for i, layer in enumerate(cache.layers):
             layer.data[:] = i + 1
@@ -364,7 +373,7 @@ class TestMultiScaleStft(unittest.TestCase):
         self.assertEqual(cache.layers[3].lattice.bound, Bound(7, 807))
         self.assertEqual(cache.layers[4].lattice.bound, Bound(15, 1615))
 
-        t, out_arr = cache.read(22, 42, 0)
+        t, out_arr, stale = cache.read(22, 42, 0)
         self.assertEqual(np.sum(out_arr == 0.0), 1)
 
         cache.set_central_range(250, 300, 500)

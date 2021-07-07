@@ -66,7 +66,7 @@ class Launcher(QObject):
         rect = w.frameGeometry()
         geom = widgets.QDesktopWidget().availableGeometry()
         center_on = geom.center()
-        center_on.setY(center_on.y() - geom.height() / 8)
+        center_on.setY(center_on.y())
         rect.moveCenter(center_on)
         w.move(rect.topLeft())
 

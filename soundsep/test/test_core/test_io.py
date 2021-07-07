@@ -1,12 +1,43 @@
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
 from soundsep.core.io import (
+    common_subsequence,
     group_files_by_pattern,
+    guess_filename_pattern,
     search_for_wavs
 )
+
+
+def mock_soundfile_metadata():
+    @contextmanager
+    def _mock_soundfile(path):
+        if path == str(Path("foo/ba(r/rec:s1_ch0-00123.wav")):
+            obj = mock.MagicMock()
+            obj.frames = 20
+            obj.samplerate = 44100
+            obj.channels = 1
+        elif path == str(Path("foo/bar/rec:s1_ch1-0231|2.wav")):
+            obj = mock.MagicMock()
+            obj.frames = 20
+            obj.samplerate = 44100
+            obj.channels = 2
+        elif path == str(Path("foo/ba)r/rec:s2_ch0-12|345.wav")):
+            obj = mock.MagicMock()
+            obj.frames = 44
+            obj.samplerate = 44100
+            obj.channels = 1
+        elif path == str(Path("foo/bar/rec:s2_ch1-42358.wav")):
+            obj = mock.MagicMock()
+            obj.frames = 44
+            obj.samplerate = 44100
+            obj.channels = 2
+
+        yield obj
+    return _mock_soundfile
 
 
 class TestIoFunctions(unittest.TestCase):
@@ -37,6 +68,34 @@ class TestIoFunctions(unittest.TestCase):
                 ]
             )
 
+    @mock.patch("soundfile.SoundFile", mock_soundfile_metadata())
+    def test_guess_filename_pattern(self):
+        """Test that search for wavs returns absolute paths"""
+        base_directory = Path("foo/")
+        filelist = [
+            "foo/ba(r/rec:s1_ch0-00123.wav",
+            "foo/bar/rec:s1_ch1-0231|2.wav",
+            "foo/ba)r/rec:s2_ch0-12|345.wav",
+            "foo/bar/rec:s2_ch1-42358.wav",
+        ]
+        filelist = [str(Path(s)) for s in filelist]
+
+        block_keys, filename_pattern = guess_filename_pattern(base_directory, filelist)
+
+        self.assertEqual(block_keys, ["var2"])
+        self.assertEqual(filename_pattern, str(Path("{var0}/rec:{var2}_{var3}-{var4}.wav")))
+
+    def test_common_subsequence(self):
+        a = [
+            "aqbcdf",
+            "abecde",
+            "gbrcdefg",
+            "bcacd",
+        ]
+        result = common_subsequence(a)
+        self.assertListEqual(result, [
+            ("b", "c", "d"),
+        ])
 
 class TestGroupFilesByPattern(unittest.TestCase):
 

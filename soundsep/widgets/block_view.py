@@ -94,7 +94,7 @@ class AudioFileView(widgets.QTreeWidget):
             A function that maps a filename or path to a list of ids parsed from
             the filename. For example, a function that takes the path "/home/data/subject0_ch1.wav"
             and return a list ["ch1"]. The output of this column is filled into the column "Id"
-            for each AudioFile in the block. 
+            for each AudioFile in the block.
         """
         widget = widgets.QTreeWidgetItem()
         widget.setText(0, str(block))

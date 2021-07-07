@@ -10,7 +10,7 @@ from PyQt5 import QtWidgets as widgets
 from PyQt5.QtCore import Qt, pyqtSignal
 
 from soundsep.config.defaults import DEFAULTS
-from soundsep.core.io import group_files_by_pattern, search_for_wavs
+from soundsep.core.io import group_files_by_pattern, guess_filename_pattern, search_for_wavs
 from soundsep.core.models import AudioFile, Block
 from soundsep.ui.project_creator import Ui_ProjectCreator
 
@@ -76,8 +76,8 @@ class ProjectCreator(widgets.QWidget):
         save_target, _ = widgets.QFileDialog.getSaveFileName(
             None,
             "Saving yaml file",
-            os.path.dirname(config["audio_directory"]),
-            "soundsep.yaml",
+            os.path.dirname(config["audio_directory"], "soundsep.yaml"),
+            "*.yaml",
             options=options)
 
         if not save_target:
@@ -200,7 +200,7 @@ class ProjectCreator(widgets.QWidget):
             self.ui.treeView.set_blocks(blocks, _parse_block, _parse_channels)
 
     def on_path_selected(self):
-        self.update_treeview_as_audio_files()
+        self.autofill_filename_pattern()
 
     def show_errors(self, errors):
         """Takes errors, a list of tuples (filename, msg)
@@ -246,6 +246,34 @@ class ProjectCreator(widgets.QWidget):
 
         self.ui.step2GroupBox.setVisible(False)
         self.ui.step3GroupBox.setVisible(False)
+
+    def autofill_filename_pattern(self):
+        base_path = self.ui.basePathEdit.text()
+
+        recursive = self.ui.recursiveSearchCheckBox.checkState() == Qt.CheckState.Checked
+        if base_path:
+            base_path = Path(base_path)
+            filelist = []
+            for f in search_for_wavs(base_path, recursive=recursive):
+                filelist.append(f)
+
+        if not len(filelist):
+            return
+
+        block_keys, filename_pattern = guess_filename_pattern(base_path, filelist)
+
+        self.ui.templateEdit.setText(filename_pattern)
+        self.on_template_completed()
+
+        format_variables = [
+            i[1] for i in Formatter().parse(filename_pattern)
+            if i[1]
+        ]
+        self.set_format_variables(format_variables)
+
+        for key in block_keys:
+            self.ui.keySelector.var_to_buttons[key]["block"].setChecked(True)
+        self.ui.keySelector.check_for_changes()
 
     def on_template_changed(self):
         base_path = self.ui.basePathEdit.text()

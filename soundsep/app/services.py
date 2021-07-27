@@ -7,6 +7,7 @@ from typing import Optional, Tuple, Union
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from scipy.fft import rfft, rfftfreq
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 from soundsep.core.models import Project, ProjectIndex, Source, StftIndex
 from soundsep.core.ampenv import filter_and_ampenv
@@ -202,7 +203,7 @@ class StftWorker(QThread):
 
     _CLEAR = object()
     END = object()
-    resultReady = pyqtSignal(StftIndex, int, object)
+    resultReady = pyqtSignal(StftIndex, np.ndarray)
 
     def __init__(self, queue: Queue, project: Project, config: StftConfig):
         super().__init__()
@@ -211,6 +212,7 @@ class StftWorker(QThread):
         self.config = config
 
         self.gaussian_window = create_gaussian_window(self.config.window, nstd=6)
+        self.gaussian_window = self.gaussian_window.reshape((-1, 1))  # for broadcasting
         self._cancel_flag = False
 
     def cancel(self):
@@ -236,38 +238,31 @@ class StftWorker(QThread):
                 self.process_request(q[0], q[1])
 
     def process_request(self, start: StftIndex, stop: StftIndex):
-        # Load the array with padding so that the first and last windows don't get cut in half
-        loaded_arr_start = max(ProjectIndex(self.project, 0), start.to_project_index() - self.config.window)
-        loaded_arr_stop = min(ProjectIndex(self.project, self.project.frames), stop.to_project_index() + self.config.window)
-        arr = self.project[loaded_arr_start:loaded_arr_stop]
+        n_fft = 2 * self.config.window + 1
+        phantom_start = start.to_project_index() - self.config.window
+        phantom_stop = stop.to_project_index() + self.config.window
+        arr = self.project[max(ProjectIndex(self.project, 0), phantom_start):phantom_stop]
 
-        for window_center_stft in StftIndex.range(start, stop):
-            window_center = window_center_stft.to_project_index()
-            window_start = max(ProjectIndex(self.project, 0), window_center - self.config.window)
-            window_stop = min(ProjectIndex(self.project, self.project.frames), window_center + self.config.window + 1)
+        if int(phantom_start) < 0:
+            pad_start = int(np.abs(phantom_start))
+        else:
+            pad_start = 0
 
-            if int(window_start) >= self.project.frames:
-                break
+        if int(phantom_stop) > self.project.frames:
+            pad_stop = int(phantom_stop - self.project.frames)
+        else:
+            pad_stop = 0
 
-            for ch in range(self.project.channels):
-                if self._cancel_flag:
-                    return
+        arr = np.pad(arr, ((pad_start, pad_stop), (0, 0)), mode="reflect")
 
-                a = max(0, window_start - loaded_arr_start)
-                b = window_stop - loaded_arr_start
-                window_data = arr[a:b, ch]
-
-                if a <= 0:
-                    window_data = window_data * self.gaussian_window[-window_data.size:]
-                elif b >= len(arr):
-                    window_data = window_data * self.gaussian_window[:window_data.size]
-                else:
-                    window_data = window_data * self.gaussian_window
-
-                # TODO: benchmark using next_fast_len here?
-                window_fft = np.abs(rfft(window_data, n=2 * self.config.window + 1))
-
-                self.resultReady.emit(window_center_stft, ch, window_fft)
+        # Produce a view of shape (steps, samples, channels)
+        strides = sliding_window_view(arr, n_fft, axis=0)[::self.config.step].swapaxes(1, 2)
+        for window_center_stft, window in zip(StftIndex.range(start, stop), strides):
+            if self._cancel_flag:
+                return
+            window_data = window * self.gaussian_window
+            window_fft = np.abs(rfft(window_data, n=n_fft, axis=0))
+            self.resultReady.emit(window_center_stft, window_fft)
 
 
 class StftCache(QObject):
@@ -396,10 +391,10 @@ class StftCache(QObject):
 
         self._trigger_jobs()
 
-    @pyqtSlot(StftIndex, int, np.ndarray)
-    def _on_worker_result(self, idx: StftIndex, ch: int, fft_result):
+    @pyqtSlot(StftIndex, np.ndarray)
+    def _on_worker_result(self, idx: StftIndex, fft_result):
         if 0 <= int(idx - self._start_ptr) < len(self._data):
-            self._data[idx - self._start_ptr, ch] = fft_result[self._positive_freqs_filter]
+            self._data[idx - self._start_ptr] = fft_result[self._positive_freqs_filter].T
             self._stale[idx - self._start_ptr] = False
 
     def _trigger_jobs(self):

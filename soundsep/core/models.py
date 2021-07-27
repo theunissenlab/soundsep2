@@ -122,9 +122,6 @@ class AudioFile:
             The first dimension is the sample index, the second dimension is the channel
             axis.
         """
-        # if channel >= self.channels or channel < 0:
-        #     raise ValueError("Invalid channel. AudioFile has {} channels, request channel {}".format(self.channels, channel))
-
         read_start = i0
         read_stop = min(i1, self.frames)
 

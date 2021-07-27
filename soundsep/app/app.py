@@ -15,10 +15,10 @@ from soundsep.app.services import (
     AmpenvService,
     SelectionService,
     SourceService,
-    StftCache,
-    StftConfig,
     Workspace,
 )
+from soundsep.app.stft_service import StftService
+from soundsep.core.stft.cache import StftParameters
 from soundsep.config.defaults import DEFAULTS
 from soundsep.config.paths import ProjectPathFinder
 from soundsep.core.base_plugin import BasePlugin
@@ -110,12 +110,21 @@ class SoundsepApp(QObject):
         self.state["selection"] = SelectionService(self.project)
 
         self.services["ampenv"] = AmpenvService(self.project)
-        self.services["stft"] = StftCache(
+        # self.services["stft"] = StftCache(
+        #     self.project,
+        #     self.state["workspace"].size,
+        #     pad=self.config["stft.cache.size"],
+        #     stft_config=StftConfig(window=self.config["stft.window"], step=step)
+        # )
+        self.services["stft"] = StftService(
             self.project,
-            self.state["workspace"].size,
-            pad=self.config["stft.cache.size"],
-            stft_config=StftConfig(window=self.config["stft.window"], step=step)
+            n_scales=self.config["stft.cache.n_scales"],
+            cache_size=self.config["stft.cache.size"],
+            fraction_cached=self.config["stft.cache.fraction_cached"],
+            stft_params=StftParameters(hop=step, half_window=self.config["stft.window"]),
         )
+        self.services["stft"].set_central_range(self.state["workspace"].start, self.state["workspace"].stop)
+
         self.datastore["sources"] = self.load_sources()
 
     def close(self):

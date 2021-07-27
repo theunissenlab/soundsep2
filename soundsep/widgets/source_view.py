@@ -102,14 +102,14 @@ class SourceView(widgets.QWidget):
         self.spectrogram.scene().sigMouseMoved.connect(self.on_sig_mouse_moved)
 
         self.source_channel_dialog = FloatingComboBox(
-            paddingx=80,
-            paddingy=10,
+            paddingx=25,
+            paddingy=5,
             parent=self.spectrogram
         )
         self.source_name_dialog = FloatingButton(
             "▼ {}".format(self.source.name),
-            paddingx=140,
-            paddingy=10,
+            paddingx=85,
+            paddingy=5,
             parent=self.spectrogram
         )
         self.source_name_dialog.clicked.connect(self.open_edit_source_modal)
@@ -201,11 +201,11 @@ class ScrollableSpectrogram(pg.PlotWidget):
         (x0, x1), (y0, y1) = self.viewRange()
         return QRectF(x0, y0, x1 - x0, y1 - y0)
 
-    def set_data(self, i0: StftIndex, i1: StftIndex, data: np.ndarray, freqs: np.ndarray):
+    def set_data(self, i0: StftIndex, i1: StftIndex, t: np.ndarray, data: np.ndarray, freqs: np.ndarray):
         df = freqs[1] - freqs[0]
         self._tr = QtGui.QTransform()
         self._tr.translate(i0.to_project_index(), 0)
-        self._tr.scale(i0.step, df)
+        self._tr.scale((t[1] - t[0]) * i0.step, df)
         self._data = data
 
         if self._view_mode == STFTViewMode.NORMAL:

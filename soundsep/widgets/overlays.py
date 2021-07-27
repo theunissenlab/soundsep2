@@ -11,9 +11,9 @@ class FloatingButton(widgets.QPushButton):
                 color: rgba(255, 255, 255, 50%);
                 padding: 2px;
                 border: 0px;
-                font-size: 24px;
+                font-size: 18px;
                 text-align: left;
-                min-height: 40px;
+                min-height: 30px;
                 min-width: 100px;
             }
 
@@ -56,10 +56,10 @@ class FloatingComboBox(widgets.QComboBox):
                 padding-left: 16px;
                 border: 0px;
                 color: rgba(255, 255, 255, 1);
-                font-size: 24px;
+                font-size: 18px;
                 text-align: left;
-                min-height: 44px;
-                max-width: 40px;
+                min-height: 34px;
+                max-width: 30px;
             }
 
             QComboBox:hover {

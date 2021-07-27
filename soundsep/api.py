@@ -193,8 +193,8 @@ class Api(QObject):
         """
         return StftIndex(
             self._app.project,
-            self._app.services["stft"].config.step,
-            idx // self._app.services["stft"].config.step
+            self._app.services["stft"].params.hop,
+            idx // self._app.services["stft"].params.hop
         )
 
     def workspace_move_to(self, start: StftIndex, alignment: Workspace.Alignment = None):
@@ -211,7 +211,8 @@ class Api(QObject):
         """
         prev_position = self._app.state["workspace"].start
         self._app.state["workspace"].move_to(start)
-        self._app.services["stft"].set_position(self._app.state["workspace"].start)
+        # self._app.services["stft"].set_position(self._app.state["workspace"].start)
+        self._app.services["stft"].set_central_range(self._app.state["workspace"].start, self._app.state["workspace"].stop)
         self._cache["get_workspace_signal"] = None
         if prev_position != start:
             self.workspaceChanged.emit()
@@ -230,7 +231,7 @@ class Api(QObject):
         workspaceChanged
         """
         self._app.state["workspace"].move_by(dx)
-        self._app.services["stft"].set_position(self._app.state["workspace"].start)
+        self._app.services["stft"].set_central_range(self._app.state["workspace"].start, self._app.state["workspace"].stop)
         self._cache["get_workspace_signal"] = None
         if dx != 0:
             self.workspaceChanged.emit()
@@ -253,8 +254,7 @@ class Api(QObject):
             n = max_size - self._app.state["workspace"].size
 
         self._app.state["workspace"].scale(n)
-        self._app.services["stft"].set_active_size(self._app.state["workspace"].size)
-        self._app.services["stft"].set_position(self._app.state["workspace"].start)
+        self._app.services["stft"].set_central_range(self._app.state["workspace"].start, self._app.state["workspace"].stop)
         self._cache["get_workspace_signal"] = None
         if n != 0:
             self.workspaceChanged.emit()
@@ -307,8 +307,9 @@ class Api(QObject):
         freqs : np.ndarray[float]
             Frequency axis of data
         """
-        data, stale = self._app.services["stft"].read(start, stop)
-        return data, stale, self._app.services["stft"].positive_freqs
+        t, data, stale = self._app.services["stft"].read(start, stop)
+
+        return t, data, stale, self._app.services["stft"].positive_freqs
 
     def get_workspace_signal(self) -> Tuple[list, np.ndarray]:
         """Return the xrange and signal of the current workspace

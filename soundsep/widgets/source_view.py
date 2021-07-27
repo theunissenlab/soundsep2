@@ -205,7 +205,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
         df = freqs[1] - freqs[0]
         self._tr = QtGui.QTransform()
         self._tr.translate(i0.to_project_index(), 0)
-        self._tr.scale((t[1] - t[0]) * i0.step, df)
+        self._tr.scale(t[1] - t[0], df)
         self._data = data
 
         if self._view_mode == STFTViewMode.NORMAL:

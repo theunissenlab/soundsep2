@@ -300,6 +300,8 @@ class Api(QObject):
 
         Returns
         -------
+        t : np.ndarray[int]
+            Time axis of data in ProjectIndex units
         result : np.ndarray[float]
             2D array of stft data for the requested range
         stale : np.ndarray[bool]
@@ -308,6 +310,7 @@ class Api(QObject):
             Frequency axis of data
         """
         t, data, stale = self._app.services["stft"].read(start, stop)
+        t = np.array([ProjectIndex(self._app.project, t_ * start.step) for t_ in t])
 
         return t, data, stale, self._app.services["stft"].positive_freqs
 

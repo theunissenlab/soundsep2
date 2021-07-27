@@ -76,7 +76,7 @@ class ProjectCreator(widgets.QWidget):
         save_target, _ = widgets.QFileDialog.getSaveFileName(
             None,
             "Saving yaml file",
-            os.path.dirname(config["audio_directory"], "soundsep.yaml"),
+            os.path.join(os.path.dirname(config["audio_directory"]), "soundsep.yaml"),
             "*.yaml",
             options=options)
 

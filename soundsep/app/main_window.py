@@ -325,18 +325,20 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self._draw_sources_timer.stop()
         x0, x1 = self.api.workspace_get_lim()
         t, stft_data, _stale, freqs = self.api.read_stft(x0, x1)
+
+        any_stale = np.any(_stale)
+
         for source_view in self.source_views:
             source_view.spectrogram.set_data(x0, x1, t, stft_data[:, source_view.source.channel], freqs)
 
-        if self.toggle_ampenv_action.isChecked():
-            xarr = np.array([x.to_project_index() for x in StftIndex.range(x0, x1)])
+        if self.toggle_ampenv_action.isChecked() and not any_stale:
             summed_over_freqs = np.sum(stft_data, axis=2)
             max_value = np.max(summed_over_freqs)
             if max_value != 0:
                 # Only draw overlaps if spectrograms have not loaded yet
                 for source_view in self.source_views:
                     source_view.spectrogram.overlay(
-                        xarr,
+                        t,
                         summed_over_freqs[:, source_view.source.channel] / max_value
                     )
         else:

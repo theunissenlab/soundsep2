@@ -82,7 +82,14 @@ def load_project(
     if filename_pattern is None and len(filelist) != 1:
         raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))
 
-    return _load_project_by_blocks(directory, filelist, filename_pattern, block_keys, channel_keys)
+    return _load_project_by_blocks(
+            directory,
+            filelist,
+            filename_pattern,
+            block_keys,
+            channel_keys,
+            only_include_matching=True
+            )
 
 
 class LoadProjectError(Exception):
@@ -193,6 +200,7 @@ def _load_project_by_blocks(
         filename_pattern: str,
         block_keys: List[str],
         channel_keys: List[str],
+        only_include_matching: bool,
     ):
     block_groups, errors = group_files_by_pattern(
             base_directory,
@@ -202,7 +210,7 @@ def _load_project_by_blocks(
             channel_keys
     )
 
-    if len(errors):
+    if len(errors) and not only_include_matching:
         raise LoadProjectError("Failed to parse {} files with\n"
                 "filename_pattern={}, block_keys={}, channel_keys={}\n"
                 "({} loaded successfully)\n"

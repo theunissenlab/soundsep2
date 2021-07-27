@@ -94,6 +94,10 @@ class StftWorker(QThread):
         """
         scaled_lattice = bounded_lattice * scale_factor
         window_centers = np.array(list(scaled_lattice))
+
+        if window_centers[0] > self.project.frames:
+            return
+
         pad_start, pad_stop, wanted_start, wanted_stop = compute_pad_for_windowing(
             self.project.frames,
             window_centers[0],

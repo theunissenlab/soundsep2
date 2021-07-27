@@ -242,7 +242,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
             self.ui.workspaceLayout.addWidget(source_view)
             self.source_views.append(source_view)
 
-        self.source_views[-1].spectrogram.showAxis("bottom")
+        if len(self.source_views):
+            self.source_views[-1].spectrogram.showAxis("bottom")
 
         self.draw_sources()
 

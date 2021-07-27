@@ -20,7 +20,6 @@ class ProjectScrollbar(pg.PlotWidget):
         self.disableAutoRange()
         self.setMaximumHeight(80)
         self.plotItem.setMaximumHeight(80)
-        self.setCursor(Qt.SplitHCursor)
         self.hideButtons()
 
         self.setAxisItems({

@@ -43,7 +43,7 @@ class AudioFile:
             self._file = soundfile.SoundFile(self._path, "r")
 
     def close(self):
-        if not self.is_open():
+        if self.is_open():
             self._file.close()
 
     def __repr__(self):

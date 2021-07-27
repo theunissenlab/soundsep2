@@ -3,6 +3,7 @@
 import collections
 import itertools
 import os
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import List
@@ -161,6 +162,9 @@ def group_files_by_pattern(
             else:
                 channel_id = None
 
+            if block_id is None and channel_id is None:
+                block_id = path
+
             parsed_wav_files.append({
                 "wav_file": AudioFile(path),
                 "block_id": block_id,
@@ -232,3 +236,107 @@ def _load_project_by_blocks(
             ))
 
     return Project(blocks=blocks)
+
+
+import numpy as np
+from itertools import combinations
+
+
+def common_subsequence(items: 'List[Iterable]'):
+    def _contains(x, y):
+        """Return True if y contains x"""
+        i = 0
+        for j in range(len(y)):
+            if y[j] == x[i]:
+                i += 1
+            if i == len(x):
+                return True
+
+    items = np.array([np.array(list(x)) for x in items], dtype=object)
+    shortest = items[np.argmin([len(x) for x in items])]
+
+    results = []
+    for l in range(len(shortest), 0, -1):
+        for indexes in combinations(np.arange(len(shortest), dtype=np.int), r=l):
+            subset = shortest[np.array(indexes)]
+            is_valid = np.all([_contains(subset, x) for x in items])
+            if is_valid:
+                results.append(subset)
+        if len(results):
+            return list(sorted(set([tuple(x) for x in results]), key=lambda x: (-len(x), tuple(x))))
+
+    return []
+
+
+def guess_filename_pattern(base_directory: Path, filelist: List[str]):
+    """Guesses a set of block keys, channel keys, and filename pattern for a given set of files
+
+    1. Identifies potential variables by common separators ("-", "_", "/", " ")
+    2. Excludes variables that are in common across all files
+    3. Potential block keys are those combinations of variables that form even numbered groups when grouped by
+        and whose groups have the same number of channels and frames (maximizing group size)
+    4. Other keys are channel keys
+    """
+    separator_regex = "[; ,./\\|\\\\\\-_\\+\\:\\=\\(\\)\\{\\}\\[\\]\\*\\?]"
+
+    separators_detected = []
+    relpaths = []
+    for path in filelist:
+        relpath = os.path.relpath(path, base_directory)
+        separators_detected.append(re.findall(separator_regex, relpath))
+        relpaths.append(relpath)
+
+    separators = [""] + list(common_subsequence(separators_detected)[0]) + [""]
+    initial_guess = "{}".join(separators)
+    var_names = ["var{}".format(i) for i in range(len(separators) - 1)]
+    var_values = ["{{{}}}".format(v) for v in var_names]
+
+    def current_guess():
+        return initial_guess.format(*var_values)
+
+    constants = []
+    potential_keys = []
+
+    results = {}
+    # Fill in constants and find unique keys as well as keys that split the data well
+    for var_idx, var_name in enumerate(var_names):
+        extracted = [parse.parse(current_guess(), path)[var_name] for path in relpaths]
+        if len(set(extracted)) == 1:
+            constants.append(var_name)
+            var_values[var_idx] = extracted[0]
+        else:
+            potential_keys.append(var_name)
+
+    valid_block_keys = []
+    filename_pattern = current_guess()
+    for l in range(len(potential_keys), 0, -1):
+        for indexes in combinations(np.arange(len(potential_keys), dtype=np.int), r=l):
+            group_keys = list(np.array(potential_keys)[np.array(indexes)])
+
+            groups, errors = group_files_by_pattern(
+                base_directory,
+                filelist,
+                filename_pattern,
+                block_keys=group_keys,
+                channel_keys=None
+            )
+
+            is_valid = True
+
+            if len(errors):
+                is_valid = False
+
+            for k, block_info in groups:
+                block_len = block_info[0]["wav_file"].frames
+                if not all([b["wav_file"].frames == block_len for b in block_info]):
+                    is_valid = False
+
+            if is_valid:
+                valid_block_keys.append((group_keys, len(groups)))
+
+    if not len(valid_block_keys):
+        best_block_keys_guess = []
+    else:
+        best_block_keys_guess = list(sorted(valid_block_keys, key=lambda x: x[1]))[0][0]
+
+    return best_block_keys_guess, current_guess()

@@ -57,18 +57,6 @@ class ExportPlugin(BasePlugin):
             self.window.show()
             return
 
-        if os.path.exists(save_target):
-            confirmed = widgets.QMessageBox.question(
-                self,
-                "Confirm export",
-                "{} already exists. Are you sure you want to overwrite it?".format(save_target),
-                widgets.QMessageBox.Yes | widgets.QMessageBox.No
-            )
-            if confirmed == widgets.QMessageBox.No:
-                logger.info("Aborted export attempt; not overwriting")
-                self.window.show()
-                return
-
         df.to_csv(save_target, index=False)
         logger.info("Exported csv to {}".format(save_target))
         self.window.close()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import inspect
 import os
+from pathlib import Path
 
 import click
 
@@ -20,6 +21,33 @@ def run(debug):
     from soundsep.app.launcher import Launcher
     from soundsep.app.start import run_app
     run_app(MainWindow=Launcher, debug=debug)
+
+
+@click.command(help="Get project info")
+@click.option("-d", "--dir", "_dir", required=True, type=click.Path(exists=True))
+def project_info(_dir):
+    from soundsep.app.app import SoundsepApp
+    from soundsep.core.io import load_project
+    from soundsep.core.utils import hhmmss
+
+    if not os.path.basename(_dir) == "soundsep.yaml":
+        _dir = os.path.join(_dir, "soundsep.yaml")
+
+    config = SoundsepApp.read_config(_dir)
+    project = load_project(
+        Path(config["audio_directory"]),
+        config["filename_pattern"],
+        config["block_keys"],
+        config["channel_keys"],
+        recursive=config["recursive_search"]
+    )
+
+    click.echo("Soundsep project with config {}".format(config))
+    click.echo("Channels: {}".format(project.channels))
+    click.echo("Blocks: {}".format(len(project.blocks)))
+    click.echo("Sampling rate: {}".format(project.sampling_rate))
+    click.echo("Frames: {}".format(project.frames))
+    click.echo("Duration: {}".format(hhmmss(project.frames / project.sampling_rate, dec=4)))
 
 
 @click.command(help="Open sphinx documentation in browser")
@@ -114,6 +142,7 @@ def create_plugin(name):
     
 
 cli.add_command(run)
+cli.add_command(project_info)
 cli.add_command(unittest)
 cli.add_command(build_doc)
 cli.add_command(open_doc)

@@ -60,7 +60,7 @@ def segment_to_dict(segment):
         "file.start_index": int(block_start),
         "file.stop_index": int(block_stop),
         "file.t_start": block_start.to_file_timestamp(),
-        "file.t_stop": block_start.to_file_timestamp(),
+        "file.t_stop": block_stop.to_file_timestamp(),
     }
 
 

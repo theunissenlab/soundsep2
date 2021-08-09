@@ -50,7 +50,7 @@ class SegmentPanel(widgets.QWidget):
             ))
 
 
-class SegmentVisualizer(QtGui.QGraphicsRectItem):
+class SegmentVisualizer(widgets.QGraphicsRectItem):
     def __init__(
             self,
             segment,

@@ -8,6 +8,7 @@ DEFAULTS = {
     # App/gui config
     "source_view.minimum_height": 300,
     "workspace.default_size": 2000,
+    "workspace.constant_refresh": True,
 
     # Ampenv defaults
     "filter.low": 250,

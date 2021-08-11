@@ -32,6 +32,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.setWindowTitle("SoundSep")
         self.source_views = []
         self.roi = None
+        self._last_drag_start = None
 
         self.setup_actions()
         self.init_ui()
@@ -233,7 +234,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
             # source_view.spectrogram.set_view_mode(STFTViewMode.DERIVATIVE if self.spectrogram_view_mode_button.isChecked() else STFTViewMode.NORMAL)
 
             # TODO: have a class for all the sources manage these?
-            source_view.spectrogram.getViewBox().dragInProgress.connect(partial(self.on_source_drag_in_progress, source))
+            source_view.spectrogram.getViewBox().dragInProgress.connect(partial(self.on_source_drag_in_progress, source, finish=False))
+            source_view.spectrogram.getViewBox().dragComplete.connect(partial(self.on_source_drag_in_progress, source, finish=True))
             source_view.spectrogram.getViewBox().clicked.connect(partial(self.on_source_spectrogram_clicked, source))
             source_view.hover.connect(partial(self.on_source_spectrogram_hover, source))
             source_view.spectrogram.getViewBox().zoomEvent.connect(partial(self.on_source_spectrogram_zoom, source))
@@ -273,10 +275,12 @@ class SoundsepMainWindow(widgets.QMainWindow):
     def on_delete_source_signal(self, source):
         self.api.delete_source(source.index)
 
-    def on_source_drag_in_progress(self, source, from_, to):
+    def on_source_drag_in_progress(self, source, from_, to, finish=False):
         if self.roi is None:
+            self._last_drag_start = from_
             self.draw_roi(source, from_, to)
-        elif source != self.roi.source:
+        elif source != self.roi.source or self._last_drag_start != from_:
+            self._last_drag_start = from_
             self.delete_roi()
             self.draw_roi(source, from_, to)
         else:
@@ -284,20 +288,26 @@ class SoundsepMainWindow(widgets.QMainWindow):
             self.roi.roi.setPos([
                 min(to.x(), from_.x()),
                 min(to.y(), from_.y())
-            ])
+            ], update=False)
             self.roi.roi.setSize([
                 np.abs(line.x()),
                 np.abs(line.y())
-            ])
+            ], update=True)
             pos = self.roi.roi.pos()
             size = self.roi.roi.size()
-            self.api.set_selection(
-                self.api.make_project_index(pos.x()),
-                self.api.make_project_index(pos.x() + size.x()),
-                pos.y(),
-                pos.y() + size.y(),
-                source,
-            )
+
+            if finish and self.api.config["workspace.constant_refresh"]:
+                self.roi.roi.sigRegionChanged.connect(partial(self.on_roi_changed, source))
+            elif finish and not self.api.config["workspace.constant_refresh"]:
+                self.roi.roi.sigRegionChangeFinished.connect(partial(self.on_roi_changed, source))
+            if self.api.config["workspace.constant_refresh"] or finish:
+                self.api.set_selection(
+                    self.api.make_project_index(pos.x()),
+                    self.api.make_project_index(pos.x() + size.x()),
+                    pos.y(),
+                    pos.y() + size.y(),
+                    source,
+                )
 
     def on_source_spectrogram_clicked(self, source):
         self.api.clear_selection()
@@ -367,7 +377,6 @@ class SoundsepMainWindow(widgets.QMainWindow):
                 maxBounds=source_view.spectrogram.get_limits_rect()
             )
         )
-        self.roi.roi.sigRegionChanged.connect(partial(self.on_roi_changed, source))
         source_view.spectrogram.addItem(self.roi.roi)
 
     def delete_roi(self):

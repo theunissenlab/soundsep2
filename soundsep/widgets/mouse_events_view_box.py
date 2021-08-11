@@ -3,7 +3,7 @@
 
 import pyqtgraph as pg
 
-from PyQt5.QtCore import Qt, QPointF, pyqtSignal
+from PyQt5.QtCore import Qt, QPoint, QPointF, pyqtSignal
 
 
 class MouseEventsViewBox(pg.ViewBox):
@@ -16,21 +16,31 @@ class MouseEventsViewBox(pg.ViewBox):
     dragInProgress = pyqtSignal(QPointF, QPointF)
     hovered = pyqtSignal(QPointF)
     clicked = pyqtSignal(QPointF)
+    contextMenuRequested = pyqtSignal(QPoint)
     zoomEvent = pyqtSignal(int, object)
 
+    def raiseContextMenu(self, ev):
+        super().raiseContextMenu(ev)
+        pos = ev.screenPos()
+        self.contextMenuRequested.emit(pos.toPoint())
+
     def mouseDragEvent(self, event):
-        event.accept()
-        start_pos = self.mapSceneToView(event.buttonDownScenePos())
-        end_pos = self.mapSceneToView(event.scenePos())
-        if event.isFinish():
-            self.dragComplete.emit(start_pos, end_pos)
-        else:
-            self.dragInProgress.emit(start_pos, end_pos)
+        if event.button() == Qt.LeftButton:
+            event.accept()
+            start_pos = self.mapSceneToView(event.buttonDownScenePos())
+            end_pos = self.mapSceneToView(event.scenePos())
+            if event.isFinish():
+                self.dragComplete.emit(start_pos, end_pos)
+            else:
+                self.dragInProgress.emit(start_pos, end_pos)
 
     def mouseClickEvent(self, event):
         if event.button() == Qt.LeftButton:
             event.accept()
             self.clicked.emit(self.mapSceneToView(event.scenePos()))
+        elif event.button() == Qt.RightButton:
+            event.accept()
+            self.raiseContextMenu(event)
         else:
             super().mouseClickEvent(event)
 

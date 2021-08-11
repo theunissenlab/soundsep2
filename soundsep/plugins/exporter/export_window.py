@@ -37,6 +37,8 @@ SETTINGS = (
         "the start time of segments relative to their original file"),
     ExportSetting("file.t_stop", "File Stop (float, seconds)",
         "the stop time of segments relative to their original file"),
+    ExportSetting("tags", "Tags (string)",
+        "comma separated tag string values"),
 )
 
 
@@ -61,6 +63,7 @@ def segment_to_dict(segment):
         "file.stop_index": int(block_stop),
         "file.t_start": block_start.to_file_timestamp(),
         "file.t_stop": block_stop.to_file_timestamp(),
+        "tags": ",".join(segment.data.get("tags", [])),
     }
 
 

@@ -1,15 +1,19 @@
 import logging
+import json
+from functools import partial
 from typing import List, Tuple
 
 import PyQt5.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
 import pandas as pd
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal
 from PyQt5 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.models import Source, ProjectIndex
 from soundsep.core.segments import Segment
+from soundsep.core.utils import hhmmss
 
 
 logger = logging.getLogger(__name__)
@@ -17,36 +21,66 @@ logger = logging.getLogger(__name__)
 
 class SegmentPanel(widgets.QWidget):
 
+    contextMenuRequested = pyqtSignal(QPoint, object)
+    segmentSelectionChanged = pyqtSignal(object)
+
     # TODO add a filtering dropdown / text box
     # TODO jump to time with click events
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
+        self.init_actions()
 
     def init_ui(self):
         layout = widgets.QVBoxLayout()
-        self.table = widgets.QTableWidget(0, 3)
+        self.table = widgets.QTableWidget(0, 4)
+        self.table.setEditTriggers(widgets.QTableWidget.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.DefaultContextMenu)
         header = self.table.horizontalHeader()
         self.table.setHorizontalHeaderLabels([
             "SourceName",
             "Start",
-            "Stop"
+            "Stop",
+            "Tags",
         ])
         header.setSectionResizeMode(0, widgets.QHeaderView.Stretch)
         header.setSectionResizeMode(1, widgets.QHeaderView.Stretch)
         header.setSectionResizeMode(2, widgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(3, widgets.QHeaderView.Stretch)
         layout.addWidget(self.table)
         self.setLayout(layout)
+
+    def init_actions(self):
+        self.table.itemSelectionChanged.connect(self.on_click)
+        # self.table.customContextMenuRequested.connect(self.on_context_menu)
+
+    def contextMenuEvent(self, event):
+        pos = event.globalPos()
+        self.contextMenuRequested.emit(pos, self.get_selection())
+
+    def on_click(self):
+        selection = self.get_selection()
+        self.segmentSelectionChanged.emit(selection)
+
+    def get_selection(self):
+        selection = []
+        ranges = self.table.selectedRanges()
+        for selection_range in ranges:
+            selection += list(range(selection_range.topRow(), selection_range.bottomRow() + 1))
+        return sorted(selection)
 
     def set_data(self, segments):
         self.table.setRowCount(len(segments))
         for row, segment in enumerate(segments):
             self.table.setItem(row, 0, widgets.QTableWidgetItem(segment.source.name))
             self.table.setItem(row, 1, widgets.QTableWidgetItem(
-                "{:.3f}s".format(segment.start / segment.project.sampling_rate)
+                hhmmss(segment.start / segment.project.sampling_rate, dec=3)
             ))
             self.table.setItem(row, 2, widgets.QTableWidgetItem(
-                "{:.3f}s".format(segment.stop / segment.project.sampling_rate)
+                hhmmss(segment.stop / segment.project.sampling_rate, dec=3)
+            ))
+            self.table.setItem(row, 3, widgets.QTableWidgetItem(
+                ",".join(segment.data.get("tags", []))
             ))
 
 
@@ -97,8 +131,9 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
             (self.draw_fractions[1] - self.draw_fractions[0]) * dy
         )
 
-    def mouseClickEvent(self, event):
-        pass
+    # def mouseClickEvent(self, event):
+        # pass
+        # event.ignore()
         # TODO: Calling set_selection is hazardous here because it doesnt update
         # the roi in the main GUI. maybe an alternative would be call gui.draw_selection?
         # _, _, freqs = self.segment_plugin.api.get_workspace_stft()
@@ -157,10 +192,45 @@ class SegmentPlugin(BasePlugin):
         self.merge_button = widgets.QPushButton("Merge")
         self.merge_button.clicked.connect(self.on_merge_segments_activated)
 
+        self.panel.contextMenuRequested.connect(self.on_context_menu_requested)
+        self.panel.segmentSelectionChanged.connect(self.on_segment_selection_changed)
+
         self.api.projectLoaded.connect(self.on_project_ready)
+        self.api.projectDataLoaded.connect(self.on_project_data_loaded)
         self.api.workspaceChanged.connect(self.on_workspace_changed)
         self.api.selectionChanged.connect(self.on_selection_changed)
         self.api.sourcesChanged.connect(self.on_sources_changed)
+
+    def on_context_menu_requested(self, pos, selection):
+        self.tag_menu = QtGui.QMenu()
+        _, actions = self.api.plugins["TagPlugin"].get_tag_menu(self.tag_menu)
+        for tag, action in actions.items():
+            action.setCheckable(True)
+
+            selected_tags = [(tag in self._segmentation_datastore[i].data["tags"]) for i in selection]
+            if all(selected_tags):
+                action.setChecked(True)
+            else:
+                action.setChecked(False)
+
+            action.triggered.connect(partial(self.api.plugins["TagPlugin"].on_toggle_selection_tag, tag, selection))
+        self.tag_menu.popup(pos)
+
+    def on_segment_selection_changed(self, selection):
+        # Change workspace to the end of the preceding segment if it exists and the start of the next one
+        start = self._segmentation_datastore[selection[0]].start
+        stop = self._segmentation_datastore[selection[-1]].stop
+
+        start = self.api.convert_project_index_to_stft_index(start)
+        stop = self.api.convert_project_index_to_stft_index(stop)
+
+        # add some padding
+        duration = stop - start
+        start -= duration // 2
+        stop += duration // 2
+
+        self.api.clear_selection()
+        self.api.workspace_set_position(start, stop)
 
     @property
     def _datastore(self):
@@ -185,10 +255,11 @@ class SegmentPlugin(BasePlugin):
         if not save_file.exists():
             return
 
-        data = pd.read_csv(save_file)
+        data = pd.read_csv(save_file, converters={"Tags": str})
 
         sources = []
         indices = []
+        tags = []
         source_lookup = set([
             (source.name, source.channel) for source in self.api.get_sources()
         ])
@@ -201,19 +272,27 @@ class SegmentPlugin(BasePlugin):
                 self.api.create_source(source_key[0], source_key[1])
             sources.append(source_key)
             indices.append((row["StartIndex"], row["StopIndex"]))
+            if "Tags" in row and row["Tags"]:
+                print(row["Tags"])
+                tags.append(set([t for t in json.loads(row["Tags"])]))
+            else:
+                tags.append(set())
 
         source_dict = {
             (source.name, source.channel): source
             for source in self.api.get_sources()
         }
-        for source_key, (start, stop) in zip(sources, indices):
+        for source_key, (start, stop), segment_tags in zip(sources, indices, tags):
             self._segmentation_datastore.append(Segment(
                 self.api.make_project_index(start),
                 self.api.make_project_index(stop),
-                source_dict[source_key]
+                source_dict[source_key],
+                data={"tags": segment_tags}
             ))
 
         self._segmentation_datastore.sort()
+
+    def on_project_data_loaded(self):
         self.panel.set_data(self._segmentation_datastore)
         self.refresh()
 
@@ -232,6 +311,7 @@ class SegmentPlugin(BasePlugin):
                 "SourceChannel": segment.source.channel,
                 "StartIndex": int(segment.start),
                 "StopIndex": int(segment.stop),
+                "Tags": json.dumps(list(segment.data["tags"]))
             })
         pd.DataFrame(segment_dicts).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
         self._needs_saving = False
@@ -250,8 +330,16 @@ class SegmentPlugin(BasePlugin):
     def on_selection_changed(self):
         self.refresh()
 
+    def jump_to_selection(self):
+        selection = self.api.get_selection()
+        if selection is not None:
+            start_times = [int(s.start) for s in self._segmentation_datastore]
+            first_selection_idx = np.searchsorted(start_times, selection.x0)
+            index = self.panel.table.model().index(first_selection_idx, 0)
+            self.panel.table.scrollTo(index, QtGui.QAbstractItemView.PositionAtTop)
+
     def refresh(self):
-        """Keeps the table pointed at a visible segment
+        """Keeps the table pointed at a selected region
 
         Refresh the rectangles drawn on spectrogram views
         """
@@ -272,9 +360,6 @@ class SegmentPlugin(BasePlugin):
         start_times = [int(s.start) for s in self._segmentation_datastore]
         first_segment_idx = np.searchsorted(start_times, ws0)
         last_segment_idx = np.searchsorted(start_times, ws1)
-
-        index = self.panel.table.model().index(first_segment_idx, 0)
-        self.panel.table.scrollTo(index)
 
         selection = self.api.get_fine_selection()
 
@@ -314,7 +399,7 @@ class SegmentPlugin(BasePlugin):
         """Create multiple segments, only updating the display one time at the end"""
         for start, stop, source in segment_data:
             self.delete_segments(start, stop, source)
-            new_segment = Segment(start, stop, source)
+            new_segment = Segment(start, stop, source, data={"tags": set()})
             self._segmentation_datastore.append(new_segment)
         self._segmentation_datastore.sort()
         self.panel.set_data(self._segmentation_datastore)
@@ -325,7 +410,7 @@ class SegmentPlugin(BasePlugin):
 
     def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
         self.delete_segments(start, stop, source)
-        new_segment = Segment(start, stop, source)
+        new_segment = Segment(start, stop, source, data={"tags": set()})
         self._segmentation_datastore.append(new_segment)
         self._segmentation_datastore.sort()
         self.panel.set_data(self._segmentation_datastore)
@@ -347,6 +432,7 @@ class SegmentPlugin(BasePlugin):
         logger.debug("Deleting {} segments from {} to {}".format(n_deleted, start, stop))
         self._segmentation_datastore.clear()
         self._segmentation_datastore.extend(filtered_segments)
+        self.panel.set_data(self._segmentation_datastore)
         self._needs_saving = True
         self.refresh()
 
@@ -365,7 +451,8 @@ class SegmentPlugin(BasePlugin):
         self.gui.show_status("Merging {} segments from {} to {}".format(len(to_merge), start, stop))
         logger.debug("Merging {} segments from {} to {}".format(len(to_merge), start, stop))
 
-        new_segment = Segment(to_merge[0].start, to_merge[-1].stop, source)
+        new_tags = set.union(*[segment.data["tags"] for segment in to_merge])
+        new_segment = Segment(to_merge[0].start, to_merge[-1].stop, source, data={"tags": new_tags})
         filtered_segments = [
             segment for segment in self._segmentation_datastore
             if (
@@ -376,6 +463,7 @@ class SegmentPlugin(BasePlugin):
         self._segmentation_datastore.clear()
         self._segmentation_datastore.extend(filtered_segments + [new_segment])
         self._segmentation_datastore.sort()
+        self.panel.set_data(self._segmentation_datastore)
         self._needs_saving = True
         self.refresh()
 

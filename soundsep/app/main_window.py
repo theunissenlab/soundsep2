@@ -239,6 +239,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
             source_view.spectrogram.getViewBox().clicked.connect(partial(self.on_source_spectrogram_clicked, source))
             source_view.hover.connect(partial(self.on_source_spectrogram_hover, source))
             source_view.spectrogram.getViewBox().zoomEvent.connect(partial(self.on_source_spectrogram_zoom, source))
+
+            source_view.spectrogram.getViewBox().contextMenuRequested.connect(partial(self.on_context_menu, source))
             source_view.spectrogram.hideAxis("bottom")
 
             self.ui.workspaceLayout.addWidget(source_view)
@@ -274,6 +276,21 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
     def on_delete_source_signal(self, source):
         self.api.delete_source(source.index)
+
+    def on_context_menu(self, source, pos):
+        self.context_menu = QtGui.QMenu()
+        menu = self.context_menu.addMenu("Apply Tag")
+        _, actions = self.api.plugins["TagPlugin"].get_tag_menu(menu)
+        for tag, action in actions.items():
+            action.triggered.connect(partial(self.api.plugins["TagPlugin"].on_apply_tag, tag))
+
+        self.jump_to_selection_action = widgets.QAction("Jump to selection")
+        self.jump_to_selection_action.triggered.connect(partial(self.api.plugins["SegmentPlugin"].jump_to_selection))
+        self.jump_to_selection_action.setToolTip("Jump to this position in the segments panel")
+
+        self.context_menu.addAction(self.jump_to_selection_action)
+
+        self.context_menu.popup(pos)
 
     def on_source_drag_in_progress(self, source, from_, to, finish=False):
         if self.roi is None:

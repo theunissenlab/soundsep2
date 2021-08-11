@@ -147,6 +147,7 @@ class Launcher(QObject):
         app.instantiate_plugins(gui=self.current_window)
         app.setup()
         app.api.projectLoaded.emit()
+        app.api.projectDataLoaded.emit()
 
         app.api._closeProject.connect(self.show_splash)
         app.api._switchProject.connect(self.open_project_directory)

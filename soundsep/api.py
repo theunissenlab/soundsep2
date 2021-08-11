@@ -26,6 +26,7 @@ class Api(QObject):
 
     # These signals are public
     projectLoaded = pyqtSignal()
+    projectDataLoaded = pyqtSignal()
     sourcesChanged = pyqtSignal()
     configChanged = pyqtSignal(object)  # Not implemented yet
     workspaceChanged = pyqtSignal()
@@ -274,8 +275,13 @@ class Api(QObject):
         workspaceChanged
         """
         old_position = self._app.state["workspace"].get_lim(StftIndex)
+        max_size = self._app.services["stft"].n_cache_total
+        if stop - start >= max_size:
+            stop = start + max_size
+
         self._app.state["workspace"].set_position(start, stop)
-        self._app.service["stft"].set_position(start)
+        self._app.services["stft"].set_central_range(self._app.state["workspace"].start, self._app.state["workspace"].stop)
+
         self._cache["get_workspace_signal"] = None
         if old_position[0] != start or old_position[1] != stop:
             self.workspaceChanged.emit()

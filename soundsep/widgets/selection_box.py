@@ -55,6 +55,11 @@ class SelectionBox(pg.RectROI):
                     item=handle
                 )
 
+    def hoverEvent(self, ev):
+        # TODO: this eliminates the hover highlighting behavior
+        # But needs to be overwritten so the context menu pops up correctly
+        self.update()
+
     def get_scaled_bounds(self, img: pg.ImageItem, xlim: Tuple[float, float], ylim: Tuple[float, float]):
         """Return the roi bounds of an image, scaled to the given data coordinates
 

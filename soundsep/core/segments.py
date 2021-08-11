@@ -39,9 +39,12 @@ class Segment(OrderableSegment):
         The source this segment is associated with. Right now, is not allowed to be None. (Future plan is to
         make it refer abstractly to the specified range (start, stop) if None)
     """
-    def __init__(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
+    def __init__(self, start: ProjectIndex, stop: ProjectIndex, source: Source, data: 'Optional[object]' = None):
         if start.project != stop.project:
             raise RuntimeError("ProjectSegment endpoints must be from the same project")
+
+        if data is None:
+            data = {}
 
         self._project = start.project
 
@@ -51,6 +54,7 @@ class Segment(OrderableSegment):
         self.source = source
         self.start = start
         self.stop = stop
+        self.data = data
 
     @property
     def project(self) -> Project:
@@ -85,9 +89,12 @@ class BlockSegment(OrderableSegment):
         make it refer abstractly to the specified range (start, stop) if None)
     """
 
-    def __init__(self, start: BlockIndex, stop: BlockIndex, source: Source):
+    def __init__(self, start: BlockIndex, stop: BlockIndex, source: Source, data: None):
         # TODO: Can we support exporting across block boundaries? would have to handle the edge cases where
         # segments span more than 2 blocks!
+        if data is None:
+            data = {}
+
         if start.block != stop.block:
             raise RuntimeError("BlockSegment endpoints must be from the same Block")
 
@@ -99,6 +106,7 @@ class BlockSegment(OrderableSegment):
         self.source = source
         self.start = start
         self.stop = stop
+        self.data = data
 
     @property
     def block(self) -> Block:
@@ -114,6 +122,7 @@ class BlockSegment(OrderableSegment):
             "source": self.source.name,
             "start_frame": int(self.start),
             "stop_frame": int(self.stop),
+            "data": self.data
         }
 
     def read(self) -> np.ndarray:

@@ -12,7 +12,7 @@ class {PluginName}(BasePlugin):
         super().__init__(*args, **kwargs)
         # Set up widgets and signals
 
-    def plugin_toolbar_items(self) -> List['PyQt5.QtWidgets.QWidget']:
+    def plugin_toolbar_items(self) -> 'List[PyQt5.QtWidgets.QWidget]':
         """Reimplement this
 
         Returns

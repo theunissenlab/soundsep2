@@ -70,6 +70,7 @@ class SegmentPanel(widgets.QWidget):
         return sorted(selection)
 
     def set_data(self, segments):
+        # TODO: this is extremely slow - we need a better way to update the table.
         self.table.setRowCount(len(segments))
         for row, segment in enumerate(segments):
             self.table.setItem(row, 0, widgets.QTableWidgetItem(segment.source.name))
@@ -202,7 +203,7 @@ class SegmentPlugin(BasePlugin):
         self.api.sourcesChanged.connect(self.on_sources_changed)
 
     def on_context_menu_requested(self, pos, selection):
-        self.tag_menu = QtGui.QMenu()
+        self.tag_menu = widgets.QMenu()
         _, actions = self.api.plugins["TagPlugin"].get_tag_menu(self.tag_menu)
         for tag, action in actions.items():
             action.setCheckable(True)
@@ -264,8 +265,7 @@ class SegmentPlugin(BasePlugin):
             (source.name, source.channel) for source in self.api.get_sources()
         ])
 
-        for i in range(len(data)):
-            row = data.iloc[i]
+        def _read(row):
             source_key = (row["SourceName"], row["SourceChannel"])
             if source_key not in source_lookup:
                 source_lookup.add(source_key)
@@ -273,10 +273,10 @@ class SegmentPlugin(BasePlugin):
             sources.append(source_key)
             indices.append((row["StartIndex"], row["StopIndex"]))
             if "Tags" in row and row["Tags"]:
-                print(row["Tags"])
                 tags.append(set([t for t in json.loads(row["Tags"])]))
             else:
                 tags.append(set())
+        data.apply(_read, axis=1)
 
         source_dict = {
             (source.name, source.channel): source
@@ -398,7 +398,13 @@ class SegmentPlugin(BasePlugin):
     def create_segments_batch(self, segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]]):
         """Create multiple segments, only updating the display one time at the end"""
         for start, stop, source in segment_data:
-            self.delete_segments(start, stop, source)
+            self._segmentation_datastore = [
+                segment for segment in self._segmentation_datastore
+                if (
+                    (segment.start <= start and segment.stop <= start) or
+                    (segment.start >= stop and segment.stop >= stop)
+                ) or source != segment.source
+            ]
             new_segment = Segment(start, stop, source, data={"tags": set()})
             self._segmentation_datastore.append(new_segment)
         self._segmentation_datastore.sort()
@@ -419,7 +425,7 @@ class SegmentPlugin(BasePlugin):
         self._needs_saving = True
         self.refresh()
 
-    def delete_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
+    def delete_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source, refresh: bool = True):
         filtered_segments = [
             segment for segment in self._segmentation_datastore
             if (
@@ -434,7 +440,8 @@ class SegmentPlugin(BasePlugin):
         self._segmentation_datastore.extend(filtered_segments)
         self.panel.set_data(self._segmentation_datastore)
         self._needs_saving = True
-        self.refresh()
+        if refresh:
+            self.refresh()
 
     def merge_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
         to_merge = [

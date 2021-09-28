@@ -63,11 +63,11 @@ def filter_and_ampenv(
     ) -> np.ndarray:
     """Compute an amplitude envelope of a signal
     """
-    filtered = highpass_filter(data.T, sampling_rate, f0, filter_order=10).T
-    filtered = lowpass_filter(filtered.T, sampling_rate, f1, filter_order=10).T
+    filtered = highpass_filter(data.T, sampling_rate, f0, filter_order=5).T
+    filtered = lowpass_filter(filtered.T, sampling_rate, f1, filter_order=5).T
 
     # Rectify and lowpass filter
     rectified = np.abs(filtered)
-    ampenv = lowpass_filter(rectified.T, sampling_rate, rectify_lowpass, filter_order=10).T
+    ampenv = lowpass_filter(rectified.T, sampling_rate, rectify_lowpass, filter_order=5).T
 
     return filtered.astype(np.float32), ampenv.astype(np.float32)

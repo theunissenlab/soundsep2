@@ -120,11 +120,11 @@ class TestGroupFilesByPattern(unittest.TestCase):
             channel_keys=None
         )
 
-        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups), 5)
         mock_audiofile.assert_has_calls([mock.call(f) for f in self.filelist])
-        self.assertEqual(groups[0][0], None)
+        self.assertEqual(groups[0][0], str(self.filelist[0]))
         for obj in groups[0][1]:
-            self.assertIsNone(obj["block_id"])
+            self.assertEqual(obj["block_id"], str(self.filelist[0]))
             self.assertIsNone(obj["channel_id"])
 
         self.assertEqual(len(errors), 0)

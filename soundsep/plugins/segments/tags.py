@@ -109,13 +109,14 @@ class TagPlugin(BasePlugin):
 
     def on_text_changed(self):
         tag_name = self.panel.new_tag_text.text()
-        if not tag_name or tag_name in self._datastore["tags"]:
+        if not tag_name or ("tags" in self._datastore and tag_name in self._datastore["tags"]):
             self.panel.add_tag_button.setEnabled(False)
         else:
             self.panel.add_tag_button.setEnabled(True)
 
     def on_add_tag(self):
         tag_name = self.panel.new_tag_text.text()
+        tag_name = tag_name.replace(",", "")
         if tag_name and tag_name not in self._datastore["tags"]:
             self._datastore["tags"].append(tag_name)
             self.panel.set_data(self._datastore["tags"])
@@ -144,7 +145,7 @@ class TagPlugin(BasePlugin):
         """Create a menu to select a tag and a dict of actions to respond to selections
         """
         actions = {}
-        for tag in self._datastore["tags"]:
+        for tag in self._datastore.get("tags", []):
             actions[tag] = widgets.QAction(tag, self)
             menu_parent.addAction(actions[tag])
         return menu_parent, actions
@@ -178,9 +179,10 @@ class TagPlugin(BasePlugin):
         self.update_menu(self._datastore["tags"])
 
     def save(self):
-        df = pd.DataFrame([{"TagName": tag} for tag in self._datastore["tags"]])
-        df.to_csv(self.api.paths.save_dir / self.TAG_FILENAME)
-        self._needs_saving = False
+        if "tags" in self._datastore:
+            df = pd.DataFrame([{"TagName": tag} for tag in self._datastore["tags"]])
+            df.to_csv(self.api.paths.save_dir / self.TAG_FILENAME)
+            self._needs_saving = False
 
     def plugin_panel_widget(self):
         return self.panel

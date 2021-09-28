@@ -170,7 +170,7 @@ def group_files_by_pattern(
                 channel_id = None
 
             if block_id is None and channel_id is None:
-                block_id = path
+                block_id = str(path)
 
             parsed_wav_files.append({
                 "wav_file": AudioFile(path),

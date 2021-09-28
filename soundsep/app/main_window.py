@@ -278,7 +278,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.api.delete_source(source.index)
 
     def on_context_menu(self, source, pos):
-        self.context_menu = QtGui.QMenu()
+        self.context_menu = widgets.QMenu()
         menu = self.context_menu.addMenu("Apply Tag")
         _, actions = self.api.plugins["TagPlugin"].get_tag_menu(menu)
         for tag, action in actions.items():

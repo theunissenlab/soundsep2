@@ -7,11 +7,11 @@ Extensible tool for visualizing and labeling WAV file data.
 If instaling with pip, it is suggested to use a virtual environment
 
 ```
-pip install git+https://github.com/theunissenlab/soundsep2.git@v0.1.2
+pip install git+https://github.com/theunissenlab/soundsep2.git@v0.1.3
 sep run
 ```
 
-Replace `v0.1.2` with `main` for the lastest version.
+Replace `v0.1.3` with `main` for the lastest version.
 
 ### Preparing files
 

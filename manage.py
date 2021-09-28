@@ -50,6 +50,19 @@ def project_info(_dir):
     click.echo("Duration: {}".format(hhmmss(project.frames / project.sampling_rate, dec=4)))
 
 
+@click.command(help="Get wav file info")
+@click.option("-p", "--path", "path", required=True, type=click.Path(exists=True))
+def wav_info(path):
+    import soundfile
+    from soundsep.core.utils import hhmmss
+    with soundfile.SoundFile(path) as f:
+        click.echo("WAV file {}".format(path))
+        click.echo("Channels: {}".format(f.channels))
+        click.echo("Sampling rate: {}".format(f.samplerate))
+        click.echo("Frames: {}".format(f.frames))
+        click.echo("Duration: {}".format(hhmmss(f.frames / f.samplerate, dec=4)))
+
+
 @click.command(help="Open sphinx documentation in browser")
 def open_doc():
     import webbrowser
@@ -143,6 +156,7 @@ def create_plugin(name):
 
 cli.add_command(run)
 cli.add_command(project_info)
+cli.add_command(wav_info)
 cli.add_command(unittest)
 cli.add_command(build_doc)
 cli.add_command(open_doc)

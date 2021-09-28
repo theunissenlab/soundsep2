@@ -62,10 +62,18 @@ class TagPlugin(BasePlugin):
         self.apply_tags_action = widgets.QAction("&Tag selection", self)
         self.apply_tags_action.triggered.connect(self.on_apply_tag)
 
+        self.untag_action = widgets.QAction("&Untag selection", self)
+        self.untag_action.triggered.connect(self.on_clear_tags)
+
     def on_apply_tag(self, tag):
         selection = self.api.get_fine_selection()
         if selection:
             self.apply_tag(selection.x0, selection.x1, selection.source, tag)
+
+    def on_clear_tags(self, tag):
+        selection = self.api.get_fine_selection()
+        if selection:
+            self.clear_tags(selection.x0, selection.x1, selection.source)
 
     def on_toggle_selection_tag(self, tag: str, selection: 'List[int]', toggle: bool):
         for i in selection:
@@ -94,6 +102,26 @@ class TagPlugin(BasePlugin):
 
         for segment in to_tag:
             segment.data["tags"].add(tag)
+
+        self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
+        self._needs_saving = True
+
+    def clear_tags(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source'):
+        to_untag = [
+            segment for segment in self._datastore["segments"]
+            if (
+                (segment.start <= start and segment.stop >= start) or
+                (segment.start <= stop and segment.stop >= stop) or
+                (segment.start >= start and segment.stop <= stop)
+            ) and source == segment.source
+        ]
+        if not len(to_untag):
+            return
+
+        logger.debug("Clearing tags of {} segments from {} to {}".format(len(to_untag), start, stop))
+
+        for segment in to_untag:
+            segment.data["tags"].clear()
 
         self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
         self._needs_saving = True
@@ -148,6 +176,10 @@ class TagPlugin(BasePlugin):
         for tag in self._datastore.get("tags", []):
             actions[tag] = widgets.QAction(tag, self)
             menu_parent.addAction(actions[tag])
+
+        menu_parent.addSeparator()
+        menu_parent.addAction(self.untag_action)
+
         return menu_parent, actions
 
     def update_menu(self, tags):

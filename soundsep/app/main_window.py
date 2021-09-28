@@ -118,6 +118,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
 
         # API Events
         self.api.projectLoaded.connect(self.on_api_project_ready)
+        # self.api.projectDataLoaded.connect(self.on_api_project_loaded)
         self.api.workspaceChanged.connect(self.on_api_workspace_changed)
         self.api.sourcesChanged.connect(self.on_api_sources_changed)
         self.api.selectionChanged.connect(self.on_api_selection_changed)

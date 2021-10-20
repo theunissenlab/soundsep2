@@ -114,10 +114,12 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         self.setBrush(pg.mkBrush(None))
         self.setAcceptHoverEvents(True)
 
-        self.setToolTip("{}\n{:.2f}s to {:.2f}s".format(
+        self.setToolTip("{}\n{:.2f}s to {:.2f}s\nDuration: {:.1f} ms\nTags: {}".format(
             self.segment.source.name,
             self.segment.start.to_timestamp(),
             self.segment.stop.to_timestamp(),
+            (self.segment.stop.to_timestamp() - self.segment.start.to_timestamp()) * 1000,
+            ",".join([t for t in self.segment.data.get("tags", [])]),
         ))
 
         parent_plot.sigYRangeChanged.connect(self.adjust_ylims)

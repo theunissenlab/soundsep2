@@ -45,7 +45,7 @@ See `sep --help` for info. Includes scripts for
 
 ## Installation on M1 Mac
 
-Installation on a M1 Mac is more complicated because PyQt5 is incompatible and needs to be installed via Rosetta. The instructions here are based on (this stackoverflow answer)[https://stackoverflow.com/a/68038451]:
+Installation on a M1 Mac is more complicated because PyQt5 is incompatible and needs to be installed via Rosetta. The instructions here are based on [this stackoverflow answer](https://stackoverflow.com/a/68038451):
 
 1. First create a duplicate Terminal that opens in Rosetta (duplicate the terminal in your `Applications/Utilities` folder, rename it, right-click > Get Info, and check the Rosetta box)
 2. Open the rosetta Terminal and double check that it is running in Rosetta (type `arch` and make sure it says `i386` instead of `arm`.

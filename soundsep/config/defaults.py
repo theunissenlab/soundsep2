@@ -6,7 +6,7 @@ DEFAULTS = {
     "block_keys": None,
 
     # App/gui config
-    "source_view.minimum_height": 300,
+    "source_view.minimum_height": 150,
     "workspace.default_size": 2000,
     "workspace.constant_refresh": True,
 

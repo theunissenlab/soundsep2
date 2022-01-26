@@ -204,7 +204,10 @@ class TagPlugin(BasePlugin):
             self._datastore["tags"] = []
         else:
             tags_dataframe = pd.read_csv(tags_file)
-            self._datastore["tags"] = list(tags_dataframe["TagName"])
+            if "TagName" in tags_dataframe:
+                self._datastore["tags"] = list(tags_dataframe["TagName"])
+            else:
+                self._datastore["tags"] = []
 
     def on_project_data_loaded(self):
         self.panel.set_data(self._datastore["tags"])

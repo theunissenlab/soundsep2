@@ -156,7 +156,7 @@ class Launcher(QObject):
         screen = widgets.QApplication.primaryScreen()
         size = screen.size()
         rect = screen.availableGeometry()
-        self.current_window.resize(rect.width() * 0.75, rect.height() * 0.75)
+        self.current_window.resize(int(rect.width() * 0.75), int(rect.height() * 0.75))
         self._center_on(self.current_window)
 
         self.current_window.show()

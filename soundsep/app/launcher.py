@@ -1,6 +1,7 @@
 import logging
 from enum import Enum
 from functools import partial
+from pathlib import Path
 
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5 import QtWidgets as widgets
@@ -11,6 +12,7 @@ from soundsep.app.main_window import SoundsepMainWindow
 from soundsep.app.project_creator import ProjectCreator
 from soundsep.app.project_loader import ProjectLoader
 from soundsep.ui.splash import Ui_SplashPage
+from soundsep.settings import QSETTINGS_APP, QSETTINGS_ORG, SETTINGS_VARIABLES
 from soundsep.widgets.utils import not_implemented
 
 
@@ -22,6 +24,7 @@ class Splash(widgets.QWidget):
     class Option(Enum):
         CREATE_PROJECT = "Create Project"
         OPEN_PROJECT = "Open Project"
+        REOPEN_LAST_PROJECT = "Reopen Project"
         DEBUG_PROJECT = "Debug Project"
         QUIT = "Quit"
 
@@ -45,6 +48,7 @@ class Splash(widgets.QWidget):
     def connect_events(self):
         self.ui.createProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.CREATE_PROJECT))
         self.ui.openProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.OPEN_PROJECT))
+        self.ui.reopenProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.REOPEN_PROJECT))
         self.ui.debugProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.DEBUG_PROJECT))
         self.ui.exitButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.QUIT))
 
@@ -61,6 +65,11 @@ class Launcher(QObject):
         super().__init__(*args, **kwargs)
         self.current_window = None
         self.splash = None
+
+        self.qsettings = QSettings(
+            QSETTINGS_ORG,
+            QSETTINGS_APP,
+        )
 
     def _center_on(self, w):
         rect = w.frameGeometry()
@@ -97,6 +106,14 @@ class Launcher(QObject):
             self.current_window.openProject.connect(self.open_project_directory)
             self.current_window.openProjectCanceled.connect(self.show_splash)
             self.current_window.show()
+        elif choice == Splash.Option.REOPEN_PROJECT:
+            if self.qsettings.contains(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]):
+                reopen_path = str(self.qsettings.value(SETTINGS_VARIABLES["REOPEN_PRJOECT_PATH"]))
+                if os.path.exists(reopen_path):
+                    self.open_project_directory(Path(reopen_path))
+
+            # If we cant reopen the last project, pretend you chose open project
+            self.on_splash_choice(Splash.Option.OPEN_PROJECT)
         elif choice == Splash.Option.DEBUG_PROJECT:
             self.splash.close()
             self.current_window = ProjectCreator()

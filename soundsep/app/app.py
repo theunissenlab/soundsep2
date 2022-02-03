@@ -7,7 +7,7 @@ from typing import List
 
 import pandas as pd
 import yaml
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, QSettings, pyqtSignal
 
 from soundsep.api import Api
 from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
@@ -24,6 +24,11 @@ from soundsep.config.paths import ProjectPathFinder
 from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.models import StftIndex, Source
 from soundsep.core.io import load_project
+from soundsep.settings import (
+    QSETTINGS_APP,
+    QSETTINGS_ORG,
+    SETTINGS_VARIABLES,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -73,6 +78,13 @@ class SoundsepApp(QObject):
         self.state = {}
         self.services = {}
         self.datastore = {}
+
+        self.qsettings = QSettings(
+            QSETTINGS_ORG,
+            QSETTINGS_APP,
+        )
+
+        self.qsettings.setValue(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"], str(project_dir))
 
     @staticmethod
     def read_config(path: 'pathlib.Path') -> dict:

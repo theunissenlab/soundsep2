@@ -233,6 +233,13 @@ def _load_project_by_blocks(
         blocks.append(new_block)
         channel_ids[tuple([g["channel_id"] for g in group])].append(new_block)
 
+    if len(blocks) == 0 and len(channel_ids) == 0:
+        raise LoadProjectError("No data found. Check data path and channel, block keys:\n"
+                f"{base_directory} {'EXISTS' if base_directory.exists() else 'DOES NOT EXIST'}\n"
+                f"matching pattern: {filename_pattern}\n"
+                f"using block keys: {block_keys}\n"
+                f"using channel keys: {channel_keys}")
+
     if channel_keys is not None and len(channel_ids) != 1:
         raise LoadProjectError("Channel ids were not consistent over read blocks. "
             "Check the filename_pattern, block_keys, and channel_keys;\n"

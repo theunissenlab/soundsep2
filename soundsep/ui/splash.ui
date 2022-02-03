@@ -117,6 +117,9 @@
               <bold>false</bold>
              </font>
             </property>
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Create a new project from an audio folder&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
             <property name="styleSheet">
              <string notr="true">QPushButton {
     color: rgb(73, 73, 181);
@@ -137,6 +140,38 @@ QPushButton:hover {
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="reopenProjectButton">
+            <property name="font">
+             <font>
+              <family>Courier New</family>
+              <pointsize>20</pointsize>
+              <weight>50</weight>
+              <bold>false</bold>
+             </font>
+            </property>
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Reopen the last project&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton {
+    color: rgb(73, 73, 181);
+    font-size: 20pt;
+    padding: 10px;
+    border: 0;
+}
+
+QPushButton:hover {
+    color: rgb(0, 8, 127);
+    font-weight: bold;
+}
+</string>
+            </property>
+            <property name="text">
+             <string>Reopen last project</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="openProjectButton">
             <property name="font">
              <font>
@@ -145,6 +180,9 @@ QPushButton:hover {
               <weight>50</weight>
               <bold>false</bold>
              </font>
+            </property>
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Open an existing project by seleting a folder with a soundsep.yaml file&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="styleSheet">
              <string notr="true">QPushButton {

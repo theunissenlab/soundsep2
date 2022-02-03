@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/media/storage/Projects/soundsep2/soundsep/ui/splash.ui'
+# Form implementation generated from reading ui file 'd:\projects\soundsep2\soundsep\ui\splash.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #
@@ -95,6 +95,27 @@ class Ui_SplashPage(object):
 "")
         self.createProjectButton.setObjectName("createProjectButton")
         self.verticalLayout_2.addWidget(self.createProjectButton)
+        self.reopenProjectButton = QtWidgets.QPushButton(self.widget_2)
+        font = QtGui.QFont()
+        font.setFamily("Courier New")
+        font.setPointSize(20)
+        font.setBold(False)
+        font.setWeight(50)
+        self.reopenProjectButton.setFont(font)
+        self.reopenProjectButton.setStyleSheet("QPushButton {\n"
+"    color: rgb(73, 73, 181);\n"
+"    font-size: 20pt;\n"
+"    padding: 10px;\n"
+"    border: 0;\n"
+"}\n"
+"\n"
+"QPushButton:hover {\n"
+"    color: rgb(0, 8, 127);\n"
+"    font-weight: bold;\n"
+"}\n"
+"")
+        self.reopenProjectButton.setObjectName("reopenProjectButton")
+        self.verticalLayout_2.addWidget(self.reopenProjectButton)
         self.openProjectButton = QtWidgets.QPushButton(self.widget_2)
         font = QtGui.QFont()
         font.setFamily("Courier New")
@@ -169,7 +190,11 @@ class Ui_SplashPage(object):
         _translate = QtCore.QCoreApplication.translate
         SplashPage.setWindowTitle(_translate("SplashPage", "SoundSep"))
         self.label_2.setText(_translate("SplashPage", "SoundSep 2"))
+        self.createProjectButton.setToolTip(_translate("SplashPage", "<html><head/><body><p>Create a new project from an audio folder</p></body></html>"))
         self.createProjectButton.setText(_translate("SplashPage", "Create project"))
+        self.reopenProjectButton.setToolTip(_translate("SplashPage", "<html><head/><body><p>Reopen the last project</p></body></html>"))
+        self.reopenProjectButton.setText(_translate("SplashPage", "Reopen last project"))
+        self.openProjectButton.setToolTip(_translate("SplashPage", "<html><head/><body><p>Open an existing project by seleting a folder with a soundsep.yaml file</p></body></html>"))
         self.openProjectButton.setText(_translate("SplashPage", "Open existing project..."))
         self.debugProjectButton.setText(_translate("SplashPage", "Debug project files"))
         self.exitButton.setText(_translate("SplashPage", "Exit"))

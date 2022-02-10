@@ -318,7 +318,8 @@ class Project:
     --------
     Data can be read from a project using the .read() method or square bracket
     access notation. Data can be accessed using either BlockIndex or ProjectIndex
-    values, but not raw integers, to enforce consistency.
+    values to enforce consistency. When accessing with bracket notation, integers
+    are interpreted as ProjectIndexes.
 
     >>> project = Project(...)
     >>> start = BlockIndex(block, 10)
@@ -455,7 +456,7 @@ class Project:
 
         return np.concatenate(out_data)
 
-    def normalize_slice(self, slice_: slice) -> slice:
+    def _normalize_slice(self, slice_: slice, cast_int_to_project_index: bool = False) -> slice:
         """Convert slice of ProjectIndex or BlockIndex values to a slice with explicit endpoints
 
         This function makes the None values in a slice explicit relative to the Block or Project,
@@ -463,7 +464,7 @@ class Project:
 
         Example
         -------
-        >>> project.normalize_slice(slice(BlockIndex(block, 3), None))
+        >>> project._normalize_slice(slice(BlockIndex(block, 3), None))
         slice(ProjectIndex<3>, ProjectIndex<10>, None)
 
         Arguments
@@ -471,6 +472,8 @@ class Project:
         slice_ : slice
             A slice(start, stop, step) where start and stop are ProjectIndex, BlockIndex, or both. The
             step attribute of the slice is ignored.
+        cast_int_to_project_index : bool
+            Automatically cast ints to ProjectIndex instances (defaults to False)
 
         Returns
         -------
@@ -491,6 +494,9 @@ class Project:
             elif isinstance(slice_.stop, ProjectIndex):
                 start = ProjectIndex(self, 0)
                 stop = slice_.stop
+            elif cast_int_to_project_index and isinstance(slice_.stop, int):
+                start = ProjectIndex(self, 0)
+                stop = ProjectIndex(self, slice._stop)
             else:
                 raise TypeError("Can only normalize slices with ProjectIndex, BlockIndex, or None values")
         elif slice_.stop is None:
@@ -499,12 +505,15 @@ class Project:
                 stop = self.to_project_index(BlockIndex(slice_.start.block, slice_.start.block.frames))
             elif isinstance(slice_.start, ProjectIndex):
                 start = slice_.start
-                stop = ProjectIndex(self, slice_.start.project.frames)
+                stop = ProjectIndex(self, self.frames)
+            elif cast_int_to_project_index and isinstance(slice_.start, int):
+                start = ProjectIndex(self, slice_.start)
+                stop = ProjectIndex(self, self.frames)
             else:
                 raise TypeError("Can only normalize slices with ProjectIndex, BlockIndex, or None values")
         else:
-            start = self.to_project_index(slice_.start)
-            stop = self.to_project_index(slice_.stop)
+            start = self.to_project_index(slice_.start, cast_int_to_project_index=cast_int_to_project_index)
+            stop = self.to_project_index(slice_.stop, cast_int_to_project_index=cast_int_to_project_index)
 
         return slice(start, stop, None)
 
@@ -516,6 +525,9 @@ class Project:
         First parameters to the slice selects the indices, and the second parameter (optional)
         selects the channels. The second parameter can either be an int, Python slice object,
         or iterable.
+
+        New in 0.1.4: When using __getitem__ (square bracket notation), automatically interpret
+        integers as ProjectIndex
         """
         # This function must handle four cases: (int, int), (int, slice), (slice, int), (slice, slice)
         # The second value could be an iterable as well
@@ -526,7 +538,7 @@ class Project:
             s1, s2 = slices
 
             if isinstance(s1, slice):
-                s1 = self.normalize_slice(s1)
+                s1 = self._normalize_slice(s1, cast_int_to_project_index=True)
 
             if isinstance(s2, slice):
                 s2 = s2.indices(self.channels)
@@ -547,8 +559,11 @@ class Project:
         elif isinstance(slices, BaseIndex):
             index = self.to_block_index(slices)
             return index.block.read_one(index, channels=list(range(self.channels)))
+        elif isinstance(slices, int):
+            index = self.to_block_index(ProjectIndex(self, slices))
+            return index.block.read_one(index, channels=list(range(self.channels)))
         elif isinstance(slices, slice):
-            slice_ = self.normalize_slice(slices)
+            slice_ = self._normalize_slice(slices, cast_int_to_project_index=True)
             return self._read_by_project_indices(slice_.start, slice_.stop, channels=list(range(self.channels)))
 
         raise ValueError("Invalid index into Project {}".format(slices))
@@ -575,12 +590,14 @@ class Project:
         else:
             raise TypeError("Cannot covert type {} to BlockIndex".format(type(index)))
 
-    def to_project_index(self, index: Union['BlockIndex', 'ProjectIndex']) -> 'ProjectIndex':
+    def to_project_index(self, index: Union['BlockIndex', 'ProjectIndex'], cast_int_to_project_index: bool = False) -> 'ProjectIndex':
         """Convert a BlockIndex/ProjectIndex to a ProjectIndex
 
         Arguments
         ---------
         index : ProjectIndex or BlockIndex
+        cast_int_to_project_index : bool
+            Automatically cast ints to ProjectIndex instances (defaults to False)
 
         Returns
         -------
@@ -595,8 +612,10 @@ class Project:
                     # Casting to int to turn i0 and index into pure ints
                     return ProjectIndex(self, int(i0 + int(index)))
             raise ValueError("Could not find BlockIndex in Project")
+        elif cast_int_to_project_index and isinstance(index, int):
+            return ProjectIndex(self, index)
         else:
-            raise TypeError("Cannot covert type {} to ProjectIndex".format(type(index)))
+            raise TypeError("Cannot covert type {} to ProjectIndex.".format(type(index)))
 
     def get_block_boundaries(
             self,

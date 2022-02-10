@@ -21,6 +21,16 @@ Prepare a folder that contains your audio data files. For SoundSep to group file
 
 The project directory should contain a config file `soundsep.yaml`. When running the launcher, you should open the directory containing that config file.
 
+To load a project from within a python shell, do the following:
+
+```python
+from soundsep import open_project
+project = open_project(PATH_TO_SOUNDSEP_YAML_FILE)
+
+# Load data, e.g.
+data = project[:44100]
+```
+
 ## Installing for development
 
 ```

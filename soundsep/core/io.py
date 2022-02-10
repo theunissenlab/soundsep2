@@ -4,13 +4,58 @@ import collections
 import itertools
 import os
 import re
+import yaml
 from collections.abc import Iterable
 from pathlib import Path
 from typing import List
 
 import parse
 
+from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
 from soundsep.core.models import AudioFile, Block, Project
+
+
+def open_project(path: Path):
+    """Loads a project folder from config file or project directory
+
+    Arguments
+    ---------
+    path : pathlib.Path
+        Path to either project folder containing a soundsep.yaml file,
+        or a soundsep.yaml file directly
+
+    Returns
+    -------
+    project : soundsep.core.models.Project
+        The Project instance
+    """
+    path = Path(path)
+    if path.is_dir() and not (path / "soundsep.yaml").exists():
+        raise ConfigDoesNotExist(f"Config does not exist at {path / 'soundsep.yaml'}")
+    
+    if not path.is_dir() and path.suffix == ".yaml":
+        config_path = path
+    elif path.is_dir():
+        config_path = path / "soundsep.yaml"
+
+    try:
+        with open(config_path, "r") as f:
+            local_config = yaml.load(f, Loader=yaml.SafeLoader)
+    except:
+        raise BadConfigFormat(f"Error reading {config_path}")
+
+    if local_config["audio_directory"]:
+        audio_dir = Path(local_config["audio_directory"])
+        if not audio_dir.is_absolute():
+            local_config["audio_directory"] = str(config_path.parent / audio_dir)
+
+    return load_project(
+        Path(local_config["audio_directory"]),
+        local_config["filename_pattern"],
+        local_config["block_keys"],
+        local_config["channel_keys"],
+        recursive=local_config["recursive_search"],
+    )
 
 
 def load_project(

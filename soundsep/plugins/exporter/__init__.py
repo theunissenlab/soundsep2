@@ -37,7 +37,7 @@ class ExportPlugin(BasePlugin):
         original_file_t_stop
         """
         datastore = self.api.get_mut_datastore()
-        self.window = ExportWizard(datastore)
+        self.window = ExportWizard(datastore, self.api)
         self.window.exportReady.connect(self.on_export_ready)
         self.window.exportCanceled.connect(self.on_export_canceled)
         self.window.show()

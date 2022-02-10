@@ -1,5 +1,6 @@
 import functools
 import logging
+from pathlib import Path
 from collections import namedtuple
 
 import PyQt5.QtWidgets as widgets
@@ -27,6 +28,8 @@ SETTINGS = (
         "the stop time of segments relative to the project"),
     ExportSetting("file.name", "Filename",
         "the original file the segment is from"),
+    ExportSetting("file.relative_path", "Relative File Path",
+        "the original file the segment is from relative to project directory"),
     ExportSetting("file.channel", "File channel",
         "the original channel the segment is from"),
     ExportSetting("file.start_index", "File Start (int, samples)",
@@ -42,7 +45,7 @@ SETTINGS = (
 )
 
 
-def segment_to_dict(segment):
+def segment_to_dict(segment, project_dir: 'pathlib.Path'):
     source = segment.source
     project = source.project
     block_start = project.to_block_index(segment.start)
@@ -58,6 +61,7 @@ def segment_to_dict(segment):
         "project.t_start": segment.start.to_timestamp(),
         "project.t_stop": segment.stop.to_timestamp(),
         "file.name": original_file,
+        "file.relative_path": Path(original_file).relative_to(project_dir),
         "file.channel": original_channel,
         "file.start_index": int(block_start),
         "file.stop_index": int(block_stop),
@@ -74,9 +78,10 @@ class ExportWizard(widgets.QWidget):
     exportReady = pyqtSignal(object)
     exportCanceled = pyqtSignal()
 
-    def __init__(self, datastore):
+    def __init__(self, datastore, api):
         super().__init__()
         logger.info("Starting export wizard")
+        self.api = api
         self.datastore = datastore
         self.init_ui()
         self.connect_events()
@@ -132,7 +137,7 @@ class ExportWizard(widgets.QWidget):
         segment_dicts = []
         for segment in self.datastore["segments"]:
             segment_row = {
-                name_map.get(k, k): v for k, v in segment_to_dict(segment).items()
+                name_map.get(k, k): v for k, v in segment_to_dict(segment, self.api.paths.project_dir).items()
                 if k in include_keys
             }
             segment_dicts.append(segment_row)

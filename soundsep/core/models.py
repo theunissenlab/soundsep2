@@ -496,7 +496,7 @@ class Project:
                 stop = slice_.stop
             elif cast_int_to_project_index and isinstance(slice_.stop, int):
                 start = ProjectIndex(self, 0)
-                stop = ProjectIndex(self, slice._stop)
+                stop = ProjectIndex(self, slice_.stop)
             else:
                 raise TypeError("Can only normalize slices with ProjectIndex, BlockIndex, or None values")
         elif slice_.stop is None:

@@ -30,7 +30,7 @@ def open_project(path: Path):
         The Project instance
     """
     path = Path(path)
-    if path.is_dir() and not (path / "soundsep.yaml").exists():
+    if not path.exists() or (path.is_dir() and not (path / "soundsep.yaml").exists()):
         raise ConfigDoesNotExist(f"Config does not exist at {path / 'soundsep.yaml'}")
     
     if not path.is_dir() and path.suffix == ".yaml":

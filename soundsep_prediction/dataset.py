@@ -38,12 +38,23 @@ class DatasetParameters:
     until_index: int = None
 
     @property
-    def width(self):
+    def width(self) -> int:
         return 2 * self.radius + 1
+
+    def copy(self) -> 'DatasetParameters':
+        """Make a copy of the current parameter object"""
+        return DatasetParameters(
+            radius=self.radius,
+            from_index=self.from_index,
+            until_index=self.until_index,
+        )
 
 
 class SoundsepAudioDataset:
     """Provides access to audio data and labels
+
+    FIXME: This is very inefficient when contiguous chunks since
+    much of adjcaent datapoints overlap
     """
 
     def __init__(
@@ -55,7 +66,6 @@ class SoundsepAudioDataset:
             params: DatasetParameters = DatasetParameters(),
         ):
         self.project = open_project(project_dir)
-        # TODO: Pass in the list of sources as well?
         self.stft_params = stft_params
         self.params = params
 
@@ -127,6 +137,7 @@ class SoundsepAudioDataset:
         )
 
         arr = self.project[start_index:stop_index]
+
         padding = ((pad_start, pad_stop),) + tuple([(0, 0) for _ in range(arr.ndim - 1)])
         padded_arr = np.pad(arr, padding, mode="reflect")
 
@@ -166,3 +177,49 @@ class SoundsepAudioDataset:
     def __len__(self):
         """Returns the size of the dataset"""
         return (self.stop - self.start) // self.stft_params.hop
+
+
+class CompositeDataset:
+    """A wrapper around multiple datasets
+
+    Pass in time_ranges, a list of tuples of the time (in seconds) of the start and end of each range
+    """
+    def __init__(
+            self,
+            project_dir: pathlib.Path,
+            syllable_table: pd.DataFrame,
+            source_names: List[str],
+            time_ranges: List[Tuple[float, float]],
+            stft_params: StftParameters = StftParameters(),
+            params: DatasetParameters = DatasetParameters(),
+            ):
+        self.project = open_project(project_dir)
+        self.stft_params = stft_params
+        self.params = params
+        self.source_names = np.array(source_names)
+
+        self.datasets = []
+        self.dataset_start_indexes = [0]
+        for t0, t1 in time_ranges:
+            param_copy = params.copy()
+            param_copy.from_index = int(t0 * self.project.sampling_rate)
+            param_copy.until_index = int(t1 * self.project.sampling_rate)
+            self.datasets.append(SoundsepAudioDataset(
+                project_dir,
+                syllable_table,
+                source_names,
+                stft_params,
+                param_copy
+            ))
+            self.dataset_start_indexes.append(self.dataset_start_indexes[-1] + len(self.datasets[-1]))
+
+    def __getitem__(self, stft_index):
+        dataset_start_index = np.searchsorted(self.dataset_start_indexes, stft_index, side="right")
+
+        dataset_first_stft_index = self.dataset_start_indexes[dataset_start_index - 1]
+        dataset = self.datasets[dataset_start_index - 1]
+        return dataset[stft_index - dataset_first_stft_index]
+
+    def __len__(self):
+        return self.dataset_start_indexes[-1]
+

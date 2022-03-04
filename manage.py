@@ -152,7 +152,104 @@ def create_plugin(name):
     with open(os.path.join(target_location + ".py"), "w+") as f:
         f.write(contents.format(PluginName=camel_name))
     click.echo("Wrote new plugin {} at {}".format(camel_name, target_location + ".py"))
+
+
+@click.command()
+def check_cuda():
+    """Check CUDA version and if pytorch can see it"""
+    import torch
+    if torch.cuda.is_available():
+        click.echo("CUDA is available")
+    else:
+        click.echo("CUDA is NOT available")
+    click.echo(f"Torch is using CUDA version {torch.version.cuda}")
+
+
+
+@click.command()
+@click.option("-p", "--project", "project_dir", required=True, type=click.Path(exists=True))
+@click.option("-r", "--ranges", help="Ranges in seconds to include in training data", type=(float, float), multiple=True)
+@click.option("-f", "--model-file", type=click.Path(exists=False))
+@click.option("-s", "--save-model", type=click.Path(exists=False))
+@click.option("-d", "--device", type=click.Choice(["cuda", "cpu"]))
+@click.option("-e", "--epochs", default=1, type=int)
+@click.option("-b", "--batch-size", default=64, type=int)
+@click.option("-l", "--lr", default=1e-2, type=float)
+@click.option("--shuffle", help="Shuffle training data", is_flag=True)
+def train_model(project_dir, ranges, model_file, save_model, device, batch_size, epochs, lr, shuffle):
+    """Train a Pytorch model to predict Sources in given project
+    """
+    from pathlib import Path
+
+    import pandas as pd
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader
+
+    from soundsep import open_project
+    from soundsep_prediction.dataset import CompositeDataset
+    from soundsep_prediction.models import PredictionNetwork
+    from soundsep_prediction.fit import partial_fit
+
+    project_dir = Path(project_dir)
+
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    if model_file:
+        model = PredictionNetwork.from_file(model_file, 4, output_channels=3)
+    else:
+        model = PredictionNetwork(4, output_channels=3)
+    model.to(device)
+
+    segments = pd.read_csv(
+        project_dir / "_appdata" / "save" / "segments.csv",
+        converters={"Tags": str})
+    source_names = segments.SourceName.unique()
+
+    if not ranges:
+        project = open_project(project_dir)
+        ranges = [(
+            segments.iloc[0]["StartIndex"] / project.sampling_rate,
+            segments.iloc[-1]["StopIndex"] / project.sampling_rate
+        )]
     
+    ds = CompositeDataset(
+        project_dir=project_dir,
+        syllable_table=segments,
+        source_names=source_names,
+        time_ranges=ranges,
+    )
+    dl = DataLoader(ds, batch_size=batch_size, num_workers=2, shuffle=True)
+
+    loss = torch.nn.BCEWithLogitsLoss()
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+
+    def on_epoch_complete(epoch, model, avg_loss):
+        print(f"Epoch {epoch}; Loss={avg_loss:.4f}")
+        if save_model:
+            torch.save(model.state_dict(), save_model)
+
+    partial_fit(epochs, model, loss, opt, dl, device=device, on_epoch_complete=on_epoch_complete)
+
+
+@click.command()
+@click.option("-p", "--project", "project_dir", required=True, type=click.Path(exists=True))
+@click.option("-d", "--device", type=click.Choice(["cuda", "cpu"]))
+@click.option("-f", "--model-file", type=click.Path(exists=False))
+@click.option("-r", "--ranges", help="Ranges in seconds to predict", type=(float, float), multiple=True)
+def apply_model(project_dir, device, model_file, ranges, write_savefile=False):
+    """Apply a trained model to predict syllable boundaries"""
+    import torch
+    from soundsep_prediction.models import PredictionNetwork
+    from soundsep_prediction.fit import partial_predict
+
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = PredictionNetwork.from_file(model_file, 4, output_channels=3)
+    model.to(device)
+    model.eval()
+
+
 
 cli.add_command(run)
 cli.add_command(project_info)
@@ -162,6 +259,9 @@ cli.add_command(build_doc)
 cli.add_command(open_doc)
 cli.add_command(build_ui)
 cli.add_command(create_plugin)
+
+cli.add_command(check_cuda)
+cli.add_command(train_model)
 
 
 if __name__ == "__main__":

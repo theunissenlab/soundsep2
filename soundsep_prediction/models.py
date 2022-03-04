@@ -1,3 +1,4 @@
+import torch
 from torch import nn, optim
 from torchaudio.transforms import MelSpectrogram, Spectrogram
 
@@ -40,3 +41,11 @@ class PredictionNetwork(nn.Module):
 
     def forward(self, x):
         return self.out_layer(self.layers(x)).float()
+
+    @staticmethod
+    def from_file(path, channels: int, output_channels: int) -> 'PredictionNetwork':
+        """Load a pretrained network"""
+        model = PredictionNetwork(channels, output_channels=output_channels)
+        model.load_state_dict(torch.load(path))
+        return model
+

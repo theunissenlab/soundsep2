@@ -1,8 +1,9 @@
 import logging
 import os
 
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 import pandas as pd
+from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
 from .export_window import ExportWizard
@@ -20,7 +21,7 @@ class ExportPlugin(BasePlugin):
         self.window = None
 
     def setup_actions(self):
-        self.export_csv_action = widgets.QAction("Export to &CSV")
+        self.export_csv_action = QtGui.QAction("Export to &CSV")
         self.export_csv_action.triggered.connect(self.export_to_csv)
 
     def export_to_csv(self):

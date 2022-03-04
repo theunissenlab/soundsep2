@@ -1,4 +1,4 @@
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 
 
 class FloatingButton(widgets.QPushButton):

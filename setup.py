@@ -30,7 +30,7 @@ setup(
         "numpy",
         "matplotlib",
         "pandas",
-        "PyQt5",
+        "PyQt6",
         "pyqtgraph",
         "qasync",
         "scipy",

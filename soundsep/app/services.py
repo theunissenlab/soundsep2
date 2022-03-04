@@ -4,7 +4,7 @@ from enum import Enum
 from queue import Empty, Queue
 from typing import Optional, Tuple, Union
 
-from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from scipy.fft import rfft, rfftfreq
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
@@ -228,6 +228,7 @@ class StftWorker(QThread):
         self.queue.put(StftWorker._CLEAR)
 
     def run(self):
+        """Continuously process requests received on a Queue, but close when specific objects are received"""
         while True:
             q = self.queue.get()
             if q is StftWorker._CLEAR:
@@ -238,6 +239,8 @@ class StftWorker(QThread):
                 self.process_request(q[0], q[1])
 
     def process_request(self, start: StftIndex, stop: StftIndex):
+        """
+        """
         n_fft = 2 * self.config.window + 1
         phantom_start = start.to_project_index() - self.config.window
         phantom_stop = stop.to_project_index() + self.config.window

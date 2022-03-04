@@ -55,6 +55,10 @@ See `sep --help` for info. Includes scripts for
 
 ## Installation on M1 Mac
 
+The current branch includes a migration from PyQt5 to PyQt6. PyQt5 can only run through Rosetta on M1 Macs, and may cause issues with other packages that are not installed through Rosetta.
+
+### Previous instructions:
+
 Installation on a M1 Mac is more complicated because PyQt5 is incompatible and needs to be installed via Rosetta. The instructions here are based on [this stackoverflow answer](https://stackoverflow.com/a/68038451):
 
 1. First create a duplicate Terminal that opens in Rosetta (duplicate the terminal in your `Applications/Utilities` folder, rename it, right-click > Get Info, and check the Rosetta box)

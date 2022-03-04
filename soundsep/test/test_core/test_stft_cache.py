@@ -2,8 +2,8 @@ import unittest
 from unittest import mock
 
 import numpy as np
-from PyQt5 import QtWidgets as widgets
-from PyQt5 import QtTest
+from PyQt6 import QtWidgets as widgets
+from PyQt6 import QtTest
 
 from soundsep.app.services import StftCache, StftConfig
 from soundsep.core.models import Project, ProjectIndex, StftIndex

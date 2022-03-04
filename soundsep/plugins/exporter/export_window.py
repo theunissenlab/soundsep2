@@ -3,9 +3,9 @@ import logging
 from pathlib import Path
 from collections import namedtuple
 
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 import pandas as pd
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 
 
 logger = logging.getLogger(__name__)

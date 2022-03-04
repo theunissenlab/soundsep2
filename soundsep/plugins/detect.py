@@ -1,10 +1,10 @@
 import logging
 
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtGui
-from PyQt5.QtCore import Qt
+from PyQt6 import QtGui
+from PyQt6.QtCore import Qt
 
 from soundsep.api import SignalTooShort
 from soundsep.core.base_plugin import BasePlugin
@@ -120,7 +120,7 @@ class DetectPlugin(BasePlugin):
 
     def init_ui(self):
         self.threshold_preview_plot = pg.InfiniteLine(pos=0, angle=0, movable=True)
-        self.threshold_preview_plot.setCursor(Qt.SplitVCursor)
+        self.threshold_preview_plot.setCursor(Qt.CursorShape.SplitVCursor)
         self.threshold_preview_plot.setPen(pg.mkPen((20, 200, 20), width=3))
         self.threshold_preview_plot.setBounds([0, None])
         self.gui.ui.previewPlot.addItem(self.threshold_preview_plot)
@@ -130,7 +130,7 @@ class DetectPlugin(BasePlugin):
         preview_box_layout.insertWidget(0, self.threshold_controls)
 
     def init_actions(self):
-        self.detect_action = widgets.QAction("Detect in selection", self)
+        self.detect_action = QtGui.QAction("Detect in selection", self)
         self.detect_action.triggered.connect(self.on_detect_activated)
 
     def connect_events(self):
@@ -168,7 +168,7 @@ class DetectPlugin(BasePlugin):
     def toggle_peak_threshold(self):
         if self.using_peak_threshold:
             self.peak_threshold_line = pg.InfiniteLine(pos=self.threshold_preview_plot.pos().y() * 2, angle=0, movable=True)
-            self.peak_threshold_line.setCursor(Qt.SplitVCursor)
+            self.peak_threshold_line.setCursor(Qt.CursorShape.SplitVCursor)
             self.peak_threshold_line.setPen(pg.mkPen((200, 20, 20), width=3))
             self.peak_threshold_line.setBounds([0, None])
             self.peak_threshold_line.sigDragged.connect(self.on_peak_threshold_dragged)

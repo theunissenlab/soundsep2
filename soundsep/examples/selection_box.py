@@ -10,8 +10,8 @@ An example of drawing an adjustable ROI on a spectrogram view
 
 import numpy as np
 import pyqtgraph as pg
-import PyQt5.QtWidgets as widgets
-from PyQt5 import QtGui
+import PyQt6.QtWidgets as widgets
+from PyQt6 import QtGui
 
 from soundsep.gui.main import run_app
 from soundsep.gui.stft_view import ScrollableSpectrogram, ScrollableSpectrogramConfig

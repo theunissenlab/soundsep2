@@ -7,7 +7,7 @@ from typing import List
 
 import pandas as pd
 import yaml
-from PyQt5.QtCore import QObject, QSettings, pyqtSignal
+from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 
 from soundsep.api import Api
 from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist

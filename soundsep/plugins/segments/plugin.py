@@ -3,12 +3,12 @@ import json
 from functools import partial
 from typing import List, Tuple
 
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
 import pandas as pd
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal
-from PyQt5 import QtGui
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal
+from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.models import Source, ProjectIndex
@@ -34,8 +34,8 @@ class SegmentPanel(widgets.QWidget):
     def init_ui(self):
         layout = widgets.QVBoxLayout()
         self.table = widgets.QTableWidget(0, 4)
-        self.table.setEditTriggers(widgets.QTableWidget.NoEditTriggers)
-        self.table.setContextMenuPolicy(Qt.DefaultContextMenu)
+        self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
         header = self.table.horizontalHeader()
         self.table.setHorizontalHeaderLabels([
             "SourceName",
@@ -43,10 +43,10 @@ class SegmentPanel(widgets.QWidget):
             "Stop",
             "Tags",
         ])
-        header.setSectionResizeMode(0, widgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(1, widgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(2, widgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(3, widgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(0, widgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, widgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, widgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, widgets.QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
         self.setLayout(layout)
 
@@ -176,13 +176,13 @@ class SegmentPlugin(BasePlugin):
         self._annotations = []
 
     def init_actions(self):
-        self.create_segment_action = widgets.QAction("&Create segment from selection", self)
+        self.create_segment_action = QtGui.QAction("&Create segment from selection", self)
         self.create_segment_action.triggered.connect(self.on_create_segment_activated)
 
-        self.delete_selection_action = widgets.QAction("&Delete segments in selection", self)
+        self.delete_selection_action = QtGui.QAction("&Delete segments in selection", self)
         self.delete_selection_action.triggered.connect(self.on_delete_segment_activated)
 
-        self.merge_selection_action = widgets.QAction("&Merge segments in selection", self)
+        self.merge_selection_action = QtGui.QAction("&Merge segments in selection", self)
         self.merge_selection_action.triggered.connect(self.on_merge_segments_activated)
 
     def connect_events(self):

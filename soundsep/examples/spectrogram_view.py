@@ -8,8 +8,8 @@
 """
 
 import pyqtgraph as pg
-import PyQt5.QtWidgets as widgets
-from PyQt5 import QtGui
+import PyQt6.QtWidgets as widgets
+from PyQt6 import QtGui
 
 from soundsep.gui.main import run_app
 from soundsep.gui.stft_view import ScrollableSpectrogram, ScrollableSpectrogramConfig
@@ -60,16 +60,16 @@ class STFTWindowExample(pg.GraphicsLayoutWidget):
         self.spectrogram_panel.scroll_to(0)
 
     def _init_shortcuts(self):
-        self.next_shortcut = widgets.QShortcut(QtGui.QKeySequence("D"), self)
+        self.next_shortcut = QtGui.QShortcut(QtGui.QKeySequence("D"), self)
         self.next_shortcut.activated.connect(self.next)
 
-        self.next_page_shortcut = widgets.QShortcut(QtGui.QKeySequence("Shift+D"), self)
+        self.next_page_shortcut = QtGui.QShortcut(QtGui.QKeySequence("Shift+D"), self)
         self.next_page_shortcut.activated.connect(self.next_page)
 
-        self.prev_shortcut = widgets.QShortcut(QtGui.QKeySequence("A"), self)
+        self.prev_shortcut = QtGui.QShortcut(QtGui.QKeySequence("A"), self)
         self.prev_shortcut.activated.connect(self.prev)
 
-        self.prev_page_shortcut = widgets.QShortcut(QtGui.QKeySequence("Shift+A"), self)
+        self.prev_page_shortcut = QtGui.QShortcut(QtGui.QKeySequence("Shift+A"), self)
         self.prev_page_shortcut.activated.connect(self.prev_page)
 
     def _init_ui(self):

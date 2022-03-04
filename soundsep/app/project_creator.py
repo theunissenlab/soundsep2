@@ -6,8 +6,8 @@ from pathlib import Path
 from string import Formatter
 
 import parse
-from PyQt5 import QtWidgets as widgets
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt6 import QtWidgets as widgets
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from soundsep.config.defaults import DEFAULTS
 from soundsep.core.io import group_files_by_pattern, guess_filename_pattern, search_for_wavs
@@ -29,7 +29,7 @@ class ProjectCreator(widgets.QWidget):
     def init_ui(self):
         self.ui = Ui_ProjectCreator()
         self.ui.setupUi(self)
-        self.ui.errorTable.horizontalHeader().setSectionResizeMode(widgets.QHeaderView.Stretch)
+        self.ui.errorTable.horizontalHeader().setSectionResizeMode(widgets.QHeaderView.ResizeMode.Stretch)
         self.ui.step2GroupBox.setVisible(False)
         self.ui.step3GroupBox.setVisible(False)
         self.ui.submitButtons.setVisible(False)

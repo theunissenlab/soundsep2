@@ -2,9 +2,9 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 import pandas as pd
-from PyQt5 import QtGui
+from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
 
@@ -20,12 +20,12 @@ class TagsPanel(widgets.QWidget):
     def init_ui(self):
         layout = widgets.QVBoxLayout()
         self.table = widgets.QTableWidget(0, 1)
-        self.table.setEditTriggers(widgets.QTableWidget.NoEditTriggers)
+        self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
         header = self.table.horizontalHeader()
         self.table.setHorizontalHeaderLabels([
             "TagName",
         ])
-        header.setSectionResizeMode(0, widgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(0, widgets.QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
 
         tag_edit_layout = widgets.QHBoxLayout()
@@ -59,10 +59,10 @@ class TagPlugin(BasePlugin):
         self._needs_saving = False
 
     def init_actions(self):
-        self.apply_tags_action = widgets.QAction("&Tag selection", self)
+        self.apply_tags_action = QtGui.QAction("&Tag selection", self)
         self.apply_tags_action.triggered.connect(self.on_apply_tag)
 
-        self.untag_action = widgets.QAction("&Untag selection", self)
+        self.untag_action = QtGui.QAction("&Untag selection", self)
         self.untag_action.triggered.connect(self.on_clear_tags)
 
     def on_apply_tag(self, tag):
@@ -174,7 +174,7 @@ class TagPlugin(BasePlugin):
         """
         actions = {}
         for tag in self._datastore.get("tags", []):
-            actions[tag] = widgets.QAction(tag, self)
+            actions[tag] = QtGui.QAction(tag, self)
             menu_parent.addAction(actions[tag])
 
         menu_parent.addSeparator()

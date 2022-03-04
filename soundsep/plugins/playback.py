@@ -25,19 +25,12 @@ class PlaybackPlugin(BasePlugin):
         self.playback_action.setShortcut(QtGui.QKeySequence("Space"))
 
         # Set up audio playback
-        format = QAudioFormat()
-        format.setChannelCount(1)
-        format.setSampleRate(self.api.project.sampling_rate)
-        format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
-        self.output = QAudioSink(format, self)
+        format_ = QAudioFormat()
+        format_.setChannelCount(1)
+        format_.setSampleRate(self.api.project.sampling_rate)
+        format_.setSampleFormat(QAudioFormat.SampleFormat.Int16)
 
-        #
-        # format.setSampleSize(16)
-        # format.setCodec("audio/pcm")
-        # format.setByteOrder(QAudioFormat.LittleEndian)
-        # format.setSampleType(QAudioFormat.SignedInt)
-        # self.output = QAudioOutput(format, self)
-
+        self.output = QAudioSink(format_, self)
         self.buffer = QBuffer()
         self.data = QByteArray()
 
@@ -49,9 +42,9 @@ class PlaybackPlugin(BasePlugin):
         self.output.stateChanged.connect(self.on_state_changed)
 
     def on_state_changed(self, state):
-        if state == QAudio.IdleState or state == QAudio.StoppedState:
+        if state == QAudio.State.IdleState or state == QAudio.State.StoppedState:
             self.button.setChecked(False)
-        elif state == QAudio.ActiveState:
+        elif state == QAudio.State.ActiveState:
             self.button.setChecked(True)
         self.playback_action.setChecked(self.button.isChecked())
 
@@ -78,7 +71,7 @@ class PlaybackPlugin(BasePlugin):
         for i in range(len(data)):
             self.data.append(struct.pack("<h", data[i]))
         self.buffer.setData(self.data)
-        self.buffer.open(QIODevice.ReadOnly)
+        self.buffer.open(QIODevice.OpenModeFlag.ReadOnly)
         self.buffer.seek(0)
 
     def play_audio(self):
@@ -86,7 +79,7 @@ class PlaybackPlugin(BasePlugin):
             # Fetch the visible data to play
             _, y_data = self.gui.ui.previewPlot.waveform_plot.getData()
 
-            if self.output.state() == QAudio.ActiveState:
+            if self.output.state() == QAudio.State.ActiveState:
                 self.output.stop()
             if self.buffer.isOpen():
                 self.buffer.close()

@@ -16,6 +16,11 @@ def cli():
     pass
 
 
+@click.group()
+def predict():
+    pass
+
+
 @click.command(help="Run SoundSep GUI")
 @click.option("-d", "--debug", help="Run with log level DEBUG", is_flag=True)
 def run(debug):
@@ -344,8 +349,6 @@ def apply_model(
     model.to(device)
     model.eval()
 
-<<<<<<< HEAD
-=======
     segments = pd.read_csv(
         project_dir / "_appdata" / "save" / "segments.csv",
         converters={"Tags": str},

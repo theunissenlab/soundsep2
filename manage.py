@@ -2,6 +2,7 @@
 import inspect
 import os
 from pathlib import Path
+from typing import Tuple
 
 import click
 
@@ -178,22 +179,43 @@ def check_cuda():
     click.echo(f"Torch is using CUDA version {torch.version.cuda}")
 
 
+def clean_range_input(range_input: Tuple[float, float], project: 'soundsep.core.models.Project'):
+    x0, x1 = range_input
+    if x1 == 0.0:
+        x1 = project.frames / project.sampling_rate
+
+    if x1 < x0:
+        raise ValueError(f"Cannot use a range where second value ({x1}) is greater than first ({x0})")
+
+    return x0, x1
+
 
 @click.command()
 @click.option("-p", "--project", "project_dir", required=True, type=click.Path(exists=True))
-@click.option("-r", "--ranges", help="Ranges in seconds to include in training data", type=(float, float), multiple=True)
+@click.option("-r", "--ranges", help="Ranges in seconds to include in training data, set second number 0.0 to predict to end", type=(float, float), multiple=True)
 @click.option("-f", "--model-file", type=click.Path(exists=False))
 @click.option("-s", "--save-model", type=click.Path(exists=False))
 @click.option("-d", "--device", type=click.Choice(["cuda", "cpu"]))
 @click.option("-e", "--epochs", default=1, type=int)
 @click.option("-b", "--batch-size", default=64, type=int)
 @click.option("-l", "--lr", default=1e-2, type=float)
+@click.option("-m", "--model", "model_name", default="MelPredictionNetwork", type=str)
 @click.option("--shuffle", help="Shuffle training data", is_flag=True)
-def train_model(project_dir, ranges, model_file, save_model, device, batch_size, epochs, lr, shuffle):
+def train_model(
+        project_dir,
+        ranges,
+        model_file,
+        save_model,
+        device,
+        batch_size,
+        epochs,
+        lr,
+        shuffle,
+        model_name,
+        ):
     """Train a Pytorch model to predict Sources in given project
     """
-    from pathlib import Path
-
+    import numpy as np
     import pandas as pd
     import torch
     import torch.nn as nn
@@ -201,10 +223,13 @@ def train_model(project_dir, ranges, model_file, save_model, device, batch_size,
 
     from soundsep import open_project
     from soundsep_prediction.dataset import CompositeDataset
-    from soundsep_prediction.models import PredictionNetwork
     from soundsep_prediction.fit import partial_fit
+    from soundsep_prediction import models
+
+    PredictionNetwork = getattr(models, model_name)
 
     project_dir = Path(project_dir)
+    project = open_project(project_dir)
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -216,23 +241,26 @@ def train_model(project_dir, ranges, model_file, save_model, device, batch_size,
 
     segments = pd.read_csv(
         project_dir / "_appdata" / "save" / "segments.csv",
-        converters={"Tags": str})
-    source_names = segments.SourceName.unique()
+        converters={"Tags": str},
+        index_col=0,
+    )
+    source_names = np.sort(segments.SourceName.unique())
 
     if not ranges:
-        project = open_project(project_dir)
         ranges = [(
             segments.iloc[0]["StartIndex"] / project.sampling_rate,
             segments.iloc[-1]["StopIndex"] / project.sampling_rate
         )]
-    
+    else:
+        ranges = [clean_range_input(range_in, project) for range_in in ranges]
+
     ds = CompositeDataset(
         project_dir=project_dir,
         syllable_table=segments,
         source_names=source_names,
         time_ranges=ranges,
     )
-    dl = DataLoader(ds, batch_size=batch_size, num_workers=2, shuffle=True)
+    dl = DataLoader(ds, batch_size=batch_size, num_workers=4, shuffle=True)
 
     loss = torch.nn.BCEWithLogitsLoss()
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -248,13 +276,67 @@ def train_model(project_dir, ranges, model_file, save_model, device, batch_size,
 @click.command()
 @click.option("-p", "--project", "project_dir", required=True, type=click.Path(exists=True))
 @click.option("-d", "--device", type=click.Choice(["cuda", "cpu"]))
+@click.option("-b", "--batch-size", default=128, type=int)
 @click.option("-f", "--model-file", type=click.Path(exists=False))
 @click.option("-r", "--ranges", help="Ranges in seconds to predict", type=(float, float), multiple=True)
-def apply_model(project_dir, device, model_file, ranges, write_savefile=False):
-    """Apply a trained model to predict syllable boundaries"""
+@click.option("-t", "--threshold", help="Probability to threshold syllable at", default=0.5, type=float)
+@click.option("--min-gap-duration", help="How log of a period to ignore if probability dips below threshold (in ms)", type=float, default=8.0)
+@click.option("--min-segment-duration", help="How log a segment must be (in ms)", default=8.0)
+@click.option("--peak-threshold", help="A segment must have a peak probability of peak-threshold to be counted", type=float, default=0.0)
+@click.option("-a", "--append-to", help="Soundsep save file (_appdata/save/segments.csv) to add predicted segments to", type=click.Path(exists=True))
+@click.option("--append-default", help="Append and delete segments from default save file (_appdata/save/segments.csv)", is_flag=True)
+@click.option("-m", "--model", "model_name", default="MelPredictionNetwork", type=str)
+@click.option("--tag", help="Add a tag to autogenerated segments", type=str)
+@click.option("--eval", "eval_", help="Evaluate model on data with true labels", is_flag=True)
+def apply_model(
+        project_dir,
+        device,
+        batch_size,
+        model_file,
+        ranges,
+        threshold,
+        min_gap_duration,
+        min_segment_duration,
+        peak_threshold,
+        append_to,
+        append_default,
+        model_name,
+        tag,
+        eval_,
+        write_savefile=False
+        ):
+    """Apply a trained model to predict syllable boundaries
+
+    Create a table in the form of a soundsep save file (with columns SourceName,
+    """
+    if eval_ and append_to:
+        raise ValueError("Cannot evaluate and update a segment table simultaneously")
+    if append_to and append_default:
+        raise ValueError("Cannot specify -a/--append_to and --append-default at the same time. "
+                "--append-default should update the save file in place.")
+
+    import json
+    import secrets
+    import shutil
+
+    import numpy as np
+    import pandas as pd
     import torch
-    from soundsep_prediction.models import PredictionNetwork
-    from soundsep_prediction.fit import partial_predict
+    import torch.nn as nn
+    from torch.utils.data import DataLoader
+
+    from soundsep import open_project
+    from soundsep_prediction import models
+    from soundsep_prediction.dataset import CompositeDataset
+    from soundsep_prediction.fit import partial_predict, partial_test, to_segments_table
+
+    PredictionNetwork = getattr(models, model_name)
+
+    project_dir = Path(project_dir)
+    project = open_project(project_dir)
+
+    if append_default:
+        append_to = project_dir / "_appdata" / "save" / "segments.csv"
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -262,6 +344,100 @@ def apply_model(project_dir, device, model_file, ranges, write_savefile=False):
     model.to(device)
     model.eval()
 
+<<<<<<< HEAD
+=======
+    segments = pd.read_csv(
+        project_dir / "_appdata" / "save" / "segments.csv",
+        converters={"Tags": str},
+        index_col=0,
+    )
+    source_names = np.sort(segments.SourceName.unique())
+    source_channels = [
+        segments[segments.SourceName == source_name].iloc[0]["SourceChannel"]
+        for source_name in source_names
+    ]
+
+    if not ranges:
+        ranges = [(
+            segments.iloc[-1]["StopIndex"] / project.sampling_rate,
+            project.frames / project.sampling_rate
+        )]
+    else:
+        ranges = [clean_range_input(range_in, project) for range_in in ranges]
+
+    # Get sorted source names
+    ds = CompositeDataset(
+        project_dir=project_dir,
+        syllable_table=segments,
+        source_names=source_names,
+        time_ranges=ranges,
+    )
+    dl = DataLoader(ds, batch_size=batch_size, num_workers=4)
+
+    if eval_:
+        loss_fn = torch.nn.BCEWithLogitsLoss()
+        loss = partial_test(model, loss_fn, dl, device=device)
+        click.echo(f"Loss: {loss:.5f}")
+        return
+
+    p = partial_predict(model, dl, return_labels=False, device=device) 
+    p = p.numpy()
+
+    # Chunk p by time range, since each time range will have its own offset time
+    segments_table = []
+    current_offset = 0
+    for _ds in ds.datasets:
+        next_ds_table = to_segments_table(
+            p[current_offset:current_offset + len(_ds)],
+            threshold,
+            source_names,
+            source_channels,
+            ds.stft_params.hop,
+            min_gap_size=int(
+                ((min_gap_duration / 1000) * project.sampling_rate) / ds.stft_params.hop
+            ),
+            min_segment_size=int(
+                ((min_segment_duration / 1000) * project.sampling_rate) / ds.stft_params.hop
+            ),
+            min_p_max=peak_threshold
+        )
+        next_ds_table["StartIndex"] += _ds.start
+        next_ds_table["StopIndex"] += _ds.start
+        current_offset += len(_ds)
+        segments_table.append(next_ds_table)
+    segments_table = pd.concat(segments_table, ignore_index=True)
+
+    if tag:
+        segments_table["Tags"] = json.dumps([tag])
+
+    if append_to:
+        original_segments = pd.read_csv(
+            Path(append_to),
+            converters={"Tags": str},
+            index_col=0,
+        )
+        # Assume file exists because we used click.Path(exists=True)
+        backup_file = f"{append_to}.backup.{secrets.token_hex()[:6]}"
+        click.echo(f"Backing up {append_to} to {backup_file}")
+        shutil.copy(append_to, backup_file)
+
+        # Clear out segments that overlap this time range
+        overlapping_selector = np.zeros(len(original_segments)).astype(bool)
+        for t0, t1 in ranges:
+            i0 = int(t0 * project.sampling_rate)
+            i1 = int(t1 * project.sampling_rate)
+            overlapping_selector = overlapping_selector | (
+                ((original_segments["StopIndex"] >= i0) & (original_segments["StopIndex"] <= i1))
+                | ((original_segments["StartIndex"] >= i0) & (original_segments["StartIndex"] <= i1))
+                | ((original_segments["StartIndex"] <= i0) & (original_segments["StopIndex"] >= i1))
+            )
+        original_segments = original_segments[~overlapping_selector]
+        n_deleted = int(np.sum(overlapping_selector))
+        new_table = pd.concat([original_segments, segments_table], ignore_index=True).sort_values("StartIndex").reindex()
+        new_table.to_csv(append_to)
+        click.echo(f"Updated {append_to}; Deleted {n_deleted}; Created {len(segments_table)}")
+    else:
+        click.echo(segments_table.to_csv())
 
 
 cli.add_command(run)
@@ -273,10 +449,11 @@ cli.add_command(open_doc)
 cli.add_command(build_ui)
 cli.add_command(create_plugin)
 
-cli.add_command(check_cuda)
-cli.add_command(train_model)
+predict.add_command(check_cuda)
+predict.add_command(train_model)
+predict.add_command(apply_model)
 
+cli.add_command(predict)
 
 if __name__ == "__main__":
     cli()
-

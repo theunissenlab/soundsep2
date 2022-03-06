@@ -60,9 +60,9 @@ class EditSourceModal(widgets.QDialog):
             "Confirm delete source",
             "Are you sure you want to delete {}? This will delete all labeled"
             " segments on this source as well.".format(self.source.name),
-            widgets.QMessageBox.Yes | widgets.QMessageBox.Cancel
+            widgets.QMessageBox.StandardButton.Yes | widgets.QMessageBox.StandardButton.Cancel
         )
-        if reply == widgets.QMessageBox.Yes:
+        if reply == widgets.QMessageBox.StandardButton.Yes:
             self.deleteSourceSignal.emit(self.source)
             self.close()
 

@@ -12,7 +12,7 @@ class QClickableLineEdit(widgets.QLineEdit):
 
 def not_implemented(msg: str):
     dialog = widgets.QMessageBox()
-    dialog.setIcon(widgets.QMessageBox.Critical)
+    dialog.setIcon(widgets.QMessageBox.Icon.Critical)
     dialog.setText("This function is not implemented yet!")
     dialog.setInformativeText("Mesage: {}".format(msg))
     dialog.setWindowTitle("Error")

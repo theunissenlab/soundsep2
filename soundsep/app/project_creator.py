@@ -72,7 +72,7 @@ class ProjectCreator(widgets.QWidget):
 
     def save_config(self, config: dict):
         self.hide()
-        options = widgets.QFileDialog.Options()
+        options = widgets.QFileDialog.Option()
         save_target, _ = widgets.QFileDialog.getSaveFileName(
             None,
             "Saving yaml file",
@@ -89,7 +89,7 @@ class ProjectCreator(widgets.QWidget):
                 self,
                 "Confirm create config",
                 "{} already exists. Are you sure you want to overwrite it?".format(save_target),
-                widgets.QMessageBox.Yes | widgets.QMessageBox.No
+                widgets.QMessageBox.ButtonRole.YesRole | widgets.QMessageBox.ButtonRole.NoRole
             )
             if confirmed == widgets.QMessageBox.No:
                 self.show()
@@ -102,7 +102,7 @@ class ProjectCreator(widgets.QWidget):
         self.close()
 
     def on_choose_audio_folder(self):
-        options = widgets.QFileDialog.Options()
+        options = widgets.QFileDialog.Option()
         path = widgets.QFileDialog.getExistingDirectory(
             self,
             "Select audio folder containing WAV files",

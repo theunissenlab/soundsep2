@@ -23,7 +23,7 @@ class ProjectLoader(QObject):
         )
 
     def show(self):
-        options = widgets.QFileDialog.Options()
+        options = widgets.QFileDialog.Option()
         reopen_path = "."
         if self.qsettings.contains(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]):
             path = str(self.qsettings.value(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]))

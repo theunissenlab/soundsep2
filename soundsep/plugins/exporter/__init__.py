@@ -45,7 +45,6 @@ class ExportPlugin(BasePlugin):
 
     def on_export_ready(self, df: 'pandas.DataFrame'):
         self.window.hide()
-        options = widgets.QFileDialog.Options()
         save_target, _ = widgets.QFileDialog.getSaveFileName(
             None,
             "Export csv",

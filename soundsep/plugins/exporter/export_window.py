@@ -41,8 +41,8 @@ SETTINGS = (
         "the start time of segments relative to their original file"),
     ExportSetting("file.t_stop", "File Stop (float, seconds)",
         "the stop time of segments relative to their original file"),
-    ExportSetting("tags", "Tags (string)",
-        "comma separated tag string values, loadable as a json string"),
+    ExportSetting("tags", "Tags (json list of strings)",
+        "json list of tag strings, loadable as a json string"),
 )
 
 

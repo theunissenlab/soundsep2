@@ -7,11 +7,11 @@ Extensible tool for visualizing and labeling WAV file data.
 If instaling with pip, it is suggested to use a virtual environment. See note at bottom for help installing on M1 Macs (PyQt5 is not compatible and needs to be installed through Rosetta).
 
 ```
-pip install git+https://github.com/theunissenlab/soundsep2.git@v0.1.3
+pip install git+https://github.com/theunissenlab/soundsep2.git@v0.2.0
 sep run
 ```
 
-Replace `v0.1.3` with `main` for the lastest version.
+Replace `v0.2.0` with `main` for the lastest version.
 
 ### Preparing files
 
@@ -100,11 +100,11 @@ See `sep --help` for info. Includes scripts for
 
 ## Installation on M1 Mac
 
-The current branch includes a migration from PyQt5 to PyQt6. PyQt5 can only run through Rosetta on M1 Macs, and may cause issues with other packages that are not installed through Rosetta.
+The `pyqt6` branch includes a migration from PyQt5 to PyQt6, which will be required for M1 silicon compatibility. PyQt5 can only run through Rosetta on M1 Macs, and may cause issues with other packages that are not installed through Rosetta.
 
 ### Previous instructions:
 
-Installation on a M1 Mac is more complicated because PyQt5 is incompatible and needs to be installed via Rosetta. The instructions here are based on [this stackoverflow answer](https://stackoverflow.com/a/68038451):
+Installation on a M1 Mac is more complicated because PyQt5 is incompatible and needs to be installed via Rosetta. The instructions here are based on [this stackoverflow answer](https://stackoverflow.com/a/68038451).
 
 1. First create a duplicate Terminal that opens in Rosetta (duplicate the terminal in your `Applications/Utilities` folder, rename it, right-click > Get Info, and check the Rosetta box)
 2. Open the rosetta Terminal and double check that it is running in Rosetta (type `arch` and make sure it says `i386` instead of `arm`.

@@ -3,7 +3,7 @@
 from typing import Tuple
 
 import pyqtgraph as pg
-from PyQt5.QtCore import Qt
+from PyQt6.QtCore import Qt
 from pyqtgraph.graphicsItems.ROI import Handle
 
 
@@ -40,13 +40,13 @@ class SelectionBox(pg.RectROI):
                     parent=self,
                 )
                 if x == 0.5:
-                    handle.setCursor(Qt.SplitVCursor)
+                    handle.setCursor(Qt.CursorShape.SplitVCursor)
                 elif y == 0.5:
-                    handle.setCursor(Qt.SplitHCursor)
+                    handle.setCursor(Qt.CursorShape.SplitHCursor)
                 elif x != y:
-                    handle.setCursor(Qt.SizeFDiagCursor)
+                    handle.setCursor(Qt.CursorShape.SizeFDiagCursor)
                 elif x == y:
-                    handle.setCursor(Qt.SizeBDiagCursor)
+                    handle.setCursor(Qt.CursorShape.SizeBDiagCursor)
 
                 handle.pen.setWidth(1)
                 self.addScaleHandle(

@@ -3,9 +3,9 @@ from collections import namedtuple
 from functools import partial
 
 import numpy as np
-from PyQt5.QtCore import QTimer, QUrl
-from PyQt5 import QtWidgets as widgets
-from PyQt5 import QtGui
+from PyQt6.QtCore import QTimer, QUrl
+from PyQt6 import QtWidgets as widgets
+from PyQt6 import QtGui
 
 from soundsep import settings
 from soundsep.api import SignalTooShort
@@ -40,15 +40,15 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self.setup_shortcuts()
 
     def setup_actions(self):
-        self.open_action = widgets.QAction("&Open Project")
-        self.close_action = widgets.QAction("&Close")
-        self.save_action = widgets.QAction("&Save")
+        self.open_action = QtGui.QAction("&Open Project")
+        self.close_action = QtGui.QAction("&Close")
+        self.save_action = QtGui.QAction("&Save")
         self.save_action.setToolTip("Save the current segements")
-        self.clear_selection_action = widgets.QAction("&Clear Current Selection")
+        self.clear_selection_action = QtGui.QAction("&Clear Current Selection")
         self.clear_selection_action.setToolTip("Clear the currently selected data ranges")
-        self.create_source_action = widgets.QAction("&Add source...")
+        self.create_source_action = QtGui.QAction("&Add source...")
         self.create_source_action.setToolTip("Create a new source")
-        self.toggle_ampenv_action = widgets.QAction("Show &Amplitude Envelope")
+        self.toggle_ampenv_action = QtGui.QAction("Show &Amplitude Envelope")
         self.toggle_ampenv_action.setToolTip("Show or hide amplitude envelope. It is slow right now!")
         self.toggle_ampenv_action.setCheckable(True)
 
@@ -136,19 +136,19 @@ class SoundsepMainWindow(widgets.QMainWindow):
         self._draw_sources_timer.timeout.connect(self.draw_sources)
 
     def setup_shortcuts(self):
-        self.next_shortcut = widgets.QShortcut(QtGui.QKeySequence("D"), self)
+        self.next_shortcut = QtGui.QShortcut(QtGui.QKeySequence("D"), self)
         self.next_shortcut.activated.connect(self.on_next)
-        self.next_shortcut_arrow = widgets.QShortcut(QtGui.QKeySequence("right"), self)
+        self.next_shortcut_arrow = QtGui.QShortcut(QtGui.QKeySequence("right"), self)
         self.next_shortcut_arrow.activated.connect(self.on_next)
-        self.prev_shortcut = widgets.QShortcut(QtGui.QKeySequence("A"), self)
+        self.prev_shortcut = QtGui.QShortcut(QtGui.QKeySequence("A"), self)
         self.prev_shortcut.activated.connect(self.on_prev)
-        self.prev_shortcut_arrow = widgets.QShortcut(QtGui.QKeySequence("left"), self)
+        self.prev_shortcut_arrow = QtGui.QShortcut(QtGui.QKeySequence("left"), self)
         self.prev_shortcut_arrow.activated.connect(self.on_prev)
         self.toggle_ampenv_action.setShortcut(QtGui.QKeySequence("Ctrl+A"))
         self.clear_selection_action.setShortcut(QtGui.QKeySequence("Escape"))
-        self.open_action.setShortcut(QtGui.QKeySequence.Open)
+        self.open_action.setShortcut(QtGui.QKeySequence.StandardKey.Open)
         self.close_action.setShortcut(QtGui.QKeySequence("Ctrl+W"))
-        self.save_action.setShortcut(QtGui.QKeySequence.Save)
+        self.save_action.setShortcut(QtGui.QKeySequence.StandardKey.Save)
         self.create_source_action.setShortcut(QtGui.QKeySequence("Ctrl+N"))
 
     #########################
@@ -285,7 +285,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         for tag, action in actions.items():
             action.triggered.connect(partial(self.api.plugins["TagPlugin"].on_apply_tag, tag))
 
-        self.jump_to_selection_action = widgets.QAction("Jump to selection")
+        self.jump_to_selection_action = QtGui.QAction("Jump to selection")
         self.jump_to_selection_action.triggered.connect(partial(self.api.plugins["SegmentPlugin"].jump_to_selection))
         self.jump_to_selection_action.setToolTip("Jump to this position in the segments panel")
 

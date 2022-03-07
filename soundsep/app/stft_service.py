@@ -2,8 +2,8 @@ import logging
 from queue import Empty, Queue
 
 import numpy as np
-from PyQt5 import QtWidgets as widgets
-from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from PyQt6 import QtWidgets as widgets
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy.fft import rfft, rfftfreq
 

@@ -1,12 +1,12 @@
-from PyQt5 import QtWidgets as widgets
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt6 import QtWidgets as widgets
+from PyQt6.QtCore import Qt, pyqtSignal
 
 
 class QClickableLineEdit(widgets.QLineEdit):
     clicked = pyqtSignal() # signal when the text entry is left clicked
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton: self.clicked.emit()
+        if event.button() == Qt.MouseButton.LeftButton: self.clicked.emit()
         else: super().mousePressEvent(event)
 
 

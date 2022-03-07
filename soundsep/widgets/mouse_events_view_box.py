@@ -3,7 +3,7 @@
 
 import pyqtgraph as pg
 
-from PyQt5.QtCore import Qt, QPoint, QPointF, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QPointF, pyqtSignal
 
 
 class MouseEventsViewBox(pg.ViewBox):
@@ -25,7 +25,7 @@ class MouseEventsViewBox(pg.ViewBox):
         self.contextMenuRequested.emit(pos.toPoint())
 
     def mouseDragEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             event.accept()
             start_pos = self.mapSceneToView(event.buttonDownScenePos())
             end_pos = self.mapSceneToView(event.scenePos())
@@ -35,10 +35,10 @@ class MouseEventsViewBox(pg.ViewBox):
                 self.dragInProgress.emit(start_pos, end_pos)
 
     def mouseClickEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             event.accept()
             self.clicked.emit(self.mapSceneToView(event.scenePos()))
-        elif event.button() == Qt.RightButton:
+        elif event.button() == Qt.MouseButton.RightButton:
             event.accept()
             self.raiseContextMenu(event)
         else:

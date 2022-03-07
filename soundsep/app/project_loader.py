@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from PyQt5.QtCore import QObject, QSettings, pyqtSignal
-from PyQt5 import QtWidgets as widgets
+from PyQt6.QtCore import QObject, QSettings, pyqtSignal
+from PyQt6 import QtWidgets as widgets
 
 from soundsep.config.paths import ProjectPathFinder
 from soundsep.settings import QSETTINGS_APP, QSETTINGS_ORG, SETTINGS_VARIABLES

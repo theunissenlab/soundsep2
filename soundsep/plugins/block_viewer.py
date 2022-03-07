@@ -3,7 +3,7 @@
 Any methods here can be deleted and will use the default implementations
 found in soundsep.core.base_plugin
 """
-from PyQt5 import QtWidgets as widgets
+from PyQt6 import QtWidgets as widgets
 from soundsep.core.base_plugin import BasePlugin
 from soundsep.widgets.block_view import AudioFileView
 
@@ -17,5 +17,5 @@ class BlockViewer(BasePlugin):
         self.view.show_columns(["Name", "Rate", "Ch", "Dur"])
         self.view.set_blocks(self.api.project.blocks)
 
-    def plugin_panel_widget(self) -> 'PyQt5.QtWidgets.QWidget':
+    def plugin_panel_widget(self) -> 'PyQt6.QtWidgets.QWidget':
         return self.view

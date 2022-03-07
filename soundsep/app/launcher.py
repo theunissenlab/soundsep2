@@ -4,8 +4,8 @@ from enum import Enum
 from functools import partial
 from pathlib import Path
 
-from PyQt5.QtCore import QObject, QSettings, pyqtSignal
-from PyQt5 import QtWidgets as widgets
+from PyQt6.QtCore import QObject, QSettings, pyqtSignal
+from PyQt6 import QtGui, QtWidgets as widgets
 
 from soundsep.app.app import SoundsepApp
 from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
@@ -84,7 +84,7 @@ class Launcher(QObject):
 
     def _center_on(self, w):
         rect = w.frameGeometry()
-        geom = widgets.QDesktopWidget().availableGeometry()
+        geom = QtGui.QGuiApplication.primaryScreen().availableGeometry()
         center_on = geom.center()
         center_on.setY(center_on.y())
         rect.moveCenter(center_on)

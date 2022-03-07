@@ -76,24 +76,37 @@ def build_ui():
 
     ui_dir = os.path.join(__location__, "soundsep", "ui")
 
+    '''
     for ui_file in glob.glob(os.path.join(ui_dir, "*.qrc")):
         basename = os.path.splitext(os.path.basename(ui_file))[0]
         p = subprocess.Popen([
-            "pyrcc5",
+            "pyrcc6",
             os.path.join(ui_dir, "{}.qrc".format(basename)),
             "-o",
             os.path.join(ui_dir, "{}_rc.py".format(basename)),
         ])
+    '''
 
+    '''
     for ui_file in glob.glob(os.path.join(ui_dir, "*.ui")):
         basename = os.path.splitext(os.path.basename(ui_file))[0]
         p = subprocess.Popen([
-            "pyuic5",
+            "pyuic6",
             os.path.join(ui_dir, "{}.ui".format(basename)),
             "-o",
             os.path.join(ui_dir, "{}.py".format(basename)),
             "--import-from=soundsep.ui",
             "--resource-suffix=_rc",
+        ])
+    '''
+
+    for ui_file in glob.glob(os.path.join(ui_dir, "*.ui")):
+        basename = os.path.splitext(os.path.basename(ui_file))[0]
+        p = subprocess.Popen([
+            "pyuic6",
+            os.path.join(ui_dir, "{}.ui".format(basename)),
+            "-o",
+            os.path.join(ui_dir, "{}.py".format(basename)),
         ])
 
     p.communicate()

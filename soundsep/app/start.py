@@ -3,8 +3,8 @@ import sys
 
 import pyqtgraph as pg
 import logging
-from PyQt5 import QtWidgets as widgets
-from PyQt5.QtCore import Qt
+from PyQt6 import QtWidgets as widgets
+from PyQt6.QtCore import Qt
 from qasync import QEventLoop
 
 

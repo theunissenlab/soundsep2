@@ -2,9 +2,9 @@ from enum import Enum
 
 import pyqtgraph as pg
 import numpy as np
-from PyQt5 import QtWidgets as widgets
-from PyQt5 import QtGui
-from PyQt5.QtCore import QRectF, Qt, pyqtSignal
+from PyQt6 import QtWidgets as widgets
+from PyQt6 import QtGui
+from PyQt6.QtCore import QRectF, Qt, pyqtSignal
 
 from soundsep.core.models import ProjectIndex, StftIndex, Source
 from soundsep.core.stft import spectral_derivative
@@ -185,7 +185,7 @@ class ScrollableSpectrogram(pg.PlotWidget):
     def init_ui(self):
         self.image = pg.ImageItem()
         # TODO: dynamic cursor changing based on hover and what action would be activated?
-        self.image.setCursor(Qt.CrossCursor)
+        self.image.setCursor(Qt.CursorShape.CrossCursor)
         self.addItem(self.image)
 
         self._overlay_plot = pg.PlotCurveItem()

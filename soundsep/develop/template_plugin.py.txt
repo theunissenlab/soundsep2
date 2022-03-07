@@ -12,7 +12,7 @@ class {PluginName}(BasePlugin):
         super().__init__(*args, **kwargs)
         # Set up widgets and signals
 
-    def plugin_toolbar_items(self) -> 'List[PyQt5.QtWidgets.QWidget]':
+    def plugin_toolbar_items(self) -> 'List[PyQt6.QtWidgets.QWidget]':
         """Reimplement this
 
         Returns
@@ -22,7 +22,7 @@ class {PluginName}(BasePlugin):
         """
         return []
 
-    def add_plugin_menu(self, menu: 'PyQt5.QtWidgets.QMenu'):
+    def add_plugin_menu(self, menu: 'PyQt6.QtWidgets.QMenu'):
         """Reimplement this
 
         Example
@@ -40,7 +40,7 @@ class {PluginName}(BasePlugin):
         """
         return None
 
-    def plugin_panel_widget(self) -> 'PyQt5.QtWidgets.QWidget':
+    def plugin_panel_widget(self) -> 'PyQt6.QtWidgets.QWidget':
         """Reimplement this
 
         Returns

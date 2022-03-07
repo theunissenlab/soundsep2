@@ -1,6 +1,6 @@
 from typing import List
 
-from PyQt5.QtCore import QObject
+from PyQt6.QtCore import QObject
 
 
 class BasePlugin(QObject):
@@ -16,7 +16,7 @@ class BasePlugin(QObject):
         self.api = api
         self.gui = gui
 
-    def plugin_toolbar_items(self) -> List['PyQt5.QtWidgets.QWidget']:
+    def plugin_toolbar_items(self) -> List['PyQt6.QtWidgets.QWidget']:
         """Reimplement this
 
         Returns
@@ -26,7 +26,7 @@ class BasePlugin(QObject):
         """
         return []
 
-    def add_plugin_menu(self, menu: 'PyQt5.QtWidgets.QMenu'):
+    def add_plugin_menu(self, menu: 'PyQt6.QtWidgets.QMenu'):
         """Reimplement this
 
         Example
@@ -44,7 +44,7 @@ class BasePlugin(QObject):
         """
         return None
 
-    def plugin_panel_widget(self) -> 'PyQt5.QtWidgets.QWidget':
+    def plugin_panel_widget(self) -> 'PyQt6.QtWidgets.QWidget':
         """Reimplement this
 
         Returns

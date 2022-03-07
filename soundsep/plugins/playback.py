@@ -1,9 +1,9 @@
 import struct
 
-from PyQt5.QtMultimedia import QAudio, QAudioFormat, QAudioOutput
-from PyQt5.QtCore import QBuffer, QByteArray, QIODevice
-from PyQt5 import QtGui
-from PyQt5 import QtWidgets as widgets
+from PyQt6.QtMultimedia import QAudio, QAudioFormat, QAudioOutput, QSoundEffect, QMediaPlayer, QAudioDevice, QAudioSink
+from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+from PyQt6 import QtGui
+from PyQt6 import QtWidgets as widgets
 import numpy as np
 
 from soundsep.core.base_plugin import BasePlugin
@@ -19,20 +19,18 @@ class PlaybackPlugin(BasePlugin):
         self.button.setCheckable(True)
         self.button.clicked.connect(self.play_audio)
 
-        self.playback_action = widgets.QAction("Play Selection")
+        self.playback_action = QtGui.QAction("Play Selection")
         self.playback_action.setCheckable(True)
         self.playback_action.triggered.connect(self.toggle_play)
         self.playback_action.setShortcut(QtGui.QKeySequence("Space"))
 
         # Set up audio playback
-        format = QAudioFormat()
-        format.setChannelCount(1)
-        format.setSampleRate(self.api.project.sampling_rate)
-        format.setSampleSize(16)
-        format.setCodec("audio/pcm")
-        format.setByteOrder(QAudioFormat.LittleEndian)
-        format.setSampleType(QAudioFormat.SignedInt)
-        self.output = QAudioOutput(format, self)
+        format_ = QAudioFormat()
+        format_.setChannelCount(1)
+        format_.setSampleRate(self.api.project.sampling_rate)
+        format_.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+
+        self.output = QAudioSink(format_, self)
         self.buffer = QBuffer()
         self.data = QByteArray()
 
@@ -44,9 +42,9 @@ class PlaybackPlugin(BasePlugin):
         self.output.stateChanged.connect(self.on_state_changed)
 
     def on_state_changed(self, state):
-        if state == QAudio.IdleState or state == QAudio.StoppedState:
+        if state == QAudio.State.IdleState or state == QAudio.State.StoppedState:
             self.button.setChecked(False)
-        elif state == QAudio.ActiveState:
+        elif state == QAudio.State.ActiveState:
             self.button.setChecked(True)
         self.playback_action.setChecked(self.button.isChecked())
 
@@ -73,7 +71,7 @@ class PlaybackPlugin(BasePlugin):
         for i in range(len(data)):
             self.data.append(struct.pack("<h", data[i]))
         self.buffer.setData(self.data)
-        self.buffer.open(QIODevice.ReadOnly)
+        self.buffer.open(QIODevice.OpenModeFlag.ReadOnly)
         self.buffer.seek(0)
 
     def play_audio(self):
@@ -81,7 +79,7 @@ class PlaybackPlugin(BasePlugin):
             # Fetch the visible data to play
             _, y_data = self.gui.ui.previewPlot.waveform_plot.getData()
 
-            if self.output.state() == QAudio.ActiveState:
+            if self.output.state() == QAudio.State.ActiveState:
                 self.output.stop()
             if self.buffer.isOpen():
                 self.buffer.close()

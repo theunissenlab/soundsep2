@@ -1,6 +1,6 @@
 import pyqtgraph as pg
 import numpy as np
-from PyQt5.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 
 from soundsep.core.models import ProjectIndex
 from .axes import ProjectIndexTimeAxis

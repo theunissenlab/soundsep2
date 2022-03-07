@@ -1,6 +1,6 @@
 import sys
 
-from PyQt5 import QtWidgets as widgets
+from PyQt6 import QtWidgets as widgets
 
 
 test_app = widgets.QApplication(sys.argv)

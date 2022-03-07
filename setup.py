@@ -30,13 +30,15 @@ setup(
         "numpy",
         "matplotlib",
         "pandas",
-        "PyQt5",
+        "PyQt6",
         "pyqtgraph",
         "qasync",
         "scipy",
         "SoundFile",
         "parse",
         "pyyaml",
+        "torch",
+        "torchaudio",
     ],
     entry_points="""
         [console_scripts]

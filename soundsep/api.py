@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 import numpy as np
 
 from soundsep.app.services import Selection, Workspace

@@ -1,11 +1,12 @@
 import functools
 import logging
+import json
 from pathlib import Path
 from collections import namedtuple
 
-import PyQt5.QtWidgets as widgets
+import PyQt6.QtWidgets as widgets
 import pandas as pd
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +41,8 @@ SETTINGS = (
         "the start time of segments relative to their original file"),
     ExportSetting("file.t_stop", "File Stop (float, seconds)",
         "the stop time of segments relative to their original file"),
-    ExportSetting("tags", "Tags (string)",
-        "comma separated tag string values"),
+    ExportSetting("tags", "Tags (json list of strings)",
+        "json list of tag strings, loadable as a json string"),
 )
 
 
@@ -67,7 +68,7 @@ def segment_to_dict(segment, project_dir: 'pathlib.Path'):
         "file.stop_index": int(block_stop),
         "file.t_start": block_start.to_file_timestamp(),
         "file.t_stop": block_stop.to_file_timestamp(),
-        "tags": ",".join(segment.data.get("tags", [])),
+        "tags": json.dumps(list(segment.data.get("tags", []))),
     }
 
 

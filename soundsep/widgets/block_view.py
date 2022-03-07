@@ -1,8 +1,8 @@
 import os
 from typing import Callable, List, Optional
 
-from PyQt5 import QtWidgets as widgets
-from PyQt5.QtCore import pyqtSignal
+from PyQt6 import QtWidgets as widgets
+from PyQt6.QtCore import pyqtSignal
 
 from soundsep.core.models import AudioFile, Block
 from soundsep.core.utils import hhmmss
@@ -25,7 +25,7 @@ class AudioFileView(widgets.QTreeWidget):
         self.setHeaderLabels(["Name", "Id", "Rate", "Ch", "Len", "Dur"])
         header = self.header()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, widgets.QHeaderView.Interactive)
+        header.setSectionResizeMode(0, widgets.QHeaderView.ResizeMode.Interactive)
         self.base_dir = None
 
     def show_columns(self, column_names):

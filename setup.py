@@ -37,6 +37,8 @@ setup(
         "SoundFile",
         "parse",
         "pyyaml",
+        "torch",
+        "torchaudio",
     ],
     entry_points="""
         [console_scripts]

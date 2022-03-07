@@ -1,5 +1,6 @@
 import functools
 import logging
+import json
 from pathlib import Path
 from collections import namedtuple
 
@@ -41,7 +42,7 @@ SETTINGS = (
     ExportSetting("file.t_stop", "File Stop (float, seconds)",
         "the stop time of segments relative to their original file"),
     ExportSetting("tags", "Tags (string)",
-        "comma separated tag string values"),
+        "comma separated tag string values, loadable as a json string"),
 )
 
 
@@ -67,7 +68,7 @@ def segment_to_dict(segment, project_dir: 'pathlib.Path'):
         "file.stop_index": int(block_stop),
         "file.t_start": block_start.to_file_timestamp(),
         "file.t_stop": block_stop.to_file_timestamp(),
-        "tags": ",".join(segment.data.get("tags", [])),
+        "tags": json.dumps(list(segment.data.get("tags", []))),
     }
 
 

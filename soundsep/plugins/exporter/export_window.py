@@ -98,7 +98,7 @@ class ExportWizard(widgets.QWidget):
         self.mapped_names = {}
         for i, setting in enumerate(SETTINGS):
             self.fields[setting.config_name] = widgets.QCheckBox()
-            self.fields[setting.config_name].setCheckState(Qt.Checked)
+            self.fields[setting.config_name].setCheckState(Qt.CheckState.Checked)
             self.mapped_names[setting.config_name] = widgets.QLineEdit()
             self.mapped_names[setting.config_name].setPlaceholderText(setting.config_name)
             form_layout.addWidget(widgets.QLabel(setting.readable_name), i + 1, 0)
@@ -121,7 +121,7 @@ class ExportWizard(widgets.QWidget):
         self.cancel_button.clicked.connect(self.on_cancel)
 
     def get_form_keys(self):
-        return set([k for k, checkbox in self.fields.items() if checkbox.checkState() == Qt.Checked])
+        return set([k for k, checkbox in self.fields.items() if checkbox.checkState() == Qt.CheckState.Checked])
 
     def get_name_mappings(self):
         return {

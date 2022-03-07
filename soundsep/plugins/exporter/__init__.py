@@ -49,8 +49,8 @@ class ExportPlugin(BasePlugin):
             None,
             "Export csv",
             str(self.api.paths.export_dir / "segment_export.csv"),
-            "*.csv",
-            options=options)
+            "*.csv"
+        )
 
         if not save_target:
             logger.info("Aborted export attempt; no file chosen")

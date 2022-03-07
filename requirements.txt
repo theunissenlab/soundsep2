@@ -9,3 +9,5 @@ scipy
 SoundFile
 pyyaml
 parse
+torch
+torchaudio

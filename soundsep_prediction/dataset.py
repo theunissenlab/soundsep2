@@ -222,5 +222,3 @@ class CompositeDataset:
 
     def __len__(self):
         return self.dataset_start_indexes[-1]
-
->>>>>>> pytorch

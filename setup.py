@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name = "soundsep",
-    version = "0.2.0",
+    version = "0.2.1",
     packages = find_packages(exclude=["examples*", "test*"]),
     scripts = ["manage.py"],
     include_package_data = True,

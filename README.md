@@ -69,8 +69,8 @@ The procedure is typically:
       -f saved-model.pt \
       --peak-threshold 0.75 \
       --threshold 0.5 \
-      --min-gap-duration 2 \
-      --min-segment-duration 2 \
+      --min-gap-duration 8 \
+      --min-segment-duration 8 \
       --tag auto \
       --model MelPredictionNetwork \
       --append-default

@@ -7,11 +7,11 @@ Extensible tool for visualizing and labeling WAV file data.
 If instaling with pip, it is suggested to use a virtual environment. See note at bottom for help installing on M1 Macs (PyQt5 is not compatible and needs to be installed through Rosetta).
 
 ```
-pip install git+https://github.com/theunissenlab/soundsep2.git@v0.2.1
+pip install git+https://github.com/theunissenlab/soundsep2.git@v0.2.0
 sep run
 ```
 
-Replace `v0.2.1` with `main` for the lastest version.
+Replace `v0.2.0` with `main` for the lastest version.
 
 ### Preparing files
 

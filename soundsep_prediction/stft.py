@@ -6,9 +6,9 @@ import numpy as np
 @dataclass
 class StftParameters:
     """Define a STFT"""
-    hop: int = 22
+    hop: int = 44
     half_window: int = 302
-    sample_rate: int = 44100
+    sample_rate: int = 22050
     fmin: float = 250.0
     fmax: float = 10000.0
 

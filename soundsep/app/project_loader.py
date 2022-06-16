@@ -23,16 +23,18 @@ class ProjectLoader(QObject):
         )
 
     def show(self):
-        options = widgets.QFileDialog.Options()
+        # options = widgets.QFileDialog.options(self)
         reopen_path = "."
         if self.qsettings.contains(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]):
             path = str(self.qsettings.value(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]))
             if os.path.exists(path):
                 reopen_path = path
 
-        project_dir = widgets.QFileDialog.getExistingDirectory(
-            None, "Load project", reopen_path, options=options)
+        # project_dir = widgets.QFileDialog.getExistingDirectory(
+        #    None, "Load project", reopen_path, options=options)
 
+        project_dir = widgets.QFileDialog.getExistingDirectory(
+            None, "Load project", reopen_path)
         if not project_dir:
             self.openProjectCanceled.emit()
             return

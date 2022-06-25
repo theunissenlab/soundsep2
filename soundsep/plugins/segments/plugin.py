@@ -224,11 +224,14 @@ class SegmentPlugin(BasePlugin):
         start = self._segmentation_datastore[selection[0]].start
         stop = self._segmentation_datastore[selection[-1]].stop
 
+        # get bounds of current view, to determine final duration
+        ws_start, ws_stop = self.api.workspace_get_lim()
+
         start = self.api.convert_project_index_to_stft_index(start)
         stop = self.api.convert_project_index_to_stft_index(stop)
 
         # add some padding
-        duration = stop - start
+        duration = ws_stop - ws_start
         start -= duration // 2
         stop += duration // 2
 

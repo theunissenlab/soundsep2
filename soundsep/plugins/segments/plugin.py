@@ -231,7 +231,9 @@ class SegmentPlugin(BasePlugin):
         stop = self.api.convert_project_index_to_stft_index(stop)
 
         # add some padding
-        duration = ws_stop - ws_start
+        duration = max(stop - start, ws_stop - ws_start)
+        start.value = (start+stop) // 2
+        stop.value = start.value
         start -= duration // 2
         stop += duration // 2
 
@@ -368,11 +370,20 @@ class SegmentPlugin(BasePlugin):
 
         selection = self.api.get_fine_selection()
 
+        selected_segments = self.panel.get_selection()
+
         # TODO: Its not that bad to draw every rectangle at once; but the annoying part is deleting them
         # and redrawing them when something changes
-        for segment in self._segmentation_datastore[first_segment_idx:last_segment_idx]:
+        for idx, segment in zip(range(first_segment_idx,last_segment_idx),self._segmentation_datastore[first_segment_idx:last_segment_idx]):
             source_view = self.gui.source_views[segment.source.index]
-            rect = SegmentVisualizer(segment, source_view.spectrogram, "#00ff00", 0.3, (0.05, 0.95), self)
+
+            # if this segment is selected in the Segment Table then color it differently
+            if idx in selected_segments:
+                c = "#ffff00"
+            else:
+                c = "#00ff00"
+                
+            rect = SegmentVisualizer(segment, source_view.spectrogram, c, 0.6, (0.05, 0.95), self)
             source_view.spectrogram.addItem(rect)
             self._annotations.append((source_view.spectrogram, rect))
 

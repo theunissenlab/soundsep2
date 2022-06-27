@@ -192,11 +192,6 @@ class ScrollableSpectrogram(pg.PlotWidget):
         self._overlay_plot.setPen(pg.mkPen("r", width=2))
         self.addItem(self._overlay_plot)
 
-        self._center_line = pg.PlotCurveItem()
-        self._center_line.setPen(pg.mkPen(color=(255,0,0,125),width=1,style=Qt.PenStyle.DashLine))
-
-        self.addItem(self._center_line)
-
         # TODO hardcoded? make this configurable
         self.set_view_mode(STFTViewMode.NORMAL)
 
@@ -224,9 +219,6 @@ class ScrollableSpectrogram(pg.PlotWidget):
 
         self.setXRange(int(i0.to_project_index()), int(i1.to_project_index()), padding=0.0)
         self.setYRange(freqs[0], freqs[-1], padding=0.0)
-
-        (x0, x1), (y0, y1) = self.viewRange()
-        self._center_line.setData([(x0+x1)/2.,(x0+x1)/2.],[y0,y1])
 
     def set_cmap(self, cmap):
         self._cmap = pg.colormap.get(cmap, source='matplotlib', skipCache=True)

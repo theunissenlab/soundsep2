@@ -710,12 +710,16 @@ class BaseIndex(int):
         return (other._source_object != self._source_object) or super().__ne__(other)
 
     def __add__(self, other: int):
-        """BaseIndex + int -> BaseIndex"""
+        """BaseIndex + int -> BaseIndex | BaseIndex + BaseIndex -> int"""
         if isinstance(other, BaseIndex) or not isinstance(other, int):
-            raise TypeError("Cannot add {} to {}".format(type(self).__name__, type(other).__name__))
-
-        args = self._args + [super().__add__(other)]
-        return self.__class__(*args)
+            if type(self) != type(other):
+                raise TypeError("Cannot add {} to {}".format(type(self).__name__, type(other).__name__))
+            return super().__add__(other)
+        elif isinstance(other, int):
+            args = self._args + [super().__add__(other)]
+            return self.__class__(*args)
+        else:
+            raise TypeError("Cannot add {} and {}".format(type(other).__name__, type(self).__name__))
 
     def __sub__(self, other: int):
         """BaseIndex - int -> BaseIndex | BaseIndex - BaseIndex -> int"""

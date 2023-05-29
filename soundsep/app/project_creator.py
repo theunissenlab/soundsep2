@@ -102,12 +102,12 @@ class ProjectCreator(widgets.QWidget):
         self.close()
 
     def on_choose_audio_folder(self):
-        options = widgets.QFileDialog.Options()
+        # options = widgets.QFileDialog.Options()
         path = widgets.QFileDialog.getExistingDirectory(
             self,
             "Select audio folder containing WAV files",
-            ".",
-            options=options
+            "."
+   #         options=options
         )
 
         if path:

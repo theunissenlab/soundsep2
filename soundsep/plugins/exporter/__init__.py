@@ -45,13 +45,13 @@ class ExportPlugin(BasePlugin):
 
     def on_export_ready(self, df: 'pandas.DataFrame'):
         self.window.hide()
-        options = widgets.QFileDialog.Options()
+        #options = widgets.QFileDialog.Options()
         save_target, _ = widgets.QFileDialog.getSaveFileName(
             None,
             "Export csv",
             str(self.api.paths.export_dir / "segment_export.csv"),
-            "*.csv",
-            options=options)
+            "*.csv")
+            #options=options)
 
         if not save_target:
             logger.info("Aborted export attempt; no file chosen")

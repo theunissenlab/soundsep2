@@ -72,13 +72,14 @@ class ProjectCreator(widgets.QWidget):
 
     def save_config(self, config: dict):
         self.hide()
-        options = widgets.QFileDialog.Options()
+        #options = widgets.QFileDialog.options()
         save_target, _ = widgets.QFileDialog.getSaveFileName(
             None,
             "Saving yaml file",
             os.path.join(os.path.dirname(config["audio_directory"]), "soundsep.yaml"),
             "*.yaml",
-            options=options)
+            #options=options)
+        )
 
         if not save_target:
             self.show()
@@ -102,12 +103,13 @@ class ProjectCreator(widgets.QWidget):
         self.close()
 
     def on_choose_audio_folder(self):
-        # options = widgets.QFileDialog.Options()
+        # TODO: figure out what QFileDialog.options() does
+        #options = widgets.QFileDialog.options()
         path = widgets.QFileDialog.getExistingDirectory(
             self,
             "Select audio folder containing WAV files",
             "."
-   #         options=options
+            #options=options
         )
 
         if path:

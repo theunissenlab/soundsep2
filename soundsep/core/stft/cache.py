@@ -30,7 +30,7 @@ class CacheLayer:
     def __init__(self, lattice: 'BoundedLattice'):
         self.lattice = lattice
         self.data = DuplicatedRingBuffer(np.zeros((len(self.lattice), 0, 0)))
-        self.stale = DuplicatedRingBuffer(np.ones((len(self.lattice), 0), dtype=np.bool))
+        self.stale = DuplicatedRingBuffer(np.ones((len(self.lattice), 0), dtype=bool))
 
     def data_range(self) -> int:
         """
@@ -52,7 +52,7 @@ class CacheLayer:
             A tuple representing the
         """
         self.data = DuplicatedRingBuffer(np.zeros((len(self.lattice), channels, features)))
-        self.stale = DuplicatedRingBuffer(np.ones((len(self.lattice), channels), dtype=np.bool))
+        self.stale = DuplicatedRingBuffer(np.ones((len(self.lattice), channels), dtype=bool))
 
     def set_data(self, idx: 'StftIndex', data: np.ndarray):
         i = self.lattice.to_position(idx)
@@ -154,7 +154,7 @@ class StftCache:
     def read(self, i0: int, i1: int, level: int):
         """Read data from the given StftIndex coordinates"""
         arr = np.zeros(shape=(i1 - i0, self.layers[0].data.shape[1], self.layers[0].data.shape[2]))
-        stale_mask = np.ones(shape=(i1 - i0, self.layers[0].stale.shape[1]), dtype=np.bool)
+        stale_mask = np.ones(shape=(i1 - i0, self.layers[0].stale.shape[1]), dtype=bool)
 
         first_offset = self.layers[-1].lattice.offset
         for layer in self.layers[level:]:

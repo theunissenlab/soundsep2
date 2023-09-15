@@ -317,7 +317,7 @@ def common_subsequence(items: 'List[Iterable]'):
 
     results = []
     for l in range(len(shortest), 0, -1):
-        for indexes in combinations(np.arange(len(shortest), dtype=np.int), r=l):
+        for indexes in combinations(np.arange(len(shortest), dtype=int), r=l):
             subset = shortest[np.array(indexes)]
             is_valid = np.all([_contains(subset, x) for x in items])
             if is_valid:
@@ -370,7 +370,7 @@ def guess_filename_pattern(base_directory: Path, filelist: List[str]):
     valid_block_keys = []
     filename_pattern = current_guess()
     for l in range(len(potential_keys), 0, -1):
-        for indexes in combinations(np.arange(len(potential_keys), dtype=np.int), r=l):
+        for indexes in combinations(np.arange(len(potential_keys), dtype=int), r=l):
             group_keys = list(np.array(potential_keys)[np.array(indexes)])
 
             groups, errors = group_files_by_pattern(

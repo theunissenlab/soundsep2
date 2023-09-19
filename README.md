@@ -98,6 +98,13 @@ See `sep --help` for info. Includes scripts for
 
 * creating a template plugin
 
+## Troubleshooting Install on Ubuntu
+
+This fixed my QT error on Tucana: "qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem."
+
+sudo apt-get install '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev
+
 ## Installation on M1 Mac
 
 The `pyqt6` branch includes a migration from PyQt5 to PyQt6, which will be required for M1 silicon compatibility. PyQt5 can only run through Rosetta on M1 Macs, and may cause issues with other packages that are not installed through Rosetta.

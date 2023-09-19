@@ -148,10 +148,10 @@ class TestRingBuffer(unittest.TestCase):
     def test_roll_dtype(self):
         """Test that rolling an array and filling matches the existing dtype"""
         base = np.ones(100)
-        int_buffer = DuplicatedRingBuffer(base.astype(np.int))
-        assert int_buffer._data.dtype == np.int
+        int_buffer = DuplicatedRingBuffer(base.astype(int))
+        assert int_buffer._data.dtype == int
         int_buffer.roll(10, -1.0)
-        self.assertEqual(int_buffer[:].dtype, np.int)
+        self.assertEqual(int_buffer[:].dtype, int)
 
         base = np.ones(100)
         bool_buffer = DuplicatedRingBuffer(base.astype(np.bool))

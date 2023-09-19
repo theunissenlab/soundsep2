@@ -55,7 +55,7 @@ def threshold_events(
     else:
         starts_on = (polarity * signal[0] >= polarity * threshold)
 
-    crossings = np.diff((polarity * signal >= polarity * threshold).astype(np.int))
+    crossings = np.diff((polarity * signal >= polarity * threshold).astype(int))
     interval_starts = np.where(crossings > 0)[0] + 1
     interval_stops = np.where(crossings < 0)[0] + 1
 

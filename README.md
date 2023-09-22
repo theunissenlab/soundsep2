@@ -100,9 +100,9 @@ See `sep --help` for info. Includes scripts for
 
 ## Troubleshooting Install on Ubuntu
 
-This fixed my QT error on Tucana: "qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
+If you have this error: "qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
 This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem."
-
+You may want to try (has worked twice, not sure exactly why):
 sudo apt-get install '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev
 
 ## Installation on M1 Mac

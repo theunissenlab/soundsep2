@@ -79,7 +79,7 @@ class PlaybackPlugin(BasePlugin):
             # Fetch the visible data to play
             _, y_data = self.gui.ui.previewPlot.waveform_plot.getData()
 
-            if self.output.state() == QAudio.State.ActiveState:
+            if self.output.state() != QAudio.State.StoppedState:
                 self.output.stop()
             if self.buffer.isOpen():
                 self.buffer.close()

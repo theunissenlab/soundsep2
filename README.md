@@ -54,7 +54,7 @@ The procedure is typically:
       -r 14000.0 14600.0 \
       --save-model saved-model.pt \
       -e 1 \
-      --lr 1e-3 \
+      --l 1e-3 \
       -f pretrained-model.pt \
       --model MelPredictionNetwork
     ```

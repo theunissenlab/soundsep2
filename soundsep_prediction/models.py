@@ -1,5 +1,4 @@
-import torch
-from torch import nn, optim
+from torch import nn, load
 from torchaudio.transforms import MelSpectrogram, Spectrogram
 
 from soundsep_prediction.stft import StftParameters
@@ -20,7 +19,7 @@ class PredictionNetwork(nn.Module):
             ):
         super().__init__()
         self.spec = Spectrogram(
-            n_fft=stft_params.half_window,
+            n_fft=stft_params.nfft,
             hop_length=stft_params.hop,
         )
         self.layers = nn.Sequential(
@@ -44,7 +43,7 @@ class PredictionNetwork(nn.Module):
     def from_file(path, channels: int, output_channels: int) -> 'PredictionNetwork':
         """Load a pretrained network"""
         model = PredictionNetwork(channels, output_channels=output_channels)
-        model.load_state_dict(torch.load(path))
+        model.load_state_dict(load(path))
         return model
 
 
@@ -64,7 +63,7 @@ class MelPredictionNetwork(nn.Module):
         super().__init__()
         self.spec = MelSpectrogram(
             n_mels=32,
-            n_fft=stft_params.half_window,
+            n_fft=stft_params.nfft,
             hop_length=stft_params.hop,
             sample_rate=stft_params.sample_rate
         )
@@ -89,5 +88,5 @@ class MelPredictionNetwork(nn.Module):
     def from_file(path, channels: int, output_channels: int) -> 'MelPredictionNetwork':
         """Load a pretrained network"""
         model = MelPredictionNetwork(channels, output_channels=output_channels)
-        model.load_state_dict(torch.load(path))
+        model.load_state_dict(load(path))
         return model

@@ -109,6 +109,9 @@ sudo apt-get install '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-
 
 The `pyqt6` branch now works without Rosetta on M1 macs but the PyQt libraries are a bit screwy.  THe instructions below worked for M1 and an installation on 09/25/2023
 
+NB: as of 2/5/24 PyQt6.6 does not work properly with pyqtgraph / soundsep. make sure you install PyQt6.5 with the following command
+`pip install PyQt5-sip==12.11.0 PyQt6==6.5.2 PyQt6-Qt6==6.5.2 PyQt6-sip==13.5.2 pyqtgraph==0.13.3`
+
 ### Instructions:
 
 1. Use the finder (or the find command) to locate the library libqcocoa.dylib and find its full path. In my case it was:

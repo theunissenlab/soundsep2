@@ -17,5 +17,5 @@ class BlockViewer(BasePlugin):
         self.view.show_columns(["Name", "Rate", "Ch", "Dur"])
         self.view.set_blocks(self.api.project.blocks)
 
-    def plugin_panel_widget(self) -> 'PyQt6.QtWidgets.QWidget':
-        return self.view
+    def plugin_panel_widget(self) -> list['PyQt6.QtWidgets.QWidget']:
+        return [self.view]

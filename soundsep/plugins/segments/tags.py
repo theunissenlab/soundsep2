@@ -5,6 +5,8 @@ from functools import partial
 import PyQt6.QtWidgets as widgets
 import pandas as pd
 from PyQt6 import QtGui
+import distinctipy
+from matplotlib.colors import to_hex, to_rgb
 
 from soundsep.core.base_plugin import BasePlugin
 
@@ -19,13 +21,14 @@ class TagsPanel(widgets.QWidget):
 
     def init_ui(self):
         layout = widgets.QVBoxLayout()
-        self.table = widgets.QTableWidget(0, 1)
+        self.table = widgets.QTableWidget(0, 2)
         self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
         header = self.table.horizontalHeader()
         self.table.setHorizontalHeaderLabels([
-            "TagName",
+            "TagName", "Color"
         ])
         header.setSectionResizeMode(0, widgets.QHeaderView.ResizeMode.Stretch)
+        #header.setSectionResizeMode(1, widgets.QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
 
         tag_edit_layout = widgets.QHBoxLayout()
@@ -40,14 +43,17 @@ class TagsPanel(widgets.QWidget):
 
         self.setLayout(layout)
 
-    def set_data(self, tags):
+    def set_data(self, tags, tag_colors):
         self.table.setRowCount(len(tags))
         for row, tag in enumerate(tags):
             self.table.setItem(row, 0, widgets.QTableWidgetItem(tag))
-
+            self.table.setItem(row, 1, widgets.QTableWidgetItem(tag_colors[row]))
+            self.table.item(row, 1).setBackground(QtGui.QColor(tag_colors[row]))
 
 class TagPlugin(BasePlugin):
     TAG_FILENAME = "tags.csv"
+    # BG Color is a dark purple
+    BG_COLOR = (50./255., 20./255., 60./255.)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -84,6 +90,7 @@ class TagPlugin(BasePlugin):
                 segment.data["tags"].remove(tag)
 
         self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
+        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
         self._needs_saving = True
 
     def apply_tag(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source', tag: 'str'):
@@ -104,6 +111,7 @@ class TagPlugin(BasePlugin):
             segment.data["tags"].add(tag)
 
         self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
+        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
         self._needs_saving = True
 
     def clear_tags(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source'):
@@ -124,6 +132,7 @@ class TagPlugin(BasePlugin):
             segment.data["tags"].clear()
 
         self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
+        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
         self._needs_saving = True
 
     def connect_events(self):
@@ -134,6 +143,11 @@ class TagPlugin(BasePlugin):
         self.panel.new_tag_text.textChanged.connect(self.on_text_changed)
         self.panel.new_tag_text.returnPressed.connect(self.on_add_tag)
         self.panel.delete_tag_button.clicked.connect(self.on_delete_tag)
+        #self.panel.contextMenuRequested.connect(self.on_context_menu_requested)
+
+    def on_context_menu_requested(self, pos, selection):
+        return
+
 
     def on_text_changed(self):
         tag_name = self.panel.new_tag_text.text()
@@ -147,7 +161,9 @@ class TagPlugin(BasePlugin):
         tag_name = tag_name.replace(",", "")
         if tag_name and tag_name not in self._datastore["tags"]:
             self._datastore["tags"].append(tag_name)
-            self.panel.set_data(self._datastore["tags"])
+            rgb_colors = [ to_rgb(color) for color in self._datastore["tag_colors"]]
+            self._datastore["tag_colors"].append( to_hex(distinctipy.get_colors(1, exclude_colors=[self.BG_COLOR,(1,1,1),(0,0,0),(0,1,0)]+rgb_colors)[0]))
+            self.panel.set_data(self._datastore["tags"], self._datastore["tag_colors"])
             self.update_menu(self._datastore["tags"])
         self._needs_saving = True
 
@@ -162,10 +178,13 @@ class TagPlugin(BasePlugin):
             for segment in self._datastore["segments"]:
                 if tag_name in segment.data["tags"]:
                     segment.data["tags"].remove(tag_name)
+            # remove the corresponding color for this tag
+            self._datastore["tag_colors"].pop(self._datastore["tags"].index(tag_name))
             self._datastore["tags"].remove(tag_name)
 
         self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
-        self.panel.set_data(self._datastore["tags"])
+        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
+        self.panel.set_data(self._datastore["tags"], self._datastore["tag_colors"])
         self.update_menu(self._datastore["tags"])
         self._needs_saving = True
 
@@ -188,7 +207,7 @@ class TagPlugin(BasePlugin):
         for tag, action in actions.items():
             action.triggered.connect(partial(self.on_apply_tag, tag))
 
-        # self.api.tags_changed(self, 
+        # self.api.tags_changed(self,
         # self.api.workspaceChanged.connect(self.on_workspace_changed)
         # self.api.selectionChanged.connect(self.on_selection_changed)
         # self.api.sourcesChanged.connect(self.on_sources_changed)
@@ -202,25 +221,32 @@ class TagPlugin(BasePlugin):
 
         if not tags_file.exists():
             self._datastore["tags"] = []
+            self._datastore["tag_colors"] = []
         else:
             tags_dataframe = pd.read_csv(tags_file)
             if "TagName" in tags_dataframe:
                 self._datastore["tags"] = list(tags_dataframe["TagName"])
             else:
                 self._datastore["tags"] = []
+            if "Color" in tags_dataframe:
+                # If there are saved colors, they are hex colors, convert to 0-1 RGB
+                self._datastore["tag_colors"] = list(tags_dataframe["Color"])
+            else:
+                # if no colors were saved, generate distinct colors
+                self._datastore["tag_colors"] = [ to_hex(c) for c in distinctipy.get_colors(len(self._datastore["tags"]), exclude_colors=[self.BG_COLOR,(1,1,1),(0,0,0)])]
 
     def on_project_data_loaded(self):
-        self.panel.set_data(self._datastore["tags"])
+        self.panel.set_data(self._datastore["tags"], self._datastore["tag_colors"])
         self.update_menu(self._datastore["tags"])
 
     def save(self):
         if "tags" in self._datastore:
-            df = pd.DataFrame([{"TagName": tag} for tag in self._datastore["tags"]])
+            df = pd.DataFrame([{"TagName": tag, "Color": color} for (tag,color) in zip(self._datastore["tags"],self._datastore["tag_colors"])])
             df.to_csv(self.api.paths.save_dir / self.TAG_FILENAME)
             self._needs_saving = False
 
     def plugin_panel_widget(self):
-        return self.panel
+        return [self.panel]
 
     def add_plugin_menu(self, menu_parent):
         self.menu = menu_parent.addMenu("&Tags")
@@ -228,3 +254,10 @@ class TagPlugin(BasePlugin):
 
     def setup_plugin_shortcuts(self):
         self.apply_tags_action.setShortcut(QtGui.QKeySequence("T"))
+
+    def get_tag_color(self, tag, as_hex=True):
+        hex_color = self._datastore["tag_colors"][self._datastore["tags"].index(tag)]
+        if as_hex:
+            return hex_color
+        else:
+            return to_rgb(hex_color)

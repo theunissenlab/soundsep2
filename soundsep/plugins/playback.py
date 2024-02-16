@@ -29,6 +29,7 @@ class PlaybackPlugin(BasePlugin):
         format_.setChannelCount(1)
         format_.setSampleRate(self.api.project.sampling_rate)
         format_.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        self.qaudiosinkFormat = format_
 
         self.output = QAudioSink(format_, self)
         self.buffer = QBuffer()
@@ -61,6 +62,7 @@ class PlaybackPlugin(BasePlugin):
         if self.buffer.isOpen():
             self.buffer.close()
         self.data.clear()
+        self._create_output()
 
     def _prepare_buffer(self, data):
         data /= np.max(data)
@@ -74,13 +76,19 @@ class PlaybackPlugin(BasePlugin):
         self.buffer.open(QIODevice.OpenModeFlag.ReadOnly)
         self.buffer.seek(0)
 
+    def _create_output(self):
+        del self.output
+        self.output = QAudioSink(self.qaudiosinkFormat, self)
+        self.output.stateChanged.connect(self.on_state_changed)
+
+
     def play_audio(self):
         if self.button.isChecked():
             # Fetch the visible data to play
             _, y_data = self.gui.ui.previewPlot.waveform_plot.getData()
 
             if self.output.state() != QAudio.State.StoppedState:
-                self.output.stop()
+                self.stop_playback()
             if self.buffer.isOpen():
                 self.buffer.close()
 

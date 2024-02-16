@@ -44,7 +44,7 @@ class BasePlugin(QObject):
         """
         return None
 
-    def plugin_panel_widget(self) -> 'PyQt6.QtWidgets.QWidget':
+    def plugin_panel_widget(self) -> list['PyQt6.QtWidgets.QWidget']:
         """Reimplement this
 
         Returns
@@ -52,7 +52,7 @@ class BasePlugin(QObject):
         widgets : QWidget
             the main panel for this plugin to show in the plugin panel
         """
-        return None
+        return []
 
     def setup_plugin_shortcuts(self):
         return None

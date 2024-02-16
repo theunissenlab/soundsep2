@@ -262,7 +262,7 @@ class DetectPlugin(BasePlugin):
         return menu
 
     def plugin_panel_widget(self):
-        return None
+        return []
 
     def setup_plugin_shortcuts(self):
         self.detect_action.setShortcut(QtGui.QKeySequence("W"))

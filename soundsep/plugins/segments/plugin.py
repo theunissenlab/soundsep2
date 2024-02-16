@@ -18,6 +18,64 @@ from soundsep.core.utils import hhmmss
 
 logger = logging.getLogger(__name__)
 
+class UMAPVisPanel(widgets.QWidget):
+    segmentSelectionChanged = pyqtSignal(object)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        self.init_actions()
+        self.npoints = 0
+
+    def init_ui(self):
+        # setup a 2d plot
+        self.plot = pg.plot()
+        self.scatter = pg.ScatterPlotItem()
+        self.plot.addItem(self.scatter)
+        layout = widgets.QGridLayout()
+        layout.addWidget(self.plot,0,0)
+        self.setLayout(layout)
+    
+    def init_actions(self):
+        self.scatter.sigClicked.connect(self.on_click)
+        return
+    
+    def on_click(self, plot, points):
+        if len(points) > 0:
+            # TODO what to do for multiselect
+            self.segmentSelectionChanged.emit([points[0].data()])
+        return
+
+    def on_selection_changed(self, selection):
+        sizes = np.ones(self.npoints) * 10
+        spot_inds = [spot['data'] for spot in self.scatter.data]
+        sel_inds = [spot_inds.index(s) for s in selection]
+        sizes[sel_inds] = 20
+        self.scatter.setSize(sizes)
+    
+    def set_data(self, segments, func_get_color=None):
+        # TODO: this is extremely slow - we need a better way to update the table.
+        # make a scatter plot for the segments
+
+        spots = []
+        for ix,s in enumerate(segments):
+            if func_get_color and len(s.data['tags']) > 0:
+                c = func_get_color(list(s.data['tags'])[0])
+            else:
+                c = 'r'
+            if len(s.data['coords']) >= 2:
+                spots.append(dict({
+                    'pos': s.data['coords'][:2],
+                    'data': ix,
+                    'brush': pg.mkBrush(c),
+                    'size': 10
+                }))
+        
+        self.npoints = len(spots)
+        self.scatter.setData(
+            spots=spots,
+            hoverSize=20,
+            hoverable=True
+        )
 
 class SegmentPanel(widgets.QWidget):
 
@@ -62,6 +120,16 @@ class SegmentPanel(widgets.QWidget):
         selection = self.get_selection()
         self.segmentSelectionChanged.emit(selection)
 
+    def on_selection_changed(self, selection):
+        self.table.itemSelectionChanged.disconnect(self.on_click)
+        self.set_selection(selection)
+        self.table.itemSelectionChanged.connect(self.on_click)
+
+    def set_selection(self, selection):
+        self.table.clearSelection()
+        for row in selection:
+            self.table.selectRow(row)
+    
     def get_selection(self):
         selection = []
         ranges = self.table.selectedRanges()
@@ -91,6 +159,7 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
             segment,
             parent_plot: pg.PlotWidget,
             color,
+            width,
             opacity,
             draw_fractions: Tuple[float, float],
             plugin):
@@ -109,7 +178,7 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         self.color = color
         self.draw_fractions = draw_fractions
 
-        self.setPen(pg.mkPen(self.color, width=2))
+        self.setPen(pg.mkPen(self.color, width=width))
         self.setOpacity(self.opacity)
         self.setBrush(pg.mkBrush(None))
         self.setAcceptHoverEvents(True)
@@ -168,12 +237,14 @@ class SegmentPlugin(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.panel = SegmentPanel()
+        self.umap_panel = UMAPVisPanel()
 
         self.init_actions()
         self.connect_events()
 
         self._needs_saving = False
         self._annotations = []
+        self._selected_segments = []
 
     def init_actions(self):
         self.create_segment_action = QtGui.QAction("&Create segment from selection", self)
@@ -197,6 +268,8 @@ class SegmentPlugin(BasePlugin):
 
         self.panel.contextMenuRequested.connect(self.on_context_menu_requested)
         self.panel.segmentSelectionChanged.connect(self.on_segment_selection_changed)
+        self.umap_panel.segmentSelectionChanged.connect(self.on_segment_selection_changed)
+        # TODO hook both of them up to this signal too
 
         self.api.projectLoaded.connect(self.on_project_ready)
         self.api.projectDataLoaded.connect(self.on_project_data_loaded)
@@ -220,6 +293,8 @@ class SegmentPlugin(BasePlugin):
         self.tag_menu.popup(pos)
 
     def on_segment_selection_changed(self, selection):
+        if self._selected_segments == selection:
+            return
         # Change workspace to the end of the preceding segment if it exists and the start of the next one
         start = self._segmentation_datastore[selection[0]].start
         stop = self._segmentation_datastore[selection[-1]].stop
@@ -230,12 +305,24 @@ class SegmentPlugin(BasePlugin):
         start = self.api.convert_project_index_to_stft_index(start)
         stop = self.api.convert_project_index_to_stft_index(stop)
 
+        # # if start is within the current bounds, dont edit the start
+        # if start > ws_start and start < ws_stop:
+        #     start = ws_start
+        # # if stop is within the current bounds, dont edit the stop
+        # if stop > ws_start and stop < ws_stop:
+        #     stop = ws_stop
         # add some padding
+        # TODO BUG HERE: IF ALL SEGMENTS ARE SELECTED, then this errors
         duration = max(stop - start, ws_stop - ws_start)
         start.value = (start+stop) // 2
         stop.value = start.value
         start -= duration // 2
         stop += duration // 2
+
+        self._selected_segments = selection
+        # call the UI Selection changes
+        self.panel.on_selection_changed(selection)
+        self.umap_panel.on_selection_changed(selection)
 
         self.api.clear_selection()
         self.api.workspace_set_position(start, stop)
@@ -263,11 +350,12 @@ class SegmentPlugin(BasePlugin):
         if not save_file.exists():
             return
 
-        data = pd.read_csv(save_file, converters={"Tags": str})
+        data = pd.read_csv(save_file, converters={"Tags": str, "Coords": str})
 
         sources = []
         indices = []
         tags = []
+        coords = []
         source_lookup = set([
             (source.name, source.channel) for source in self.api.get_sources()
         ])
@@ -283,24 +371,30 @@ class SegmentPlugin(BasePlugin):
                 tags.append(set([t for t in json.loads(row["Tags"])]))
             else:
                 tags.append(set())
+            if 'Coords' in row and row['Coords']:
+                coords.append(list([float(x) for x in json.loads(row['Coords'])]))
+            else:
+                # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
+                coords.append(list([row['StopIndex'] - row['StartIndex'], np.random.rand()])) # TODO stop this
         data.apply(_read, axis=1)
 
         source_dict = {
             (source.name, source.channel): source
             for source in self.api.get_sources()
         }
-        for source_key, (start, stop), segment_tags in zip(sources, indices, tags):
+        for source_key, (start, stop), segment_tags, segment_coords in zip(sources, indices, tags, coords):
             self._segmentation_datastore.append(Segment(
                 self.api.make_project_index(start),
                 self.api.make_project_index(stop),
                 source_dict[source_key],
-                data={"tags": segment_tags}
+                data={"tags": segment_tags, 'coords': segment_coords}
             ))
 
         self._segmentation_datastore.sort()
 
     def on_project_data_loaded(self):
         self.panel.set_data(self._segmentation_datastore)
+        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self.refresh()
 
     def needs_saving(self):
@@ -318,7 +412,8 @@ class SegmentPlugin(BasePlugin):
                 "SourceChannel": segment.source.channel,
                 "StartIndex": int(segment.start),
                 "StopIndex": int(segment.stop),
-                "Tags": json.dumps(list(segment.data["tags"]))
+                "Tags": json.dumps(list(segment.data["tags"])),
+                "Coords": json.dumps(segment.data.get('coords', []))
             })
         pd.DataFrame(segment_dicts).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
         self._needs_saving = False
@@ -344,6 +439,7 @@ class SegmentPlugin(BasePlugin):
             first_selection_idx = np.searchsorted(start_times, selection.x0)
             index = self.panel.table.model().index(first_selection_idx, 0)
             self.panel.table.scrollTo(index, QtGui.QAbstractItemView.PositionAtTop)
+            # TODO highlight the scatter element in the UMAP plot
 
     def refresh(self):
         """Keeps the table pointed at a selected region
@@ -370,25 +466,28 @@ class SegmentPlugin(BasePlugin):
 
         selection = self.api.get_fine_selection()
 
-        selected_segments = self.panel.get_selection()
-
         # TODO: Its not that bad to draw every rectangle at once; but the annoying part is deleting them
         # and redrawing them when something changes
         for idx, segment in zip(range(first_segment_idx,last_segment_idx),self._segmentation_datastore[first_segment_idx:last_segment_idx]):
             source_view = self.gui.source_views[segment.source.index]
 
-            # if this segment is selected in the Segment Table then color it differently
-            if idx in selected_segments:
-                c = "#ffff00"
-            else:
+            # get the color of the first tag TODO maybe make this different than tags
+            if len(segment.data["tags"]) == 0:
                 c = "#00ff00"
-                
-            rect = SegmentVisualizer(segment, source_view.spectrogram, c, 0.6, (0.05, 0.95), self)
+            else:
+                t = list(segment.data["tags"])[0]
+                c = self.api.plugins["TagPlugin"].get_tag_color(t, as_hex=True)
+
+            # if this segment is selected in the Segment Table then color it differently
+            if idx in self._selected_segments:
+                rect = SegmentVisualizer(segment, source_view.spectrogram, c, 4, 0.6, (0.1, 0.9), self)
+            else:
+                rect = SegmentVisualizer(segment, source_view.spectrogram, c, 2, 0.6, (0.05, 0.95), self)
             source_view.spectrogram.addItem(rect)
             self._annotations.append((source_view.spectrogram, rect))
 
             if selection and segment.source == selection.source:
-                rect = SegmentVisualizer(segment, self.gui.ui.previewPlot, "#00aa00", 0.3, (0.4, 0.6), self)
+                rect = SegmentVisualizer(segment, self.gui.ui.previewPlot, "#00aa00", 2, 0.3, (0.4, 0.6), self)
                 self.gui.ui.previewPlot.addItem(rect)
                 self._annotations.append((self.gui.ui.previewPlot, rect))
 
@@ -425,6 +524,8 @@ class SegmentPlugin(BasePlugin):
             self._segmentation_datastore.append(new_segment)
         self._segmentation_datastore.sort()
         self.panel.set_data(self._segmentation_datastore)
+        # TODO kinda unnecessary here, as these tags are not UMAPPED, but just to keep the counts right
+        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self.gui.show_status("Created {} segments".format(len(segment_data)))
         logger.debug("Created {} segments".format(len(segment_data)))
         self._needs_saving = True
@@ -436,6 +537,7 @@ class SegmentPlugin(BasePlugin):
         self._segmentation_datastore.append(new_segment)
         self._segmentation_datastore.sort()
         self.panel.set_data(self._segmentation_datastore)
+        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self.gui.show_status("Created segment {} to {}".format(start, stop))
         logger.debug("Created segment {} to {}".format(start, stop))
         self._needs_saving = True
@@ -455,6 +557,7 @@ class SegmentPlugin(BasePlugin):
         self._segmentation_datastore.clear()
         self._segmentation_datastore.extend(filtered_segments)
         self.panel.set_data(self._segmentation_datastore)
+        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self._needs_saving = True
         if refresh:
             self.refresh()
@@ -487,6 +590,7 @@ class SegmentPlugin(BasePlugin):
         self._segmentation_datastore.extend(filtered_segments + [new_segment])
         self._segmentation_datastore.sort()
         self.panel.set_data(self._segmentation_datastore)
+        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self._needs_saving = True
         self.refresh()
 
@@ -501,7 +605,7 @@ class SegmentPlugin(BasePlugin):
         return menu
 
     def plugin_panel_widget(self):
-        return self.panel
+        return [self.panel,self.umap_panel]
 
     def setup_plugin_shortcuts(self):
         self.create_segment_action.setShortcut(QtGui.QKeySequence("F"))

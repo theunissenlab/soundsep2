@@ -518,8 +518,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
         for w in plugin.plugin_toolbar_items():
             self.ui.toolbarLayout.addWidget(w)
 
-        panel = plugin.plugin_panel_widget()
-        if panel:
+        panels = plugin.plugin_panel_widget()
+        for panel in panels:
             self.ui.pluginPanelToolbox.addTab(panel, panel.__class__.__name__)
 
         plugin.add_plugin_menu(self.ui.menuPlugins)

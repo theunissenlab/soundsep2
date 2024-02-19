@@ -215,6 +215,19 @@ class Api(QObject):
             self._app.services["stft"].params.hop,
             idx // self._app.services["stft"].params.hop
         )
+    
+    def create_stftindex(self, i: int) -> StftIndex:
+        """Create a new StftIndex
+
+        Arguments
+        ---------
+        i : int
+
+        Returns
+        -------
+        stft_idx : StftIndex
+        """
+        return StftIndex(self._app.project, self._app.services["stft"].params.hop, i)
 
     def workspace_move_to(self, start: StftIndex, alignment: Workspace.Alignment = None):
         """Move the current workspace to start at the given index in StftIndex

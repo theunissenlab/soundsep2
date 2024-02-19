@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
-from soundsep.core.models import Source, ProjectIndex
+from soundsep.core.models import Source, ProjectIndex, StftIndex
 from soundsep.core.segments import Segment
 from soundsep.core.utils import hhmmss
 
@@ -381,9 +381,10 @@ class SegmentPlugin(BasePlugin):
             # TODO BUG HERE: IF ALL SEGMENTS ARE SELECTED, then this errors
             duration = max(stop - start, ws_stop - ws_start)
             start.value = (start+stop) // 2
-            stop.value = start.value
-            start -= duration // 2
-            stop += duration // 2
+            new_start = self.api.create_stftindex(( start + stop - duration )//2)
+            new_stop = self.api.create_stftindex(( start + stop + duration )//2)
+            start = new_start
+            stop = new_stop
 
         self._selected_segments = selection
         # call the UI Selection changes

@@ -224,7 +224,7 @@ class DetectPlugin(BasePlugin):
         if not selection:
             return
 
-        self.api.plugins["SegmentPlugin"].delete_segments(
+        self.api.plugins["SegmentPlugin"].delete_segments_between(
             selection.x0,
             selection.x1,
             selection.source

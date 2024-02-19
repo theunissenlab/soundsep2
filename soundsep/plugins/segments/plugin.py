@@ -309,6 +309,8 @@ class SegmentPlugin(BasePlugin):
         self._annotations = []
         self._selected_segments = []
 
+        self._next_seg_id = 0
+
     def init_actions(self):
         self.create_segment_action = QtGui.QAction("&Create segment from selection", self)
         self.create_segment_action.triggered.connect(self.on_create_segment_activated)
@@ -464,6 +466,8 @@ class SegmentPlugin(BasePlugin):
             seg_df[l] = pd.Series(seg_df[l],dtype=object)
 
         self._segmentation_datastore = pd.DataFrame(seg_df)
+        # Store the len of the segment dataframe so we can add new segments with the next ID
+        self._next_seg_id = len(self._segmentation_datastore.index)
         #self._segmentation_datastore.sort()
 
     def on_project_data_loaded(self):
@@ -576,27 +580,10 @@ class SegmentPlugin(BasePlugin):
 
     def create_segments_batch(self, segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]]):
         """Create multiple segments, only updating the display one time at the end"""
-        # for now lets do this one at a time and see if its still slow
+        # With optimizations, we can create each segment individually
         for start, stop, source in segment_data:
             self.create_segment(start, stop, source)
-        # Remove all segments from seg datastore that are within the new segments
-        # inds_to_remove = []
-        # for start, stop, source in segment_data:
-        #     inds_to_remove.append((self._segmentation_datastore['StartIndex'] <= start) 
-        #                     & (self._segmentation_datastore['StopIndex'] >= stop) 
-        #                     & (self._segmentation_datastore['SourceName'] == source.name) 
-        #                     & (self._segmentation_datastore['SourceChannel'] == source.channel))
-        #     # TODO may need to delete all the ones we need to delete, then add the new segment
-        #     self._segmentation_datastore.append(new_segment)
-        
-        # self._segmentation_datastore.sort()
-        # self.panel.set_data(self._segmentation_datastore)
-        # # TODO kinda unnecessary here, as these tags are not UMAPPED, but just to keep the counts right
-        # self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
-        # self.gui.show_status("Created {} segments".format(len(segment_data)))
-        # logger.debug("Created {} segments".format(len(segment_data)))
-        # self._needs_saving = True
-        # self.refresh()
+
 
     def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = set(), coords: list = list()):
         self.delete_segments_between(start, stop, source)
@@ -607,7 +594,8 @@ class SegmentPlugin(BasePlugin):
             "Tags": tags,
             "Coords": coords
         })
-        segID = len(self._segmentation_datastore)
+        segID = self._next_seg_id
+        self._next_seg_id += 1
         self._segmentation_datastore.loc[segID] = pd.Series()
         self._segmentation_datastore.at[segID,'StartIndex'] = start
         self._segmentation_datastore.at[segID,'StopIndex'] = stop

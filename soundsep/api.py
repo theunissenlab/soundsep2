@@ -136,6 +136,24 @@ class Api(QObject):
         new_source = self._app.datastore["sources"].create(source_name, source_channel)
         self.sourcesChanged.emit()
         return new_source
+    
+    def get_source(self, source_name: str, source_channel: int) -> Source:
+        """Get an existing source
+
+        Arguments
+        ---------
+        source_name : str
+        source_channel : int
+
+        Returns
+        -------
+        source : Source
+        """
+        sources = self.get_sources()
+        for source in sources:
+            if source.name == source_name and source.channel == source_channel:
+                return source
+        return None
 
     def edit_source(self, source_index: int, source_name: str, source_channel: int) -> Source:
         """Edit an existing source by index

@@ -8,6 +8,7 @@ import warnings
 from collections.abc import Iterable
 from functools import wraps
 from typing import Dict, List, Tuple, Union
+import bisect
 
 import numpy as np
 import soundfile
@@ -355,7 +356,12 @@ class Project:
         rates = [b.sampling_rate for b in self._blocks]
         channels = [b.channels for b in self._blocks]
         channel_profiles = [tuple([f.channels for f in b._files]) for b in self._blocks]
-
+        self._block_start_frames = []
+        frame = 0
+        for block in self.blocks:
+            self._block_start_frames.append(frame)
+            frame += block.frames
+        
         if not all([r == rates[0] for r in rates]):
             raise ValueError("Cannot instantiate Project with Blocks of different rates: {}".format(rates))
 
@@ -378,6 +384,7 @@ class Project:
         """int: Sampling rate of audio in this Project"""
         return self._blocks[0].sampling_rate
 
+    # TODO we should cache these values
     @property
     def frames(self) -> int:
         """int: Total number of samples in the entire Project"""
@@ -583,10 +590,12 @@ class Project:
         if isinstance(index, BlockIndex):
             return index
         elif isinstance(index, ProjectIndex):
-            for (i0, i1), block in self.iter_blocks():
-                if i1 > index:
-                    return BlockIndex(block, index - i0)
-            raise ValueError("Could not find BlockIndex in Project")
+            try:
+                iblock = bisect.bisect_left(self._block_start_frames, int(index))
+                block = self._blocks[iblock]
+                return BlockIndex(block, index - self._block_start_frames[iblock])
+            except:
+                raise ValueError("Could not find BlockIndex in Project")
         else:
             raise TypeError("Cannot covert type {} to BlockIndex".format(type(index)))
 

@@ -57,14 +57,14 @@ class UMAPVisPanel(widgets.QWidget):
         # make a scatter plot for the segments
 
         spots = []
-        for ix,s in enumerate(segments):
-            if func_get_color and len(s.data['tags']) > 0:
-                c = func_get_color(list(s.data['tags'])[0])
+        for ix,s_row in segments.iterrows():
+            if func_get_color and len(s_row['Tags']) > 0:
+                c = func_get_color(list(s_row['Tags'])[0])
             else:
                 c = 'r'
-            if len(s.data['coords']) >= 2:
+            if len(s_row['Coords']) >= 2:
                 spots.append(dict({
-                    'pos': s.data['coords'][:2],
+                    'pos': s_row['Coords'][:2],
                     'data': ix,
                     'brush': pg.mkBrush(c),
                     'size': 10
@@ -137,21 +137,81 @@ class SegmentPanel(widgets.QWidget):
             selection += list(range(selection_range.topRow(), selection_range.bottomRow() + 1))
         return sorted(selection)
 
-    def set_data(self, segments):
+    def set_data(self, segments, project):
+        # TODO Store indices
         # TODO: this is extremely slow - we need a better way to update the table.
         self.table.setRowCount(len(segments))
-        for row, segment in enumerate(segments):
-            self.table.setItem(row, 0, widgets.QTableWidgetItem(segment.source.name))
+        for row, segment_row in segments.iterrows():
+            self.table.setItem(row, 0, widgets.QTableWidgetItem(segment_row['Source'].name))
             self.table.setItem(row, 1, widgets.QTableWidgetItem(
-                hhmmss(segment.start / segment.project.sampling_rate, dec=3)
+                hhmmss(segment_row['StartIndex'] / project.sampling_rate, dec=3)
             ))
             self.table.setItem(row, 2, widgets.QTableWidgetItem(
-                hhmmss(segment.stop / segment.project.sampling_rate, dec=3)
+                hhmmss(segment_row['StopIndex'] / project.sampling_rate, dec=3)
             ))
             self.table.setItem(row, 3, widgets.QTableWidgetItem(
-                ",".join(segment.data.get("tags", []))
+                ",".join(segment_row["Tags"])
             ))
 
+    def add_row(self, row_ind, segment, project):
+        self.table.insertRow(row_ind)
+        self.table.setItem(row_ind, 0, widgets.QTableWidgetItem(segment['Source'].name))
+        self.table.setItem(row_ind, 1, widgets.QTableWidgetItem(
+            hhmmss(segment['StartIndex'] / project.sampling_rate, dec=3)
+        ))
+        self.table.setItem(row_ind, 2, widgets.QTableWidgetItem(
+            hhmmss(segment['StopIndex'] / project.sampling_rate, dec=3)
+        ))
+        self.table.setItem(row_ind, 3, widgets.QTableWidgetItem(
+            ",".join(segment["Tags"])
+        ))
+    
+    def remove_row(self, row_ind):
+        self.table.removeRow(row_ind)
+
+# class SegmentTableView(widgets.QTableView):
+#     def __init__(self):
+#         super(SegmentTableView, self).__init__()
+
+#         self.model = DataModel()
+
+#         self.view = QtWidgets.QTableView(self)
+#         self.view.setAlternatingRowColors(True)
+#         self.view.setStyleSheet('alternate-background-color: grey;background-color: white;')
+
+#         self.proxy = QtCore.QSortFilterProxyModel(self)
+#         self.proxy.setSourceModel(self.model)
+
+#         self.view.setModel(self.proxy)
+# class SegmentDataModel(QtCore.QAbstractTableModel):
+#   data_updated = QtCore.pyqtSignal()
+#   def __init__(self, data: pd.DataFrame = pd.DataFrame()):
+#     super(SegmentDataModel, self).__init__()
+#     self._data = data
+
+#   def update_data(self, data: pd.DataFrame):
+#     self.beginRestModel()
+#     self._data = data
+#     self.endResetModel()
+#     self.data_updated.emit()
+
+#   def data(self, index, role):
+#     if role == QtCore.Qt.DisplayRole:
+#       return str(self._data.iloc[index.row()][index.column()])
+
+#   def rowCount(self, index = None) -> int:
+#     return self._data.shape[0]
+  
+#   def columnCount(self, index = None) -> int:
+#     return self._data.shape[1]
+
+#   def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int ) -> Any:
+#     # section is the index of the column/row.
+#     if role == QtCore.Qt.DisplayRole:
+#       if orientation == QtCore.Qt.Horizontal:
+#         return str(self._data.columns[section])
+#       if orientation == QtCore.Qt.Vertical:
+#         return str(self._data.index[section])
 
 class SegmentVisualizer(widgets.QGraphicsRectItem):
     def __init__(
@@ -166,9 +226,9 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         y0, y1 = parent_plot.viewRange()[1]
         dy = y1 - y0
         super().__init__(
-            segment.start,
+            segment.StartIndex,
             y0 + draw_fractions[0] * dy,
-            segment.stop - segment.start,
+            segment.StopIndex - segment.StartIndex,
             (draw_fractions[1] - draw_fractions[0]) * dy,
             parent_plot.plotItem
         )
@@ -184,11 +244,11 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         self.setAcceptHoverEvents(True)
 
         self.setToolTip("{}\n{:.2f}s to {:.2f}s\nDuration: {:.1f} ms\nTags: {}".format(
-            self.segment.source.name,
-            self.segment.start.to_timestamp(),
-            self.segment.stop.to_timestamp(),
-            (self.segment.stop.to_timestamp() - self.segment.start.to_timestamp()) * 1000,
-            ",".join([t for t in self.segment.data.get("tags", [])]),
+            self.segment.Source.name,
+            self.segment.StartIndex.to_timestamp(),
+            self.segment.StopIndex.to_timestamp(),
+            (self.segment.StopIndex.to_timestamp() - self.segment.StartIndex.to_timestamp()) * 1000,
+            ",".join([t for t in self.segment.Tags]),
         ))
 
         parent_plot.sigYRangeChanged.connect(self.adjust_ylims)
@@ -197,9 +257,9 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         y0, y1 = yrange
         dy = y1 - y0
         self.setRect(
-            self.segment.start,
+            self.segment.StartIndex,
             y0 + self.draw_fractions[0] * dy,
-            self.segment.stop - self.segment.start,
+            self.segment.StopIndex - self.segment.StartIndex,
             (self.draw_fractions[1] - self.draw_fractions[0]) * dy
         )
 
@@ -222,7 +282,7 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         self.setOpacity(1.0)
         self.setPen(pg.mkPen(self.color, width=4))
         self.segment_plugin.gui.show_status(
-            "Segment from {} to {} on {}".format(self.segment.start, self.segment.stop, self.segment.source)
+            "Segment from {} to {} on {}".format(self.segment.StartIndex, self.segment.StopIndex, self.segment.Source)
         )
 
     def hoverLeaveEvent(self, event):
@@ -283,7 +343,7 @@ class SegmentPlugin(BasePlugin):
         for tag, action in actions.items():
             action.setCheckable(True)
 
-            selected_tags = [(tag in self._segmentation_datastore[i].data["tags"]) for i in selection]
+            selected_tags = [(tag in self._segmentation_datastore.loc[i]["Tags"]) for i in selection]
             if all(selected_tags):
                 action.setChecked(True)
             else:
@@ -296,8 +356,8 @@ class SegmentPlugin(BasePlugin):
         if self._selected_segments == selection:
             return
         # Change workspace to the end of the preceding segment if it exists and the start of the next one
-        start = self._segmentation_datastore[selection[0]].start
-        stop = self._segmentation_datastore[selection[-1]].stop
+        start = self._segmentation_datastore.loc[selection].StartIndex.min()
+        stop = self._segmentation_datastore.loc[selection].StopIndex.max()
 
         # get bounds of current view, to determine final duration
         ws_start, ws_stop = self.api.workspace_get_lim()
@@ -337,11 +397,23 @@ class SegmentPlugin(BasePlugin):
         if "segments" in datastore:
             return datastore["segments"]
         else:
-            datastore["segments"] = []
+            datastore["segments"] = pd.DataFrame(dict({
+                "Source":[],
+                "StartIndex": [],
+                "StopIndex": [],
+                "Tags": [],
+                "Coords": []
+            }))
             return datastore["segments"]
 
     @_segmentation_datastore.setter
     def _segmentation_datastore(self, value):
+        # check that the value is a pandas dataframe
+        if not isinstance(value, pd.DataFrame):
+            raise ValueError("Segmentation datastore must be a pandas dataframe")
+        # check that it has the requisite columns
+        if not all([c in value.columns for c in ["Source", "StartIndex", "StopIndex", "Tags", "Coords"]]):
+            raise ValueError("Segmentation datastore must have columns SourceName, SourceChannel, StartIndex, StopIndex, Tags, Coords")
         self._datastore["segments"] = value
 
     def on_project_ready(self):
@@ -352,10 +424,14 @@ class SegmentPlugin(BasePlugin):
 
         data = pd.read_csv(save_file, converters={"Tags": str, "Coords": str})
 
-        sources = []
-        indices = []
-        tags = []
-        coords = []
+        seg_df = dict({
+                "Source": [],
+                "StartIndex": [],
+                "StopIndex": [],
+                "Tags": [],
+                "Coords": []
+            })
+        
         source_lookup = set([
             (source.name, source.channel) for source in self.api.get_sources()
         ])
@@ -365,35 +441,28 @@ class SegmentPlugin(BasePlugin):
             if source_key not in source_lookup:
                 source_lookup.add(source_key)
                 self.api.create_source(source_key[0], source_key[1])
-            sources.append(source_key)
-            indices.append((row["StartIndex"], row["StopIndex"]))
+            source = self.api.get_source(source_key[0], source_key[1])
+            seg_df['Source'].append(source)
+            seg_df['StartIndex'].append(self.api.make_project_index(row["StartIndex"]))
+            seg_df['StopIndex'].append(self.api.make_project_index(row["StopIndex"]))
             if "Tags" in row and row["Tags"]:
-                tags.append(set([t for t in json.loads(row["Tags"])]))
+                seg_df['Tags'].append(set([t for t in json.loads(row["Tags"])]))
             else:
-                tags.append(set())
+                seg_df['Tags'].append(set())
             if 'Coords' in row and row['Coords']:
-                coords.append(list([float(x) for x in json.loads(row['Coords'])]))
+                seg_df['Coords'].append(list([float(x) for x in json.loads(row['Coords'])]))
             else:
                 # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
-                coords.append(list([row['StopIndex'] - row['StartIndex'], np.random.rand()])) # TODO stop this
+                seg_df['Coords'].append(list([row['StopIndex'] - row['StartIndex'], np.random.rand()])) 
         data.apply(_read, axis=1)
+        for l in ['StartIndex', 'StopIndex']:
+            seg_df[l] = pd.Series(seg_df[l],dtype=object)
 
-        source_dict = {
-            (source.name, source.channel): source
-            for source in self.api.get_sources()
-        }
-        for source_key, (start, stop), segment_tags, segment_coords in zip(sources, indices, tags, coords):
-            self._segmentation_datastore.append(Segment(
-                self.api.make_project_index(start),
-                self.api.make_project_index(stop),
-                source_dict[source_key],
-                data={"tags": segment_tags, 'coords': segment_coords}
-            ))
-
-        self._segmentation_datastore.sort()
+        self._segmentation_datastore = pd.DataFrame(seg_df)
+        #self._segmentation_datastore.sort()
 
     def on_project_data_loaded(self):
-        self.panel.set_data(self._segmentation_datastore)
+        self.panel.set_data(self._segmentation_datastore,self.api.project)
         self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self.refresh()
 
@@ -405,25 +474,16 @@ class SegmentPlugin(BasePlugin):
         # TODO: these pointers could get out of sync with a project if/when files are added.
         # Can we recover from this? or should we hash the project so we can at least
         # warn the user when things dont match up to when the file was saved?
-        segment_dicts = []
-        for segment in self._segmentation_datastore:
-            segment_dicts.append({
-                "SourceName": segment.source.name,
-                "SourceChannel": segment.source.channel,
-                "StartIndex": int(segment.start),
-                "StopIndex": int(segment.stop),
-                "Tags": json.dumps(list(segment.data["tags"])),
-                "Coords": json.dumps(segment.data.get('coords', []))
-            })
-        pd.DataFrame(segment_dicts).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
+        # LAT - Not sure if we are still saving pointers here
+        
+        self._segmentation_datastore.to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
         self._needs_saving = False
 
     def on_sources_changed(self):
-        # We need to check if any sources have been deleted
-        existing_sources = set(self.api.get_sources())
-        self._segmentation_datastore = [
-            s for s in self._segmentation_datastore if s.source in existing_sources
-        ]
+        # We need to check if any sources have been deleted and remove their segments
+        # TODO: maybe we just shouldnt show the segments in the panel
+        self._segmentation_datastore = self._segmentation_datastore[
+            self._segmentation_datastore['Source'].isin(self.api.get_sources())]
         self.refresh()
 
     def on_workspace_changed(self):
@@ -435,7 +495,7 @@ class SegmentPlugin(BasePlugin):
     def jump_to_selection(self):
         selection = self.api.get_selection()
         if selection is not None:
-            start_times = [int(s.start) for s in self._segmentation_datastore]
+            start_times = self._segmentation_datastore.StartIndex
             first_selection_idx = np.searchsorted(start_times, selection.x0)
             index = self.panel.table.model().index(first_selection_idx, 0)
             self.panel.table.scrollTo(index, QtGui.QAbstractItemView.PositionAtTop)
@@ -459,42 +519,41 @@ class SegmentPlugin(BasePlugin):
                 pass
         self._annotations = []
 
-        # Find the row in the table of the first visible segment
-        start_times = [int(s.start) for s in self._segmentation_datastore]
-        first_segment_idx = np.searchsorted(start_times, ws0)
-        last_segment_idx = np.searchsorted(start_times, ws1)
-
+        # # Find the row in the table of the first visible segment
+        # first_segment_idx = self._segmentation_datastore['StopIndex'].searchsorted(ws0)
+        # last_segment_idx = self._segmentation_datastore['StartIndex'].searchsorted(ws1)
+        # get all segments where the start index is less than ws1 and the stop index is greater than ws0
+        segs_in_view = self._segmentation_datastore[ (self._segmentation_datastore['StartIndex'] < ws1) & (self._segmentation_datastore['StopIndex'] > ws0) ]
         selection = self.api.get_fine_selection()
+        
+        # Go through each source view and draw the segments
+        for source in self.api.get_sources():
+            source_view = self.gui.source_views[source.index]
+            source_segs = segs_in_view[ segs_in_view['Source'] == source ]
+            for idx, segment_row in source_segs.iterrows():
+                # get the color of the first tag TODO maybe make this different than tags
+                if len(segment_row["Tags"]) == 0:
+                    c = "#00ff00"
+                else:
+                    t = list(segment_row["Tags"])[0]
+                    c = self.api.plugins["TagPlugin"].get_tag_color(t, as_hex=True)
+                # if this segment is selected in the Segment Table then color it differently
+                if idx in self._selected_segments:
+                    rect = SegmentVisualizer(segment_row, source_view.spectrogram, c, 4, 0.6, (0.1, 0.9), self)
+                else:
+                    rect = SegmentVisualizer(segment_row, source_view.spectrogram, c, 2, 0.6, (0.05, 0.95), self)
+                source_view.spectrogram.addItem(rect)
+                self._annotations.append((source_view.spectrogram, rect))
 
-        # TODO: Its not that bad to draw every rectangle at once; but the annoying part is deleting them
-        # and redrawing them when something changes
-        for idx, segment in zip(range(first_segment_idx,last_segment_idx),self._segmentation_datastore[first_segment_idx:last_segment_idx]):
-            source_view = self.gui.source_views[segment.source.index]
-
-            # get the color of the first tag TODO maybe make this different than tags
-            if len(segment.data["tags"]) == 0:
-                c = "#00ff00"
-            else:
-                t = list(segment.data["tags"])[0]
-                c = self.api.plugins["TagPlugin"].get_tag_color(t, as_hex=True)
-
-            # if this segment is selected in the Segment Table then color it differently
-            if idx in self._selected_segments:
-                rect = SegmentVisualizer(segment, source_view.spectrogram, c, 4, 0.6, (0.1, 0.9), self)
-            else:
-                rect = SegmentVisualizer(segment, source_view.spectrogram, c, 2, 0.6, (0.05, 0.95), self)
-            source_view.spectrogram.addItem(rect)
-            self._annotations.append((source_view.spectrogram, rect))
-
-            if selection and segment.source == selection.source:
-                rect = SegmentVisualizer(segment, self.gui.ui.previewPlot, "#00aa00", 2, 0.3, (0.4, 0.6), self)
-                self.gui.ui.previewPlot.addItem(rect)
-                self._annotations.append((self.gui.ui.previewPlot, rect))
+                if selection and source == selection.source:
+                    rect = SegmentVisualizer(segment_row, self.gui.ui.previewPlot, "#00aa00", 2, 0.3, (0.4, 0.6), self)
+                    self.gui.ui.previewPlot.addItem(rect)
+                    self._annotations.append((self.gui.ui.previewPlot, rect))
 
     def on_delete_segment_activated(self):
         selection = self.api.get_fine_selection()
         if selection:
-            self.delete_segments(selection.x0, selection.x1, selection.source)
+            self.delete_segments_between(selection.x0, selection.x1, selection.source)
 
     def on_merge_segments_activated(self):
         selection = self.api.get_fine_selection()
@@ -512,87 +571,109 @@ class SegmentPlugin(BasePlugin):
 
     def create_segments_batch(self, segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]]):
         """Create multiple segments, only updating the display one time at the end"""
+        # for now lets do this one at a time and see if its still slow
         for start, stop, source in segment_data:
-            self._segmentation_datastore = [
-                segment for segment in self._segmentation_datastore
-                if (
-                    (segment.start <= start and segment.stop <= start) or
-                    (segment.start >= stop and segment.stop >= stop)
-                ) or source != segment.source
-            ]
-            new_segment = Segment(start, stop, source, data={"tags": set()})
-            self._segmentation_datastore.append(new_segment)
-        self._segmentation_datastore.sort()
-        self.panel.set_data(self._segmentation_datastore)
-        # TODO kinda unnecessary here, as these tags are not UMAPPED, but just to keep the counts right
-        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
-        self.gui.show_status("Created {} segments".format(len(segment_data)))
-        logger.debug("Created {} segments".format(len(segment_data)))
-        self._needs_saving = True
-        self.refresh()
+            self.create_segment(start, stop, source)
+        # Remove all segments from seg datastore that are within the new segments
+        # inds_to_remove = []
+        # for start, stop, source in segment_data:
+        #     inds_to_remove.append((self._segmentation_datastore['StartIndex'] <= start) 
+        #                     & (self._segmentation_datastore['StopIndex'] >= stop) 
+        #                     & (self._segmentation_datastore['SourceName'] == source.name) 
+        #                     & (self._segmentation_datastore['SourceChannel'] == source.channel))
+        #     # TODO may need to delete all the ones we need to delete, then add the new segment
+        #     self._segmentation_datastore.append(new_segment)
+        
+        # self._segmentation_datastore.sort()
+        # self.panel.set_data(self._segmentation_datastore)
+        # # TODO kinda unnecessary here, as these tags are not UMAPPED, but just to keep the counts right
+        # self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
+        # self.gui.show_status("Created {} segments".format(len(segment_data)))
+        # logger.debug("Created {} segments".format(len(segment_data)))
+        # self._needs_saving = True
+        # self.refresh()
 
-    def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
-        self.delete_segments(start, stop, source)
-        new_segment = Segment(start, stop, source, data={"tags": set()})
-        self._segmentation_datastore.append(new_segment)
-        self._segmentation_datastore.sort()
-        self.panel.set_data(self._segmentation_datastore)
+    def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = set(), coords: list = list()):
+        self.delete_segments_between(start, stop, source)
+        new_segment = dict({
+            "StartIndex": start,
+            "StopIndex": stop,
+            "Source": source,
+            "Tags": tags,
+            "Coords": coords
+        })
+        # Insert this into the correct place in the dataframe, relative to the start index
+        ind = self._segmentation_datastore['StartIndex'].searchsorted(start)
+        self._segmentation_datastore = pd.concat([self._segmentation_datastore.iloc[:ind], pd.Series(), self._segmentation_datastore.iloc[ind:]]).reset_index(drop=True)
+        self._segmentation_datastore.loc[ind]['StartIndex'] = start
+        self._segmentation_datastore.loc[ind]['StopIndex'] = stop
+        self._segmentation_datastore.loc[ind]['Source'] = source
+        self._segmentation_datastore.loc[ind]['Tags'] = tags
+        self._segmentation_datastore.loc[ind]['Coords'] = coords
+        # self._segmentation_datastore.loc[len(self._segmentation_datastore)] = pd.Series()
+        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['StartIndex'] = start
+        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['StopIndex'] = stop
+        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['Source'] = source
+        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['Tags'] = tags
+        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['Coords'] = coords
+        
+        
+        
+        # TODO change panel to add a single row
+        self.panel.add_row(ind, self._segmentation_datastore.loc[ind], self.api.project)
+        #self.panel.set_data(self._segmentation_datastore, self.api.project)
         self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self.gui.show_status("Created segment {} to {}".format(start, stop))
         logger.debug("Created segment {} to {}".format(start, stop))
         self._needs_saving = True
         self.refresh()
 
-    def delete_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source, refresh: bool = True):
-        filtered_segments = [
-            segment for segment in self._segmentation_datastore
-            if (
-                (segment.start <= start and segment.stop <= start) or
-                (segment.start >= stop and segment.stop >= stop)
-            ) or source != segment.source
-        ]
-        n_deleted = len(self._segmentation_datastore) - len(filtered_segments)
-        self.gui.show_status("Deleting {} segments from {} to {}".format(n_deleted, start, stop))
-        logger.debug("Deleting {} segments from {} to {}".format(n_deleted, start, stop))
-        self._segmentation_datastore.clear()
-        self._segmentation_datastore.extend(filtered_segments)
-        self.panel.set_data(self._segmentation_datastore)
+
+
+    def delete_segments_between(self, start: ProjectIndex, stop: ProjectIndex, source: Source, refresh: bool = True):
+        # Delete all segments from this source who have a start OR stop index within the range
+        segs_to_delete = ((self._segmentation_datastore['StopIndex'].between(start,stop) |\
+                                self._segmentation_datastore['StartIndex'].between(start,stop)) &\
+                            (self._segmentation_datastore['Source'] == source))
+        
+        deleted_inds = self._segmentation_datastore[segs_to_delete].index
+        if len(deleted_inds) == 0:
+            return
+        self.delete_segments(deleted_inds)
+
+    def delete_segments(self, seg_indices, refresh: bool = True):
+        # Delete all segments from this source who have a start OR stop index within the range
+        n_deleted = len(seg_indices)
+        self._segmentation_datastore.drop(seg_indices, inplace=True)
+        self._segmentation_datastore.reset_index(inplace=True, drop=True)
+        self.gui.show_status("Deleting {} segments".format(n_deleted))
+        logger.debug("Deleting {} segments".format(n_deleted))
+        # TODO change panel delete to take a list of indices
+        for ind in seg_indices:
+            self.panel.remove_row(ind)
+        #self.panel.set_data(self._segmentation_datastore, self.api.project)
         self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
         self._needs_saving = True
         if refresh:
             self.refresh()
 
     def merge_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
-        to_merge = [
-            segment for segment in self._segmentation_datastore
-            if (
-                (segment.start <= start and segment.stop >= start) or
-                (segment.start <= stop and segment.stop >= stop) or
-                (segment.start >= start and segment.stop <= stop)
-            ) and source == segment.source
-        ]
-        if not len(to_merge):
+        # Merge all segments from this source who have a start OR stop index within the range
+        segs_to_merge = self._segmentation_datastore[((self._segmentation_datastore['StopIndex'].between(start, stop) |\
+                            self._segmentation_datastore['StartIndex'].between(start, stop)) &\
+                            (self._segmentation_datastore['Source'] == source))]
+
+        if not len(segs_to_merge):
             return
 
-        self.gui.show_status("Merging {} segments from {} to {}".format(len(to_merge), start, stop))
-        logger.debug("Merging {} segments from {} to {}".format(len(to_merge), start, stop))
-
-        new_tags = set.union(*[segment.data["tags"] for segment in to_merge])
-        new_segment = Segment(to_merge[0].start, to_merge[-1].stop, source, data={"tags": new_tags})
-        filtered_segments = [
-            segment for segment in self._segmentation_datastore
-            if (
-                (segment.start <= start and segment.stop <= start) or
-                (segment.start >= stop and segment.stop >= stop)
-            ) or source != segment.source
-        ]
-        self._segmentation_datastore.clear()
-        self._segmentation_datastore.extend(filtered_segments + [new_segment])
-        self._segmentation_datastore.sort()
-        self.panel.set_data(self._segmentation_datastore)
-        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
-        self._needs_saving = True
-        self.refresh()
+        self.gui.show_status("Merging {} segments from {} to {}".format(len(segs_to_merge), start, stop))
+        logger.debug("Merging {} segments from {} to {}".format(len(segs_to_merge), start, stop))
+        new_tags = set.union(*list(segs_to_merge['Tags'].values))
+        new_start = min(segs_to_merge['StartIndex'])
+        new_stop = max(segs_to_merge['StopIndex'])
+        # TODO, can maybe take coords too? or the mean
+        self.delete_segments(segs_to_merge.index, refresh=False)
+        self.create_segment(new_start, new_stop, source, new_tags)
 
     def plugin_toolbar_items(self):
         return [self.button, self.delete_button, self.merge_button]

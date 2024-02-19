@@ -322,8 +322,8 @@ class SoundsepMainWindow(widgets.QMainWindow):
                 self.api.set_selection(
                     self.api.make_project_index(pos.x()),
                     self.api.make_project_index(pos.x() + size.x()),
-                    pos.y(),
-                    pos.y() + size.y(),
+                    min(pos.y(),pos.y() + size.y()),
+                    max(pos.y(),pos.y() + size.y()),
                     source,
                 )
 
@@ -408,11 +408,12 @@ class SoundsepMainWindow(widgets.QMainWindow):
         else:
             pos = self.roi.roi.pos()
             size = self.roi.roi.size()
+
             self.api.set_selection(
                 self.api.make_project_index(pos.x()),
                 self.api.make_project_index(pos.x() + size.x()),
-                pos.y(),
-                pos.y() + size.y(),
+                min(pos.y(),pos.y() + size.y()),
+                max(pos.y(),pos.y() + size.y()),
                 source,
             )
 

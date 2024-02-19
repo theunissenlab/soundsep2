@@ -541,8 +541,8 @@ class Api(QObject):
         """
         # TODO: seems a bit weird to include this in api but maybe its okay
         # TODO: also, where should the rectivy lowpass be configured?
-        f0 = max(f0, self._app.config["filter.low"])
-        f1 = min(f1, self._app.config["filter.high"])
+        f0 = min(max(f0, self._app.config["filter.low"]), self._app.config["filter.high"])
+        f1 = max(min(f1, self._app.config["filter.high"]), self._app.config["filter.low"])
         if f0 > f1:
             raise ValueError("Cannot filter with f0 > f1")
 

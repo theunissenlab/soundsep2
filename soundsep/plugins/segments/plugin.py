@@ -48,8 +48,12 @@ class UMAPVisPanel(widgets.QWidget):
     def on_selection_changed(self, selection):
         sizes = np.ones(self.npoints) * 10
         spot_inds = [spot['data'] for spot in self.scatter.data]
-        sel_inds = [spot_inds.index(s) for s in selection]
-        sizes[sel_inds] = 20
+        sel_inds = []
+        for s in selection:
+            if s in spot_inds:
+                sel_inds.append(spot_inds.index(s))
+        if len(sel_inds) > 0:
+            sizes[sel_inds] = 20
         self.scatter.setSize(sizes)
     
     def set_data(self, segments, func_get_color=None):
@@ -76,6 +80,29 @@ class UMAPVisPanel(widgets.QWidget):
             hoverSize=20,
             hoverable=True
         )
+    
+    def remove_spots(self, segIDs):
+        visibilities = self.scatter.data['visible']
+        spot_seg_IDs = [spot['data'] for spot in self.scatter.data]
+        for segID in segIDs:
+            if segID in spot_seg_IDs:
+                visibilities[spot_seg_IDs.index(segID)] = False
+                #spot_inds.append(seg_IDs.index(segID))
+        self.scatter.setPointsVisible(visibilities)
+
+    def add_spot(self, segment, func_get_color=None):
+        if func_get_color and len(segment['Tags']) > 0:
+            c = func_get_color(list(segment['Tags'])[0])
+        else:
+            c = 'r'
+        if len(segment['Coords']) >= 2:
+            self.scatter.addPoints(
+                pos=[segment['Coords'][:2]],
+                data=segment.name,
+                brush=pg.mkBrush(c),
+                size=10
+            )
+            self.npoints += 1
 
 class SegmentPanel(widgets.QWidget):
 
@@ -91,20 +118,24 @@ class SegmentPanel(widgets.QWidget):
 
     def init_ui(self):
         layout = widgets.QVBoxLayout()
-        self.table = widgets.QTableWidget(0, 4)
+        self.table = widgets.QTableWidget(0, 5)
         self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
+        self.table.setColumnHidden(0, True)
         header = self.table.horizontalHeader()
         self.table.setHorizontalHeaderLabels([
+            "SegID",
             "SourceName",
             "Start",
             "Stop",
             "Tags",
         ])
+        #
         header.setSectionResizeMode(0, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, widgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, widgets.QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
         self.setLayout(layout)
 
@@ -127,91 +158,74 @@ class SegmentPanel(widgets.QWidget):
 
     def set_selection(self, selection):
         self.table.clearSelection()
-        for row in selection:
-            self.table.selectRow(row)
+            
+        for seg_id in selection:
+            table_ind = self._find_segment_row_by_segID(seg_id)
+            if table_ind is not None:
+                self.table.selectRow(table_ind)
+            else:
+                raise ValueError("Cannot select Segment ID {}: not found in table".format(seg_id))
     
     def get_selection(self):
         selection = []
         ranges = self.table.selectedRanges()
         for selection_range in ranges:
             selection += list(range(selection_range.topRow(), selection_range.bottomRow() + 1))
-        return sorted(selection)
+        # Get IDS for each selected ROW
+        ids = [int(self.table.item(row, 0).text()) for row in selection]
+        return sorted(ids)
 
     def set_data(self, segments, project):
         # TODO Store indices
         # TODO: this is extremely slow - we need a better way to update the table.
         self.table.setRowCount(len(segments))
         for row, segment_row in segments.iterrows():
-            self.table.setItem(row, 0, widgets.QTableWidgetItem(segment_row['Source'].name))
-            self.table.setItem(row, 1, widgets.QTableWidgetItem(
+            self.table.setItem(row, 0, widgets.QTableWidgetItem(str(row)))
+            self.table.setItem(row, 1, widgets.QTableWidgetItem(segment_row['Source'].name))
+            self.table.setItem(row, 2, widgets.QTableWidgetItem(
                 hhmmss(segment_row['StartIndex'] / project.sampling_rate, dec=3)
             ))
-            self.table.setItem(row, 2, widgets.QTableWidgetItem(
+            self.table.setItem(row, 3, widgets.QTableWidgetItem(
                 hhmmss(segment_row['StopIndex'] / project.sampling_rate, dec=3)
             ))
-            self.table.setItem(row, 3, widgets.QTableWidgetItem(
+            self.table.setItem(row, 4, widgets.QTableWidgetItem(
                 ",".join(segment_row["Tags"])
             ))
+        self.table.setSortingEnabled(True)
+        # sort by start time
+        self.table.sortByColumn(2, Qt.SortOrder.AscendingOrder)
 
-    def add_row(self, row_ind, segment, project):
-        self.table.insertRow(row_ind)
-        self.table.setItem(row_ind, 0, widgets.QTableWidgetItem(segment['Source'].name))
-        self.table.setItem(row_ind, 1, widgets.QTableWidgetItem(
+    def add_row(self, segment, project):
+        self.table.setSortingEnabled(False)
+        ind = self.table.rowCount()
+        self.table.insertRow(self.table.rowCount())
+        self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(segment.name)))
+        self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
+        self.table.setItem(ind, 2, widgets.QTableWidgetItem(
             hhmmss(segment['StartIndex'] / project.sampling_rate, dec=3)
         ))
-        self.table.setItem(row_ind, 2, widgets.QTableWidgetItem(
+        self.table.setItem(ind, 3, widgets.QTableWidgetItem(
             hhmmss(segment['StopIndex'] / project.sampling_rate, dec=3)
         ))
-        self.table.setItem(row_ind, 3, widgets.QTableWidgetItem(
+        self.table.setItem(ind, 4, widgets.QTableWidgetItem(
             ",".join(segment["Tags"])
         ))
+        self.table.setSortingEnabled(True)
     
-    def remove_row(self, row_ind):
-        self.table.removeRow(row_ind)
+    def remove_row_by_segID(self, seg_id):
+        ind = self._find_segment_row_by_segID(seg_id)
+        if seg_id in self.get_selection():
+            self.table.clearSelection()
+        if ind is not None:
+            self.table.removeRow(ind)
+        else:
+            raise ValueError("Cannot remove Segment ID {}: not found in table".format(seg_id))
 
-# class SegmentTableView(widgets.QTableView):
-#     def __init__(self):
-#         super(SegmentTableView, self).__init__()
-
-#         self.model = DataModel()
-
-#         self.view = QtWidgets.QTableView(self)
-#         self.view.setAlternatingRowColors(True)
-#         self.view.setStyleSheet('alternate-background-color: grey;background-color: white;')
-
-#         self.proxy = QtCore.QSortFilterProxyModel(self)
-#         self.proxy.setSourceModel(self.model)
-
-#         self.view.setModel(self.proxy)
-# class SegmentDataModel(QtCore.QAbstractTableModel):
-#   data_updated = QtCore.pyqtSignal()
-#   def __init__(self, data: pd.DataFrame = pd.DataFrame()):
-#     super(SegmentDataModel, self).__init__()
-#     self._data = data
-
-#   def update_data(self, data: pd.DataFrame):
-#     self.beginRestModel()
-#     self._data = data
-#     self.endResetModel()
-#     self.data_updated.emit()
-
-#   def data(self, index, role):
-#     if role == QtCore.Qt.DisplayRole:
-#       return str(self._data.iloc[index.row()][index.column()])
-
-#   def rowCount(self, index = None) -> int:
-#     return self._data.shape[0]
-  
-#   def columnCount(self, index = None) -> int:
-#     return self._data.shape[1]
-
-#   def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int ) -> Any:
-#     # section is the index of the column/row.
-#     if role == QtCore.Qt.DisplayRole:
-#       if orientation == QtCore.Qt.Horizontal:
-#         return str(self._data.columns[section])
-#       if orientation == QtCore.Qt.Vertical:
-#         return str(self._data.index[section])
+    def _find_segment_row_by_segID(self, seg_id):
+        for i in range(self.table.rowCount()):
+            if self.table.item(i, 0).text() == str(seg_id):
+                return i
+        return None
 
 class SegmentVisualizer(widgets.QGraphicsRectItem):
     def __init__(
@@ -263,19 +277,8 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
             (self.draw_fractions[1] - self.draw_fractions[0]) * dy
         )
 
-    # def mouseClickEvent(self, event):
-        # pass
-        # event.ignore()
-        # TODO: Calling set_selection is hazardous here because it doesnt update
-        # the roi in the main GUI. maybe an alternative would be call gui.draw_selection?
-        # _, _, freqs = self.segment_plugin.api.get_workspace_stft()
-        # self.segment_plugin.api.set_selection(
-        #     self.segment.start,
-        #     self.segment.stop,
-        #     0,
-        #     np.max(freqs),
-        #     self.segment.source,
-        # )
+    def mouseClickEvent(self, event):
+        self.segment_plugin.on_segment_selection_changed([self.segment.name])
 
     def hoverEnterEvent(self, event):
         """Draw vertical lines as boundaries"""
@@ -355,29 +358,30 @@ class SegmentPlugin(BasePlugin):
     def on_segment_selection_changed(self, selection):
         if self._selected_segments == selection:
             return
-        # Change workspace to the end of the preceding segment if it exists and the start of the next one
-        start = self._segmentation_datastore.loc[selection].StartIndex.min()
-        stop = self._segmentation_datastore.loc[selection].StopIndex.max()
+        if selection != []:
+            # Change workspace to the end of the preceding segment if it exists and the start of the next one
+            start = self._segmentation_datastore.loc[selection].StartIndex.min()
+            stop = self._segmentation_datastore.loc[selection].StopIndex.max()
 
-        # get bounds of current view, to determine final duration
-        ws_start, ws_stop = self.api.workspace_get_lim()
+            # get bounds of current view, to determine final duration
+            ws_start, ws_stop = self.api.workspace_get_lim()
 
-        start = self.api.convert_project_index_to_stft_index(start)
-        stop = self.api.convert_project_index_to_stft_index(stop)
+            start = self.api.convert_project_index_to_stft_index(start)
+            stop = self.api.convert_project_index_to_stft_index(stop)
 
-        # # if start is within the current bounds, dont edit the start
-        # if start > ws_start and start < ws_stop:
-        #     start = ws_start
-        # # if stop is within the current bounds, dont edit the stop
-        # if stop > ws_start and stop < ws_stop:
-        #     stop = ws_stop
-        # add some padding
-        # TODO BUG HERE: IF ALL SEGMENTS ARE SELECTED, then this errors
-        duration = max(stop - start, ws_stop - ws_start)
-        start.value = (start+stop) // 2
-        stop.value = start.value
-        start -= duration // 2
-        stop += duration // 2
+            # # if start is within the current bounds, dont edit the start
+            # if start > ws_start and start < ws_stop:
+            #     start = ws_start
+            # # if stop is within the current bounds, dont edit the stop
+            # if stop > ws_start and stop < ws_stop:
+            #     stop = ws_stop
+            # add some padding
+            # TODO BUG HERE: IF ALL SEGMENTS ARE SELECTED, then this errors
+            duration = max(stop - start, ws_stop - ws_start)
+            start.value = (start+stop) // 2
+            stop.value = start.value
+            start -= duration // 2
+            stop += duration // 2
 
         self._selected_segments = selection
         # call the UI Selection changes
@@ -385,7 +389,8 @@ class SegmentPlugin(BasePlugin):
         self.umap_panel.on_selection_changed(selection)
 
         self.api.clear_selection()
-        self.api.workspace_set_position(start, stop)
+        if selection != []:
+            self.api.workspace_set_position(start, stop)
 
     @property
     def _datastore(self):
@@ -602,27 +607,20 @@ class SegmentPlugin(BasePlugin):
             "Tags": tags,
             "Coords": coords
         })
-        # Insert this into the correct place in the dataframe, relative to the start index
-        ind = self._segmentation_datastore['StartIndex'].searchsorted(start)
-        self._segmentation_datastore = pd.concat([self._segmentation_datastore.iloc[:ind], pd.Series(), self._segmentation_datastore.iloc[ind:]]).reset_index(drop=True)
-        self._segmentation_datastore.loc[ind]['StartIndex'] = start
-        self._segmentation_datastore.loc[ind]['StopIndex'] = stop
-        self._segmentation_datastore.loc[ind]['Source'] = source
-        self._segmentation_datastore.loc[ind]['Tags'] = tags
-        self._segmentation_datastore.loc[ind]['Coords'] = coords
-        # self._segmentation_datastore.loc[len(self._segmentation_datastore)] = pd.Series()
-        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['StartIndex'] = start
-        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['StopIndex'] = stop
-        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['Source'] = source
-        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['Tags'] = tags
-        # self._segmentation_datastore.loc[len(self._segmentation_datastore)]['Coords'] = coords
+        segID = len(self._segmentation_datastore)
+        self._segmentation_datastore.loc[segID] = pd.Series()
+        self._segmentation_datastore.at[segID,'StartIndex'] = start
+        self._segmentation_datastore.at[segID,'StopIndex'] = stop
+        self._segmentation_datastore.at[segID,'Source'] = source
+        self._segmentation_datastore.at[segID,'Tags'] = tags
+        self._segmentation_datastore.at[segID,'Coords'] = coords
         
         
         
         # TODO change panel to add a single row
-        self.panel.add_row(ind, self._segmentation_datastore.loc[ind], self.api.project)
-        #self.panel.set_data(self._segmentation_datastore, self.api.project)
-        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
+        self.panel.add_row(self._segmentation_datastore.loc[segID], self.api.project)
+        self.umap_panel.add_spot(self._segmentation_datastore.loc[segID], self.api.plugins["TagPlugin"].get_tag_color)
+        
         self.gui.show_status("Created segment {} to {}".format(start, stop))
         logger.debug("Created segment {} to {}".format(start, stop))
         self._needs_saving = True
@@ -641,18 +639,16 @@ class SegmentPlugin(BasePlugin):
             return
         self.delete_segments(deleted_inds)
 
-    def delete_segments(self, seg_indices, refresh: bool = True):
+    def delete_segments(self, seg_ids, refresh: bool = True):
         # Delete all segments from this source who have a start OR stop index within the range
-        n_deleted = len(seg_indices)
-        self._segmentation_datastore.drop(seg_indices, inplace=True)
-        self._segmentation_datastore.reset_index(inplace=True, drop=True)
+        n_deleted = len(seg_ids)
+        self._segmentation_datastore.drop(seg_ids, inplace=True)
         self.gui.show_status("Deleting {} segments".format(n_deleted))
         logger.debug("Deleting {} segments".format(n_deleted))
-        # TODO change panel delete to take a list of indices
-        for ind in seg_indices:
-            self.panel.remove_row(ind)
-        #self.panel.set_data(self._segmentation_datastore, self.api.project)
-        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
+
+        for segID in seg_ids:
+            self.panel.remove_row_by_segID(segID)
+        self.umap_panel.remove_spots(seg_ids)
         self._needs_saving = True
         if refresh:
             self.refresh()

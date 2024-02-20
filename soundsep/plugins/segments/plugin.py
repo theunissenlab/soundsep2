@@ -104,6 +104,31 @@ class UMAPVisPanel(widgets.QWidget):
             )
             self.npoints += 1
 
+    def update_spots(self, segments, func_get_color=None):
+        spot_seg_IDs = [spot['data'] for spot in self.scatter.data]
+        spot_brushes = [spot['brush'] for spot in self.scatter.data]
+        # first add all the spots that need to be added
+        segs_to_add = []
+        any_changed = False
+        for ix,s_row in segments.iterrows():
+            if len(s_row['Coords']) >= 2:
+                if ix not in spot_seg_IDs:
+                    segs_to_add.append(s_row)
+                else:
+                    if func_get_color and len(s_row['Tags']) > 0:
+                        c = func_get_color(list(s_row['Tags'])[0])
+                    else:
+                        c = 'r'
+                    spot_brushes[spot_seg_IDs.index(ix)] = pg.mkBrush(c)
+                    any_changed = True
+        if any_changed:
+            self.scatter.setBrush(spot_brushes)
+        # now add the ones that were not present
+        for s_row in segs_to_add:
+            self.add_spot(s_row, func_get_color)
+        
+
+
 class SegmentPanel(widgets.QWidget):
 
     contextMenuRequested = pyqtSignal(QPoint, object)
@@ -210,6 +235,23 @@ class SegmentPanel(widgets.QWidget):
         self.table.setItem(ind, 4, widgets.QTableWidgetItem(
             ",".join(segment["Tags"])
         ))
+        self.table.setSortingEnabled(True)
+
+    def update_rows(self, segments,project):
+        self.table.setSortingEnabled(False)
+        for ix, segment in segments.iterrows():
+            ind = self._find_segment_row_by_segID(ix)
+            if ind is not None:
+                self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
+                self.table.setItem(ind, 2, widgets.QTableWidgetItem(
+                    hhmmss(segment['StartIndex'] / project.sampling_rate, dec=3)
+                ))
+                self.table.setItem(ind, 3, widgets.QTableWidgetItem(
+                    hhmmss(segment['StopIndex'] / project.sampling_rate, dec=3)
+                ))
+                self.table.setItem(ind, 4, widgets.QTableWidgetItem(
+                    ",".join(segment["Tags"])
+                ))
         self.table.setSortingEnabled(True)
     
     def remove_row_by_segID(self, seg_id):

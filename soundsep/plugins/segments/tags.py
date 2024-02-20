@@ -83,56 +83,46 @@ class TagPlugin(BasePlugin):
 
     def on_toggle_selection_tag(self, tag: str, selection: 'List[int]', toggle: bool):
         for i in selection:
-            segment = self._datastore["segments"][i]
             if toggle:
-                segment.data["tags"].add(tag)
+                self._datastore["segments"].loc[i,'Tags'].add(tag)
             else:
-                segment.data["tags"].remove(tag)
-
-        self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
-        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
+                self._datastore["segments"].loc[i,'Tags'].remove(tag)
+        # TODO CONFIRM TAGS ARE ADDED
+        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"].loc[selection], self.api.project)
+        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"].loc[selection], self.get_tag_color)
         self._needs_saving = True
 
     def apply_tag(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source', tag: 'str'):
-        to_tag = [
-            segment for segment in self._datastore["segments"]
-            if (
-                (segment.start <= start and segment.stop >= start) or
-                (segment.start <= stop and segment.stop >= stop) or
-                (segment.start >= start and segment.stop <= stop)
-            ) and source == segment.source
-        ]
-        if not len(to_tag):
+        segs_to_tag = ((self._datastore["segments"]['StopIndex'].between(start,stop) |\
+                                self._datastore["segments"]['StartIndex'].between(start,stop)) &\
+                            (self._datastore["segments"]['Source'] == source))
+        
+        if not np.any(segs_to_tag):
             return
 
-        logger.debug("Tagging {} segments as {} from {} to {}".format(len(to_tag), tag, start, stop))
+        logger.debug("Tagging {} segments as {} from {} to {}".format(len(segs_to_tag), tag, start, stop))
 
-        for segment in to_tag:
-            segment.data["tags"].add(tag)
-
-        self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
-        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
+        for _,segment in self._datastore["segments"][segs_to_tag].iterrows():
+            segment["Tags"].add(tag)
+        
+        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"][segs_to_tag], self.api.project)
+        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"][segs_to_tag], self.get_tag_color)
         self._needs_saving = True
 
     def clear_tags(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source'):
-        to_untag = [
-            segment for segment in self._datastore["segments"]
-            if (
-                (segment.start <= start and segment.stop >= start) or
-                (segment.start <= stop and segment.stop >= stop) or
-                (segment.start >= start and segment.stop <= stop)
-            ) and source == segment.source
-        ]
-        if not len(to_untag):
+        segs_to_untag = ((self._datastore["segments"]['StopIndex'].between(start,stop) |\
+                                self._datastore["segments"]['StartIndex'].between(start,stop)) &\
+                            (self._datastore["segments"]['Source'] == source))
+        if not np.any(segs_to_untag):
             return
 
-        logger.debug("Clearing tags of {} segments from {} to {}".format(len(to_untag), start, stop))
+        logger.debug("Clearing tags of {} segments from {} to {}".format(sum(segs_to_untag), start, stop))
 
-        for segment in to_untag:
-            segment.data["tags"].clear()
+        for _,segment in self._datastore["segments"][segs_to_untag].iterrows():
+            segment["Tags"].clear()
 
-        self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
-        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
+        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"][segs_to_untag], self.api.project)
+        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"][segs_to_untag], self.get_tag_color)
         self._needs_saving = True
 
     def connect_events(self):
@@ -174,16 +164,17 @@ class TagPlugin(BasePlugin):
 
         # for each tag to delete, delete it from all segments and then
         # delete the element in the datastore...
+        updated_segs = []
         for tag_name in to_delete:
-            for segment in self._datastore["segments"]:
-                if tag_name in segment.data["tags"]:
-                    segment.data["tags"].remove(tag_name)
+            for ix, segment in self._datastore["segments"].iterrows():
+                if tag_name in segment["Tags"]:
+                    updated_segs.append(ix)
+                    segment["Tags"].remove(tag_name)
             # remove the corresponding color for this tag
             self._datastore["tag_colors"].pop(self._datastore["tags"].index(tag_name))
             self._datastore["tags"].remove(tag_name)
-
-        self.api.plugins["SegmentPlugin"].panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore)
-        self.api.plugins["SegmentPlugin"].umap_panel.set_data(self.api.plugins["SegmentPlugin"]._segmentation_datastore, self.get_tag_color)
+        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"].loc[updated_segs], self.api.project)
+        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"].loc[updated_segs], self.get_tag_color)
         self.panel.set_data(self._datastore["tags"], self._datastore["tag_colors"])
         self.update_menu(self._datastore["tags"])
         self._needs_saving = True

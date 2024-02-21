@@ -485,9 +485,17 @@ class SegmentPlugin(BasePlugin):
         source_lookup = set([
             (source.name, source.channel) for source in self.api.get_sources()
         ])
+        sources_ptr = []
 
         def _read(row):
-            source_key = (row["SourceName"], row["SourceChannel"])
+            if "SourceName" not in row or "SourceChannel" not in row:
+                if row['Source'] not in sources_ptr:
+                    sources_ptr.append(row['Source'])
+                    
+                ind = sources_ptr.index(row['Source'])
+                source_key = list(source_lookup)[ind]
+            else:
+                source_key = (row["SourceName"], row["SourceChannel"])
             if source_key not in source_lookup:
                 source_lookup.add(source_key)
                 self.api.create_source(source_key[0], source_key[1])
@@ -527,8 +535,15 @@ class SegmentPlugin(BasePlugin):
         # Can we recover from this? or should we hash the project so we can at least
         # warn the user when things dont match up to when the file was saved?
         # LAT - Not sure if we are still saving pointers here
-        
-        self._segmentation_datastore.to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
+        out_csv_df = dict({
+            'SourceName': self._segmentation_datastore['Source'].apply(lambda x: x.name),
+            'SourceChannel': self._segmentation_datastore['Source'].apply(lambda x: x.channel),
+            'StartIndex': self._segmentation_datastore['StartIndex'].apply(lambda x: int(x)),
+            'StopIndex': self._segmentation_datastore['StopIndex'].apply(lambda x: int(x)),
+            'Tags': self._segmentation_datastore['Tags'].apply(lambda x: json.dumps(list(x))),
+            'Coords': self._segmentation_datastore['Coords'].apply(lambda x: json.dumps(x))
+        })
+        pd.DataFrame(out_csv_df).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
         self._needs_saving = False
 
     def on_sources_changed(self):

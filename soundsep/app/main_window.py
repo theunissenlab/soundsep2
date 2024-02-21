@@ -174,18 +174,18 @@ class SoundsepMainWindow(widgets.QMainWindow):
             self,
             "Close confirmation",
             "Are you sure you want to quit? There are unsaved changes.",
-            widgets.QMessageBox.Save | widgets.QMessageBox.Close | widgets.QMessageBox.Cancel,
-            widgets.QMessageBox.Save
+            widgets.QMessageBox.StandardButton.Save | widgets.QMessageBox.StandardButton.Close | widgets.QMessageBox.StandardButton.Cancel,
+            widgets.QMessageBox.StandardButton.Save
         )
 
-        if reply == widgets.QMessageBox.Save:
+        if reply == widgets.QMessageBox.StandardButton.Save:
             if self.on_save_requested():
                 return True
             else:
                 return False
-        elif reply == widgets.QMessageBox.Cancel:
+        elif reply == widgets.QMessageBox.StandardButton.Cancel:
             return False
-        elif reply == widgets.QMessageBox.Close:
+        elif reply == widgets.QMessageBox.StandardButton.Close:
             return True
         return False
 

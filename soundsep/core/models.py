@@ -591,7 +591,7 @@ class Project:
             return index
         elif isinstance(index, ProjectIndex):
             try:
-                iblock = min(len(self._blocks)-1,bisect.bisect_left(self._block_start_frames, int(index)))
+                iblock = bisect.bisect_left(self._block_start_frames, int(index)) - 1
                 block = self._blocks[iblock]
                 return BlockIndex(block, index - self._block_start_frames[iblock])
             except:

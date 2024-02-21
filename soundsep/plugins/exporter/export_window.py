@@ -47,20 +47,20 @@ SETTINGS = (
 
 
 def segment_to_dict(segment, project_dir: 'pathlib.Path'):
-    source = segment.source
+    source = segment.Source
     project = source.project
-    block_start = project.to_block_index(segment.start)
-    block_stop = project.to_block_index(segment.stop)
+    block_start = project.to_block_index(segment.StartIndex)
+    block_stop = project.to_block_index(segment.StopIndex)
     block = block_start.block
     original_file, original_channel = block.get_channel_info(source.channel)
 
     return {
         "source.name": source.name,
         "source.channel": source.channel,
-        "project.start_index": int(segment.start),
-        "project.stop_index": int(segment.stop),
-        "project.t_start": segment.start.to_timestamp(),
-        "project.t_stop": segment.stop.to_timestamp(),
+        "project.start_index": int(segment.StartIndex),
+        "project.stop_index": int(segment.StopIndex),
+        "project.t_start": segment.StartIndex.to_timestamp(),
+        "project.t_stop": segment.StopIndex.to_timestamp(),
         "file.name": original_file,
         "file.relative_path": Path(original_file).relative_to(project_dir),
         "file.channel": original_channel,
@@ -68,7 +68,7 @@ def segment_to_dict(segment, project_dir: 'pathlib.Path'):
         "file.stop_index": int(block_stop),
         "file.t_start": block_start.to_file_timestamp(),
         "file.t_stop": block_stop.to_file_timestamp(),
-        "tags": json.dumps(list(segment.data.get("tags", []))),
+        "tags": json.dumps(list(segment["Tags"])),
     }
 
 
@@ -98,7 +98,7 @@ class ExportWizard(widgets.QWidget):
         self.mapped_names = {}
         for i, setting in enumerate(SETTINGS):
             self.fields[setting.config_name] = widgets.QCheckBox()
-            self.fields[setting.config_name].setCheckState(Qt.Checked)
+            self.fields[setting.config_name].setChecked(True)
             self.mapped_names[setting.config_name] = widgets.QLineEdit()
             self.mapped_names[setting.config_name].setPlaceholderText(setting.config_name)
             form_layout.addWidget(widgets.QLabel(setting.readable_name), i + 1, 0)
@@ -121,7 +121,7 @@ class ExportWizard(widgets.QWidget):
         self.cancel_button.clicked.connect(self.on_cancel)
 
     def get_form_keys(self):
-        return set([k for k, checkbox in self.fields.items() if checkbox.checkState() == Qt.Checked])
+        return set([k for k, checkbox in self.fields.items() if checkbox.isChecked()])
 
     def get_name_mappings(self):
         return {
@@ -136,7 +136,7 @@ class ExportWizard(widgets.QWidget):
         logger.info("Exporting csv with columns {}".format(list(include_keys)))
 
         segment_dicts = []
-        for segment in self.datastore["segments"]:
+        for ix, segment in self.datastore["segments"].iterrows():
             segment_row = {
                 name_map.get(k, k): v for k, v in segment_to_dict(segment, self.api.paths.project_dir).items()
                 if k in include_keys

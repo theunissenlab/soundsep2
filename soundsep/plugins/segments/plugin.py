@@ -66,7 +66,7 @@ class UMAPVisPanel(widgets.QWidget):
                 c = func_get_color(list(s_row['Tags'])[0])
             else:
                 c = 'r'
-            if len(s_row['Coords']) >= 2:
+            if s_row['Coords'] != None and len(s_row['Coords']) >= 2:
                 spots.append(dict({
                     'pos': s_row['Coords'][:2],
                     'data': ix,
@@ -511,7 +511,7 @@ class SegmentPlugin(BasePlugin):
                 seg_df['Coords'].append(list([float(x) for x in json.loads(row['Coords'])]))
             else:
                 # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
-                seg_df['Coords'].append(list([row['StopIndex'] - row['StartIndex'], np.random.rand()])) 
+                seg_df['Coords'].append(None) 
         data.apply(_read, axis=1)
         for l in ['StartIndex', 'StopIndex']:
             seg_df[l] = pd.Series(seg_df[l],dtype=object)

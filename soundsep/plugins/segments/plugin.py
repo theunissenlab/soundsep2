@@ -143,7 +143,7 @@ class SegmentPanel(widgets.QWidget):
 
     def init_ui(self):
         layout = widgets.QVBoxLayout()
-        self.table = widgets.QTableWidget(0, 5)
+        self.table = widgets.QTableWidget(0, 6)
         self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
         self.table.setColumnHidden(0, True)
@@ -153,6 +153,7 @@ class SegmentPanel(widgets.QWidget):
             "SourceName",
             "Start",
             "Stop",
+            "Duration",
             "Tags",
         ])
         #
@@ -161,6 +162,7 @@ class SegmentPanel(widgets.QWidget):
         header.setSectionResizeMode(2, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(4, widgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(5, widgets.QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
         self.setLayout(layout)
 
@@ -205,15 +207,20 @@ class SegmentPanel(widgets.QWidget):
         # TODO: this is extremely slow - we need a better way to update the table.
         self.table.setRowCount(len(segments))
         for row, segment_row in segments.iterrows():
+            start_time = segment_row['StartIndex'] / project.sampling_rate
+            stop_time = segment_row['StopIndex'] / project.sampling_rate
             self.table.setItem(row, 0, widgets.QTableWidgetItem(str(row)))
             self.table.setItem(row, 1, widgets.QTableWidgetItem(segment_row['Source'].name))
             self.table.setItem(row, 2, widgets.QTableWidgetItem(
-                hhmmss(segment_row['StartIndex'] / project.sampling_rate, dec=3)
+                hhmmss(start_time, dec=3)
             ))
             self.table.setItem(row, 3, widgets.QTableWidgetItem(
-                hhmmss(segment_row['StopIndex'] / project.sampling_rate, dec=3)
+                hhmmss(stop_time, dec=3)
             ))
             self.table.setItem(row, 4, widgets.QTableWidgetItem(
+                hhmmss(stop_time-start_time, dec=3)
+            ))
+            self.table.setItem(row, 5, widgets.QTableWidgetItem(
                 ",".join(segment_row["Tags"])
             ))
         self.table.setSortingEnabled(True)
@@ -224,15 +231,20 @@ class SegmentPanel(widgets.QWidget):
         self.table.setSortingEnabled(False)
         ind = self.table.rowCount()
         self.table.insertRow(self.table.rowCount())
+        start_time = segment['StartIndex'] / project.sampling_rate
+        stop_time = segment['StopIndex'] / project.sampling_rate
         self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(segment.name)))
         self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
         self.table.setItem(ind, 2, widgets.QTableWidgetItem(
-            hhmmss(segment['StartIndex'] / project.sampling_rate, dec=3)
+            hhmmss(start_time, dec=3)
         ))
         self.table.setItem(ind, 3, widgets.QTableWidgetItem(
-            hhmmss(segment['StopIndex'] / project.sampling_rate, dec=3)
+            hhmmss(stop_time, dec=3)
         ))
         self.table.setItem(ind, 4, widgets.QTableWidgetItem(
+            hhmmss(stop_time-start_time, dec=3)
+        ))
+        self.table.setItem(ind, 5, widgets.QTableWidgetItem(
             ",".join(segment["Tags"])
         ))
         self.table.setSortingEnabled(True)
@@ -242,14 +254,19 @@ class SegmentPanel(widgets.QWidget):
         for ix, segment in segments.iterrows():
             ind = self._find_segment_row_by_segID(ix)
             if ind is not None:
+                start_time = segment['StartIndex'] / project.sampling_rate
+                stop_time = segment['StopIndex'] / project.sampling_rate
                 self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
                 self.table.setItem(ind, 2, widgets.QTableWidgetItem(
-                    hhmmss(segment['StartIndex'] / project.sampling_rate, dec=3)
+                    hhmmss(start_time, dec=3)
                 ))
                 self.table.setItem(ind, 3, widgets.QTableWidgetItem(
-                    hhmmss(segment['StopIndex'] / project.sampling_rate, dec=3)
+                    hhmmss(stop_time, dec=3)
                 ))
                 self.table.setItem(ind, 4, widgets.QTableWidgetItem(
+                    hhmmss(stop_time-start_time, dec=3)
+                ))
+                self.table.setItem(ind, 5, widgets.QTableWidgetItem(
                     ",".join(segment["Tags"])
                 ))
         self.table.setSortingEnabled(True)
@@ -508,7 +525,10 @@ class SegmentPlugin(BasePlugin):
             else:
                 seg_df['Tags'].append(set())
             if 'Coords' in row and row['Coords']:
-                seg_df['Coords'].append(list([float(x) for x in json.loads(row['Coords'])]))
+                if json.loads(row['Coords']) == None:
+                    seg_df['Coords'].append(None)
+                else:
+                    seg_df['Coords'].append(list([float(x) for x in json.loads(row['Coords'])]))
             else:
                 # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
                 seg_df['Coords'].append(None) 

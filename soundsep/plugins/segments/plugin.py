@@ -111,7 +111,7 @@ class UMAPVisPanel(widgets.QWidget):
         segs_to_add = []
         any_changed = False
         for ix,s_row in segments.iterrows():
-            if len(s_row['Coords']) >= 2:
+            if s_row['Coords'] is not None and len(s_row['Coords']) >= 2:
                 if ix not in spot_seg_IDs:
                     segs_to_add.append(s_row)
                 else:
@@ -653,14 +653,16 @@ class SegmentPlugin(BasePlugin):
             self.create_segment(
                 selection.x0,
                 selection.x1,
-                selection.source
+                selection.source,
+                tags=set(),
+                coords=list()
             )
 
     def create_segments_batch(self, segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]]):
         """Create multiple segments, only updating the display one time at the end"""
         # With optimizations, we can create each segment individually
         for start, stop, source in segment_data:
-            self.create_segment(start, stop, source)
+            self.create_segment(start, stop, source,tags=set(),coords=list())
 
 
     def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = set(), coords: list = list()):

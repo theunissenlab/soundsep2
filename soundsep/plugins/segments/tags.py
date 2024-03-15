@@ -7,6 +7,7 @@ import pandas as pd
 from PyQt6 import QtGui
 import distinctipy
 from matplotlib.colors import to_hex, to_rgb
+import numpy as np
 
 from soundsep.core.base_plugin import BasePlugin
 

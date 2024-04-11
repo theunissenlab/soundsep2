@@ -127,7 +127,14 @@ class UMAPVisPanel(widgets.QWidget):
         for s_row in segs_to_add:
             self.add_spot(s_row, func_get_color)
         
+class TimeQTableWidgetItem(widgets.QTableWidgetItem):
+    def __init__(self, time: float):
+        """A QTableWidgetItem that sorts by time"""
+        super().__init__(hhmmss(time, dec=3))
+        self.time = time
 
+    def __lt__(self, other):
+        return self.time < other.time
 
 class SegmentPanel(widgets.QWidget):
 
@@ -206,23 +213,19 @@ class SegmentPanel(widgets.QWidget):
         # TODO Store indices
         # TODO: this is extremely slow - we need a better way to update the table.
         self.table.setRowCount(len(segments))
+        ix = 0
         for row, segment_row in segments.iterrows():
             start_time = segment_row['StartIndex'] / project.sampling_rate
             stop_time = segment_row['StopIndex'] / project.sampling_rate
-            self.table.setItem(row, 0, widgets.QTableWidgetItem(str(row)))
-            self.table.setItem(row, 1, widgets.QTableWidgetItem(segment_row['Source'].name))
-            self.table.setItem(row, 2, widgets.QTableWidgetItem(
-                hhmmss(start_time, dec=3)
-            ))
-            self.table.setItem(row, 3, widgets.QTableWidgetItem(
-                hhmmss(stop_time, dec=3)
-            ))
-            self.table.setItem(row, 4, widgets.QTableWidgetItem(
-                hhmmss(stop_time-start_time, dec=3)
-            ))
-            self.table.setItem(row, 5, widgets.QTableWidgetItem(
+            self.table.setItem(ix, 0, widgets.QTableWidgetItem(str(row)))
+            self.table.setItem(ix, 1, widgets.QTableWidgetItem(segment_row['Source'].name))
+            self.table.setItem(ix, 2, TimeQTableWidgetItem(start_time))
+            self.table.setItem(ix, 3, TimeQTableWidgetItem(stop_time))
+            self.table.setItem(ix, 4, TimeQTableWidgetItem(stop_time-start_time))
+            self.table.setItem(ix, 5, widgets.QTableWidgetItem(
                 ",".join(segment_row["Tags"])
             ))
+            ix += 1
         self.table.setSortingEnabled(True)
         # sort by start time
         self.table.sortByColumn(2, Qt.SortOrder.AscendingOrder)
@@ -235,15 +238,9 @@ class SegmentPanel(widgets.QWidget):
         stop_time = segment['StopIndex'] / project.sampling_rate
         self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(segment.name)))
         self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
-        self.table.setItem(ind, 2, widgets.QTableWidgetItem(
-            hhmmss(start_time, dec=3)
-        ))
-        self.table.setItem(ind, 3, widgets.QTableWidgetItem(
-            hhmmss(stop_time, dec=3)
-        ))
-        self.table.setItem(ind, 4, widgets.QTableWidgetItem(
-            hhmmss(stop_time-start_time, dec=3)
-        ))
+        self.table.setItem(ind, 2, TimeQTableWidgetItem(start_time))
+        self.table.setItem(ind, 3, TimeQTableWidgetItem(stop_time))
+        self.table.setItem(ind, 4, TimeQTableWidgetItem(stop_time-start_time))
         self.table.setItem(ind, 5, widgets.QTableWidgetItem(
             ",".join(segment["Tags"])
         ))
@@ -257,15 +254,9 @@ class SegmentPanel(widgets.QWidget):
                 start_time = segment['StartIndex'] / project.sampling_rate
                 stop_time = segment['StopIndex'] / project.sampling_rate
                 self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
-                self.table.setItem(ind, 2, widgets.QTableWidgetItem(
-                    hhmmss(start_time, dec=3)
-                ))
-                self.table.setItem(ind, 3, widgets.QTableWidgetItem(
-                    hhmmss(stop_time, dec=3)
-                ))
-                self.table.setItem(ind, 4, widgets.QTableWidgetItem(
-                    hhmmss(stop_time-start_time, dec=3)
-                ))
+                self.table.setItem(ix, 2, TimeQTableWidgetItem(start_time))
+                self.table.setItem(ix, 3, TimeQTableWidgetItem(stop_time))
+                self.table.setItem(ix, 4, TimeQTableWidgetItem(stop_time-start_time))
                 self.table.setItem(ind, 5, widgets.QTableWidgetItem(
                     ",".join(segment["Tags"])
                 ))
@@ -469,7 +460,8 @@ class SegmentPlugin(BasePlugin):
                 "StartIndex": [],
                 "StopIndex": [],
                 "Tags": [],
-                "Coords": []
+                "Coords": [],
+                "SegmentID": []
             }))
             return datastore["segments"]
 
@@ -479,7 +471,7 @@ class SegmentPlugin(BasePlugin):
         if not isinstance(value, pd.DataFrame):
             raise ValueError("Segmentation datastore must be a pandas dataframe")
         # check that it has the requisite columns
-        if not all([c in value.columns for c in ["Source", "StartIndex", "StopIndex", "Tags", "Coords"]]):
+        if not all([c in value.columns for c in ["Source", "StartIndex", "StopIndex", "Tags", "Coords", "SegmentID"]]):
             raise ValueError("Segmentation datastore must have columns SourceName, SourceChannel, StartIndex, StopIndex, Tags, Coords")
         self._datastore["segments"] = value
 
@@ -496,7 +488,8 @@ class SegmentPlugin(BasePlugin):
                 "StartIndex": [],
                 "StopIndex": [],
                 "Tags": [],
-                "Coords": []
+                "Coords": [],
+                "SegmentID": []
             })
         
         source_lookup = set([
@@ -532,13 +525,18 @@ class SegmentPlugin(BasePlugin):
             else:
                 # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
                 seg_df['Coords'].append(None) 
+            if 'SegmentID' in row:
+                seg_df['SegmentID'].append(row['SegmentID'])
+            else:
+                # else well just count up
+                seg_df['SegmentID'].append(len(seg_df['SegmentID']))
         data.apply(_read, axis=1)
         for l in ['StartIndex', 'StopIndex']:
-            seg_df[l] = pd.Series(seg_df[l],dtype=object)
+            seg_df[l] = pd.Series(seg_df[l],index=seg_df['SegmentID'],dtype=object)
 
-        self._segmentation_datastore = pd.DataFrame(seg_df)
-        # Store the len of the segment dataframe so we can add new segments with the next ID
-        self._next_seg_id = len(self._segmentation_datastore.index)
+        self._segmentation_datastore = pd.DataFrame(seg_df,index=seg_df['SegmentID'])
+        # Store the max of the segmentIDs so we can increment
+        self._next_seg_id = max(self._segmentation_datastore.index)+1
         #self._segmentation_datastore.sort()
 
     def on_project_data_loaded(self):
@@ -561,7 +559,8 @@ class SegmentPlugin(BasePlugin):
             'StartIndex': self._segmentation_datastore['StartIndex'].apply(lambda x: int(x)),
             'StopIndex': self._segmentation_datastore['StopIndex'].apply(lambda x: int(x)),
             'Tags': self._segmentation_datastore['Tags'].apply(lambda x: json.dumps(list(x))),
-            'Coords': self._segmentation_datastore['Coords'].apply(lambda x: json.dumps(x))
+            'Coords': self._segmentation_datastore['Coords'].apply(lambda x: json.dumps(x)),
+            'SegmentID': self._segmentation_datastore.index
         })
         pd.DataFrame(out_csv_df).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
         self._needs_saving = False
@@ -667,14 +666,9 @@ class SegmentPlugin(BasePlugin):
 
     def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = set(), coords: list = list()):
         self.delete_segments_between(start, stop, source)
-        new_segment = dict({
-            "StartIndex": start,
-            "StopIndex": stop,
-            "Source": source,
-            "Tags": tags,
-            "Coords": coords
-        })
+
         segID = self._next_seg_id
+        assert(segID not in self._segmentation_datastore.index)
         self._next_seg_id += 1
         self._segmentation_datastore.loc[segID] = pd.Series()
         self._segmentation_datastore.at[segID,'StartIndex'] = start

@@ -10,8 +10,8 @@ from PyQt6 import QtWidgets as widgets
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from soundsep.config.defaults import DEFAULTS
-from soundsep.core.io import group_files_by_pattern, guess_filename_pattern, search_for_wavs
-from soundsep.core.models import AudioFile, Block
+from soundsep.core.io import group_files_by_pattern, guess_filename_pattern, search_for_audio_files
+from soundsep.core.models import AudioFile, NWBFile, Block
 from soundsep.ui.project_creator import Ui_ProjectCreator
 
 
@@ -107,7 +107,7 @@ class ProjectCreator(widgets.QWidget):
         #options = widgets.QFileDialog.options()
         path = widgets.QFileDialog.getExistingDirectory(
             self,
-            "Select audio folder containing WAV files",
+            "Select audio folder containing WAV or NWB files",
             "."
             #options=options
         )
@@ -153,14 +153,18 @@ class ProjectCreator(widgets.QWidget):
 
             base_path = Path(base_path)
             filelist = []
-            for f in search_for_wavs(base_path, recursive=recursive):
+            for f in search_for_audio_files(base_path, recursive=recursive):
                 filelist.append(str(f))
 
-            # filter out any wav files that didn't work
+            # filter out any audio files that didn't work
             checked_filelist = []
             for f in filelist:
                 try:
-                    AudioFile(f)
+                    # Create appropriate file object based on extension
+                    if Path(f).suffix.lower() == ".nwb":
+                        NWBFile(f)
+                    else:
+                        AudioFile(f)
                 except Exception as e:
                     errors.append((str(f), str(e)))
                 else:
@@ -227,14 +231,18 @@ class ProjectCreator(widgets.QWidget):
         if base_path:
             base_path = Path(base_path)
             filelist = []
-            for f in search_for_wavs(base_path, recursive=recursive):
+            for f in search_for_audio_files(base_path, recursive=recursive):
                 filelist.append(f)
 
             audio_files = []
             errors = []
             for f in filelist:
                 try:
-                    audio_files.append(AudioFile(f))
+                    # Create appropriate file object based on extension
+                    if f.suffix.lower() == ".nwb":
+                        audio_files.append(NWBFile(f))
+                    else:
+                        audio_files.append(AudioFile(f))
                 except Exception as e:
                     errors.append((str(f), str(e)))
 
@@ -256,7 +264,7 @@ class ProjectCreator(widgets.QWidget):
         if base_path:
             base_path = Path(base_path)
             filelist = []
-            for f in search_for_wavs(base_path, recursive=recursive):
+            for f in search_for_audio_files(base_path, recursive=recursive):
                 filelist.append(f)
 
         if not len(filelist):

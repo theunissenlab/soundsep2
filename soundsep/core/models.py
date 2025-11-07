@@ -13,6 +13,12 @@ import bisect
 import numpy as np
 import soundfile
 
+try:
+    from pynwb import NWBHDF5IO
+    HAS_NWB = True
+except ImportError:
+    HAS_NWB = False
+
 
 class AudioFile:
     """Container for a audio file on disk
@@ -131,6 +137,180 @@ class AudioFile:
 
         self._file.seek(read_start)
         return self._file.read(read_stop - read_start, dtype=np.float32, always_2d=True)
+
+
+class NWBFile:
+    """Container for a NWB file on disk with microphone data
+    
+    This class provides the same interface as AudioFile but reads from NWB files.
+    It expects the microphone data to be stored in the acquisition group.
+    
+    Arguments
+    ---------
+    path : str
+        Full path to the NWB file on disk
+    microphone_name : str, optional
+        Name of the microphone TimeSeries in the NWB file (default: "microphone")
+    """
+    
+    def __init__(self, path, microphone_name="audio"):
+        if not HAS_NWB:
+            raise ImportError("pynwb is required to read NWB files. Install with: pip install pynwb")
+        
+        self._path = path
+        self._microphone_name = microphone_name
+        self._max_frame = None
+        self._io = None
+        self._nwbfile = None
+        self._microphone_data = None
+        
+        # Read metadata from the file
+        with NWBHDF5IO(path, 'r') as io:
+            nwbfile = io.read()
+            
+            # Try to find microphone data in acquisition
+            if microphone_name in nwbfile.acquisition:
+                mic_series = nwbfile.acquisition[microphone_name]
+            else:
+                # Try to find any TimeSeries that might be microphone data
+                acquisition_names = list(nwbfile.acquisition.keys())
+                if len(acquisition_names) > 0:
+                    mic_series = nwbfile.acquisition[acquisition_names[0]]
+                    warnings.warn(f"Microphone '{microphone_name}' not found. Using '{acquisition_names[0]}' instead.")
+                else:
+                    raise ValueError(f"No acquisition data found in NWB file {path}")
+            
+            self._sampling_rate = int(mic_series.rate) if hasattr(mic_series, 'rate') else int(mic_series.starting_time)
+            
+            # Get data shape
+            data_shape = mic_series.data.shape
+            self._actual_frames = data_shape[0]
+            
+            # Handle channels - NWB data might be 1D (single channel) or 2D (multiple channels)
+            if len(data_shape) == 1:
+                self._channels = 1
+            else:
+                self._channels = data_shape[1]
+    
+    def is_open(self):
+        return self._io is not None and self._nwbfile is not None
+    
+    def is_closed(self):
+        return self._io is None or self._nwbfile is None
+    
+    def open(self):
+        if not self.is_open():
+            self._io = NWBHDF5IO(self._path, 'r')
+            self._nwbfile = self._io.read()
+            
+            # Get reference to microphone data
+            if self._microphone_name in self._nwbfile.acquisition:
+                mic_series = self._nwbfile.acquisition[self._microphone_name]
+            else:
+                acquisition_names = list(self._nwbfile.acquisition.keys())
+                mic_series = self._nwbfile.acquisition[acquisition_names[0]]
+            
+            self._microphone_data = mic_series.data
+    
+    def close(self):
+        if self.is_open():
+            self._io.close()
+            self._io = None
+            self._nwbfile = None
+            self._microphone_data = None
+    
+    def __repr__(self):
+        return "<NWBFile: {}; {} Hz; {} Ch; {} frames>".format(
+            os.path.basename(self._path),
+            self.sampling_rate,
+            self.channels,
+            self.frames
+        )
+    
+    def set_max_frame(self, frames):
+        """Set the maximum frame to read from the file
+        
+        This can be used to force multiple NWBFiles to behave as if they have the
+        same duration. Reads beyond the given frame will be cut off.
+        
+        Arguments
+        ---------
+        frames : int, optional
+            Truncate reads from this file to force_frames (treat this as the length
+            of the file rather than its actual length).
+        """
+        if not isinstance(frames, int) or frames <= 0:
+            raise ValueError("max_frame must be a positive integer or None: got {}".format(frames))
+        if frames > self._actual_frames:
+            raise RuntimeError("Cannot force NWBFile to use more frames than on disk")
+        
+        self._max_frame = frames
+    
+    def clear_max_frame(self):
+        self._max_frame = None
+    
+    def __eq__(self, other_file) -> bool:
+        if isinstance(other_file, NWBFile):
+            return self.path == other_file.path
+        else:
+            raise ValueError("Can only compare NWBFile equality with other NWBFiles")
+    
+    def __hash__(self):
+        return id(self)
+    
+    @property
+    def path(self) -> str:
+        """str: Full path to NWB file"""
+        return self._path
+    
+    @property
+    def sampling_rate(self) -> int:
+        """int: Sampling rate of the microphone data"""
+        return self._sampling_rate
+    
+    @property
+    def frames(self) -> int:
+        """int: Number of readable samples in NWB file"""
+        return self._max_frame or self._actual_frames
+    
+    @property
+    def channels(self) -> int:
+        """int: Number of channels in NWB file"""
+        return self._channels
+    
+    def read(self, i0: int, i1: int) -> np.ndarray:
+        """Read samples from i0 to i1
+        
+        Arguments
+        ---------
+        i0 : int
+            Starting index to read from (inclusive)
+        i1 : int
+            Ending index to read until (exclusive)
+        
+        Returns
+        -------
+        data : ndarray
+            A 2D array of shape (frames: int, channels: int) containing data from the requested channel.
+            The first dimension is the sample index, the second dimension is the channel axis.
+        """
+        read_start = i0
+        read_stop = min(i1, self.frames)
+        
+        if self.is_closed():
+            self.open()
+        
+        # Read data from NWB file
+        if self._channels == 1:
+            # Single channel - reshape to 2D
+            data = self._microphone_data[read_start:read_stop]
+            data = data.reshape(-1, 1)
+        else:
+            # Multiple channels
+            data = self._microphone_data[read_start:read_stop, :]
+        
+        # Convert to float32 if needed
+        return data.astype(np.float32)
 
 
 class Block:

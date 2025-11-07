@@ -12,7 +12,7 @@ from typing import List
 import parse
 
 from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
-from soundsep.core.models import AudioFile, Block, Project
+from soundsep.core.models import AudioFile, NWBFile, Block, Project
 
 
 def open_project(path: Path):
@@ -65,11 +65,11 @@ def load_project(
         channel_keys: List[str] = None,
         recursive: bool = False,
     ) -> Project:
-    """Load a single WAV file or a directory of WAV files
+    """Load a single audio file or a directory of audio files (WAV or NWB)
 
     Example
     -------
-    To load WAV files from a folder that looks like this::
+    To load audio files from a folder that looks like this::
 
         ./
           data/
@@ -90,8 +90,8 @@ def load_project(
     Arguments
     ---------
     directory : str
-        The directory to search for WAV files in. If the given path
-        points to a WAV file, create a project containing a single file.
+        The directory to search for audio files (WAV or NWB) in. If the given path
+        points to an audio file, create a project containing a single file.
     filename_pattern : str
         A filename pattern with curly bracket "{}" variables. Each set of
         brackets can contain a variable name that can be used to group files as
@@ -111,7 +111,7 @@ def load_project(
         channels.
     recursive : bool
         A flag to indicate if the function should search through all subdirectories
-        of directory for wav files.
+        of directory for audio files.
 
     Returns
     -------
@@ -119,13 +119,13 @@ def load_project(
         A soundsep.core.models.Project instance linking all Blocks found that match
         the filename_pattern provided
     """
-    if not directory.is_dir() and directory.suffix == ".wav":
+    if not directory.is_dir() and directory.suffix in [".wav", ".nwb"]:
         filelist = [directory]
     else:
-        filelist = search_for_wavs(directory, recursive=recursive)
+        filelist = search_for_audio_files(directory, recursive=recursive)
 
     if filename_pattern is None and len(filelist) != 1:
-        raise ValueError("Expected to find one .wav file in {}, found {}".format(directory, len(filelist)))
+        raise ValueError("Expected to find one audio file in {}, found {}".format(directory, len(filelist)))
 
     return _load_project_by_blocks(
             directory,
@@ -141,8 +141,36 @@ class LoadProjectError(Exception):
     pass
 
 
-def search_for_wavs(base_directory: Path, recursive: bool = False) -> Path:
+def search_for_audio_files(base_directory: Path, recursive: bool = False) -> List[Path]:
+    """Look for audio files (WAV and NWB) in a directory with option to search all subdirectories
+
+    Arguments
+    ---------
+    base_directory : pathlib.Path
+        top level directory to start search from
+    recursive : bool (default False)
+        if set, will search for audio files recursively through the directory structure.
+        otherwise, will only look for audio files directly in base_directory
+
+    Returns
+    -------
+    filelist : List[pathlib.Path]
+        A list of **absolute paths** to audio files relative to base_directory
+    """
+    if recursive:
+        wav_files = list(base_directory.rglob("*.wav"))
+        nwb_files = list(base_directory.rglob("*.nwb"))
+        return sorted(wav_files + nwb_files)
+    else:
+        wav_files = list(base_directory.glob("*.wav"))
+        nwb_files = list(base_directory.glob("*.nwb"))
+        return sorted(wav_files + nwb_files)
+
+
+def search_for_wavs(base_directory: Path, recursive: bool = False) -> List[Path]:
     """Look for WAV files in a directory with option to search all subdirectories
+    
+    Deprecated: Use search_for_audio_files instead.
 
     Arguments
     ---------
@@ -174,10 +202,10 @@ def group_files_by_pattern(
 
     Returns
     -------
-    block_groups : List[Tuple[str, List[AudioFile]]]
-        Yields tuples of the form (str, List[AudioFile]), where the
+    block_groups : List[Tuple[str, List[Union[AudioFile, NWBFile]]]]
+        Yields tuples of the form (str, List[AudioFile/NWBFile]), where the
         first element is the block_id parsed from the list of audio
-        files in the second element. The AudioFiles in the second
+        files in the second element. The AudioFiles/NWBFiles in the second
         element are sorted according to the parsed channel_ids
 
         These potential blocks have not been validated for consistency
@@ -217,8 +245,14 @@ def group_files_by_pattern(
             if block_id is None and channel_id is None:
                 block_id = str(path)
 
+            # Create appropriate file object based on extension
+            if path.suffix.lower() == ".nwb":
+                file_obj = NWBFile(path)
+            else:
+                file_obj = AudioFile(path)
+
             parsed_wav_files.append({
-                "wav_file": AudioFile(path),
+                "wav_file": file_obj,
                 "block_id": block_id,
                 "channel_id": channel_id,
             })

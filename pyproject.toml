@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soundsep"
+version = "0.2.0"
+description = "GUI for manual separation of audio data on multiple mic channels"
+readme = "README.md"
+authors = [
+    {name = "Kevin Yu", email = "thekevinyu@gmail.com"}
+]
+keywords = [
+    "spectrogram",
+    "stft",
+    "audio",
+    "visualization",
+    "sound",
+    "source-separation",
+    "segmentation",
+    "labeling",
+    "annotation"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.0",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "click",
+    "distinctipy",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "PyQt6",
+    "pyqtgraph",
+    "qasync",
+    "scipy",
+    "SoundFile",
+    "pyyaml",
+    "parse",
+    "torch",
+    "torchaudio",
+]
+
+[project.urls]
+Homepage = "https://github.com/kevinyu/soundsep2"
+Repository = "https://github.com/kevinyu/soundsep2"
+
+[project.scripts]
+sep = "manage:cli"
+
+[tool.setuptools]
+zip-safe = false
+include-package-data = true
+py-modules = ["manage"]
+
+[tool.setuptools.packages.find]
+exclude = ["examples*", "test*"]

@@ -12,3 +12,5 @@ pyyaml
 parse
 torch
 torchaudio
+pynwb
+hdmf

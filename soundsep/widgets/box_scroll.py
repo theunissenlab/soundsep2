@@ -29,6 +29,9 @@ class ProjectScrollbar(pg.PlotWidget):
         self.setXRange(0, project.frames, padding=0.0)
         self.setYRange(0, 1, padding=0.0)
 
+        # Store interval rectangles
+        self.interval_rects = []
+
         self.rect = pg.RectROI(0, 0, 1, 1,
             movable=True,
             pen=pg.mkPen("r", width=4),
@@ -75,3 +78,36 @@ class ProjectScrollbar(pg.PlotWidget):
         
         # Let the parent handle the event too
         super().mouseDoubleClickEvent(event)
+
+    def clear_intervals(self):
+        """Clear all interval rectangles from the scrollbar"""
+        for rect_item in self.interval_rects:
+            self.removeItem(rect_item)
+        self.interval_rects = []
+
+    def add_intervals(self, intervals_data):
+        """Add interval rectangles to the scrollbar
+        
+        Arguments
+        ---------
+        intervals_data : list of tuples
+            List of (start_time_seconds, stop_time_seconds) tuples
+        """
+        self.clear_intervals()
+        
+        sampling_rate = self.project.sampling_rate
+        
+        for start_time, stop_time in intervals_data:
+            # Convert time in seconds to project frames
+            start_frame = int(start_time * sampling_rate)
+            stop_frame = int(stop_time * sampling_rate)
+            width = stop_frame - start_frame
+            
+            # Create a rectangle for this interval
+            # Position it below the main scrollbar rect (y=0.0 to y=0.05)
+            rect_item = pg.QtWidgets.QGraphicsRectItem(start_frame, 0.0, width, 0.5)
+            rect_item.setBrush(pg.mkBrush(100, 150, 255, 150))  # Semi-transparent blue
+            rect_item.setPen(pg.mkPen(None))  # No border
+            
+            self.addItem(rect_item)
+            self.interval_rects.append(rect_item)

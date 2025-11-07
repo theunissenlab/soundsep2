@@ -127,6 +127,30 @@ All operations that work with WAV files also work with NWB files:
 - Playback (through the GUI)
 - Export functionality
 
+### NWB Intervals Plugin
+
+The NWB Intervals Plugin allows you to view and navigate intervals stored in NWB files:
+
+**Features:**
+- Automatically detects all NWB files in your project
+- Lists all available interval types (from `nwbfile.intervals.keys()`)
+- Displays a table of intervals including:
+  - Source file
+  - Start time
+  - Stop time
+  - Duration
+  - Labels (if available)
+- Double-click any interval to jump to its start time in the waveform view
+
+**Usage:**
+1. Load a project containing NWB files with interval data
+2. Open the "NWB Intervals" panel from the plugin toolbox
+3. Select an interval type from the dropdown menu
+4. Browse the table of intervals
+5. Double-click any row to navigate to that interval's start time
+
+**Note:** The plugin requires NWB files to have intervals stored in the standard `intervals` group.
+
 ## Notes
 
 - NWB files are read using the HDF5 backend, which may be slower than WAV files for random access

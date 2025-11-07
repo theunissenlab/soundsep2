@@ -34,6 +34,7 @@ class NWBIntervalsPanel(widgets.QWidget):
     """Panel for displaying and navigating NWB file intervals"""
 
     intervalSelected = pyqtSignal(float)  # Emits start time when interval is clicked
+    intervalsChanged = pyqtSignal(list)  # Emits list of (start, stop) tuples when intervals change
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -199,9 +200,12 @@ class NWBIntervalsPanel(widgets.QWidget):
         self.table.setRowCount(0)
         
         if not self.current_interval_type or not HAS_NWB:
+            self.intervalsChanged.emit([])  # Clear intervals from scrollbar
             return
         
         row = 0
+        all_intervals = []  # Collect all intervals for the scrollbar
+        
         for nwb_file in self.nwb_files:
             try:
                 with NWBHDF5IO(nwb_file.path, 'r') as io:
@@ -218,6 +222,10 @@ class NWBIntervalsPanel(widgets.QWidget):
                     # Read intervals data
                     start_times = intervals_table.start_time[:]
                     stop_times = intervals_table.stop_time[:]
+                    
+                    # Add to the list for scrollbar visualization
+                    for i in range(len(start_times)):
+                        all_intervals.append((start_times[i], stop_times[i]))
                     
                     # Try to get label data from selected column
                     labels = None
@@ -268,9 +276,11 @@ class NWBIntervalsPanel(widgets.QWidget):
         if row == 0:
             self.info_label.setText(f"No intervals of type '{self.current_interval_type}' found")
             self.info_label.setStyleSheet("color: orange;")
+            self.intervalsChanged.emit([])  # Clear intervals from scrollbar
         else:
             self.info_label.setText(f"Showing {row} interval(s) of type '{self.current_interval_type}'")
             self.info_label.setStyleSheet("color: green;")
+            self.intervalsChanged.emit(all_intervals)  # Update scrollbar with intervals
 
     def on_cell_clicked(self, row, column):
         """Called when user double-clicks a cell - navigate to interval start or stop time"""
@@ -307,6 +317,7 @@ class NWBIntervalsPlugin(BasePlugin):
 
     def connect_events(self):
         self.panel.intervalSelected.connect(self.on_interval_selected)
+        self.panel.intervalsChanged.connect(self.on_intervals_changed)
         self.api.projectLoaded.connect(self.on_project_ready)
 
     def on_project_ready(self):
@@ -358,6 +369,14 @@ class NWBIntervalsPlugin(BasePlugin):
             logger.error(f"Error navigating to interval: {e}")
             self.panel.info_label.setText(f"Error: {str(e)}")
             self.panel.info_label.setStyleSheet("color: red;")
+
+    def on_intervals_changed(self, intervals_data):
+        """Update the scrollbar with interval rectangles"""
+        try:
+            if hasattr(self.gui, 'scrollbar'):
+                self.gui.scrollbar.add_intervals(intervals_data)
+        except Exception as e:
+            logger.error(f"Error updating scrollbar with intervals: {e}")
 
     def plugin_panel_widget(self):
         """Return the panel widget to be displayed in the plugin toolbox"""

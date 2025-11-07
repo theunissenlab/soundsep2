@@ -14,6 +14,7 @@ class ProjectScrollbar(pg.PlotWidget):
 
     def __init__(self, project, parent=None):
         super().__init__(parent=parent)
+        self.project = project
         self.setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
         self.hideAxis("left")
@@ -48,3 +49,29 @@ class ProjectScrollbar(pg.PlotWidget):
     def set_current_range(self, x0, x1):
         self.rect.setSize((x1 - x0, 0.8), update=False)
         self.rect.setPos((x0, 0.1), update=False)
+
+    def mouseDoubleClickEvent(self, event):
+        """Handle double-click to navigate to clicked position"""
+        # Get the mouse position in the scene - convert QPoint to QPointF
+        from PyQt6.QtCore import QPointF
+        pos = QPointF(event.pos())
+        scene_pos = self.plotItem.vb.mapSceneToView(pos)
+        clicked_x = scene_pos.x()
+        
+        # Get current window size
+        current_size = self.rect.size().x()
+        
+        # Calculate new position centered on clicked position
+        new_x0 = max(0, clicked_x - current_size / 2)
+        new_x1 = new_x0 + current_size
+        
+        # Make sure we don't go past the end
+        if new_x1 > self.project.frames:
+            new_x1 = self.project.frames
+            new_x0 = max(0, new_x1 - current_size)
+        
+        # Update the rect position
+        self.rect.setPos((new_x0, 0.1), update=True)
+        
+        # Let the parent handle the event too
+        super().mouseDoubleClickEvent(event)

@@ -430,7 +430,7 @@ class SegmentPlugin(BasePlugin):
             # add some padding
             # TODO BUG HERE: IF ALL SEGMENTS ARE SELECTED, then this errors
             duration = max(stop - start, ws_stop - ws_start)
-            start.value = (start+stop) // 2
+            #start.value = (start+stop) // 2
             new_start = self.api.create_stftindex(( start + stop - duration )//2)
             new_stop = self.api.create_stftindex(( start + stop + duration )//2)
             start = new_start

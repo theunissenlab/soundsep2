@@ -22,7 +22,7 @@ from soundsep.core.stft.cache import StftParameters
 from soundsep.config.defaults import DEFAULTS
 from soundsep.config.paths import ProjectPathFinder
 from soundsep.core.base_plugin import BasePlugin
-from soundsep.core.models import StftIndex, Source
+from soundsep.core.models import StftIndex, Source, NWBFile
 from soundsep.core.io import load_project
 from soundsep.settings import (
     QSETTINGS_APP,
@@ -58,6 +58,10 @@ class SoundsepApp(QObject):
         self.api = Api(self)
         self.paths = ProjectPathFinder(project_dir)
 
+        # NWB mode flags - set by from_nwb_file()
+        self._nwb_mode = False
+        self._nwb_path = None
+
         if not self.paths.config.exists():
             raise ConfigDoesNotExist
 
@@ -85,6 +89,79 @@ class SoundsepApp(QObject):
         )
 
         self.qsettings.setValue(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"], str(project_dir))
+
+    @classmethod
+    def from_nwb_file(cls, nwb_path: 'pathlib.Path') -> 'SoundsepApp':
+        """Create a SoundsepApp directly from an NWB file without a config.
+
+        This allows opening NWB files directly without creating a project first.
+        App data (sources, etc.) is stored directly in the NWB file's scratch group.
+
+        Arguments
+        ---------
+        nwb_path : pathlib.Path
+            Path to the NWB file
+
+        Returns
+        -------
+        SoundsepApp
+            A configured SoundsepApp instance
+        """
+        nwb_path = Path(nwb_path)
+        if not nwb_path.exists():
+            raise FileNotFoundError(f"NWB file not found: {nwb_path}")
+        if nwb_path.suffix.lower() != ".nwb":
+            raise ValueError(f"Expected .nwb file, got: {nwb_path}")
+
+        # Use the NWB file's parent directory for exports and other path-based operations
+        project_dir = nwb_path.parent
+
+        # Create the app instance using __new__ and manual initialization
+        # We can't use __init__ because it requires a config file
+        app = cls.__new__(cls)
+        QObject.__init__(app)
+
+        app.project_dir = project_dir
+        app.api = Api(app)
+        app.paths = ProjectPathFinder(project_dir)
+
+        # NWB mode - store data in the NWB file itself
+        app._nwb_mode = True
+        app._nwb_path = nwb_path
+
+        # Create config from defaults, pointing to the NWB file
+        app.config = {
+            **DEFAULTS,
+            "audio_directory": str(nwb_path.parent),
+            "filename_pattern": nwb_path.name,
+            "block_keys": None,
+            "channel_keys": None,
+            "recursive_search": False,
+        }
+
+        # Load project directly from the NWB file
+        app.project = load_project(
+            nwb_path,  # Pass the file directly
+            filename_pattern=None,
+            block_keys=None,
+            channel_keys=None,
+            recursive=False
+        )
+
+        app.plugins = {}
+        app.state = {}
+        app.services = {}
+        app.datastore = {}
+
+        app.qsettings = QSettings(
+            QSETTINGS_ORG,
+            QSETTINGS_APP,
+        )
+
+        # Store the NWB file path for reopening
+        app.qsettings.setValue(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"], str(nwb_path))
+
+        return app
 
     @staticmethod
     def read_config(path: 'pathlib.Path') -> dict:
@@ -150,9 +227,24 @@ class SoundsepApp(QObject):
         self.services["stft"].close()
 
     def load_sources(self) -> SourceService:
-        """Read sources from a save file"""
+        """Read sources from a save file or NWB scratch group"""
         sources = SourceService(self.project)
-        if self.paths.sources_file.exists():
+
+        if self._nwb_mode and self._nwb_path:
+            # Load from NWB file scratch group
+            try:
+                source_data = NWBFile.read_soundsep_sources(str(self._nwb_path))
+                for row in source_data:
+                    sources.append(Source(
+                        self.project,
+                        str(row["SourceName"]),
+                        int(row["SourceChannel"]),
+                        int(row["SourceIndex"]),
+                    ))
+            except Exception as e:
+                logger.warning(f"Could not load sources from NWB file: {e}")
+        elif self.paths.sources_file.exists():
+            # Load from CSV file
             data = pd.read_csv(self.paths.sources_file)
             for i in range(len(data)):
                 row = data.iloc[i]
@@ -165,13 +257,26 @@ class SoundsepApp(QObject):
         return sources
 
     def save_sources(self):
-        """Save sources to a csv file"""
-        self.paths.create_folders()
-        data = pd.DataFrame([
+        """Save sources to a csv file or NWB scratch group"""
+        source_data = [
             {"SourceName": s.name, "SourceChannel": s.channel, "SourceIndex": s.index}
             for s in self.datastore["sources"]
-        ])
-        data.to_csv(self.paths.sources_file)
+        ]
+
+        if self._nwb_mode and self._nwb_path:
+            # Save to NWB file scratch group
+            try:
+                NWBFile.write_soundsep_sources(str(self._nwb_path), source_data)
+                logger.info(f"Saved {len(source_data)} sources to NWB file")
+            except Exception as e:
+                logger.error(f"Could not save sources to NWB file: {e}")
+                raise
+        else:
+            # Save to CSV file
+            self.paths.create_folders()
+            data = pd.DataFrame(source_data)
+            data.to_csv(self.paths.sources_file)
+
         self.datastore["sources"].set_needs_saving(False)
 
     def panic_save(self, e: Exception):

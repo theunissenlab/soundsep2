@@ -25,6 +25,7 @@ class Splash(widgets.QWidget):
     class Option(Enum):
         CREATE_PROJECT = "Create Project"
         OPEN_PROJECT = "Open Project"
+        OPEN_NWB_FILE = "Open NWB File"
         REOPEN_PROJECT = "Reopen Project"
         DEBUG_PROJECT = "Debug Project"
         QUIT = "Quit"
@@ -46,7 +47,6 @@ class Splash(widgets.QWidget):
 
         # TODO: maybe this is too much
         # self.setWindowFlags(Qt.FramelessWindowHint)
-        self.setFixedSize(self.sizeHint())
 
         self.ui.debugProjectButton.setVisible(False)
 
@@ -56,9 +56,38 @@ class Splash(widgets.QWidget):
             if os.path.exists(reopen_path):
                 self.ui.reopenProjectButton.setVisible(True)
 
+        # Add "Open NWB File" button dynamically
+        self.openNwbButton = widgets.QPushButton(self.ui.widget_2)
+        font = QtGui.QFont()
+        font.setFamily("Courier New")
+        font.setPointSize(20)
+        font.setBold(False)
+        self.openNwbButton.setFont(font)
+        self.openNwbButton.setStyleSheet("""QPushButton {
+    color: rgb(73, 73, 181);
+    font-size: 20pt;
+    padding: 10px;
+    border: 0;
+}
+
+QPushButton:hover {
+    color: rgb(0, 8, 127);
+    font-weight: bold;
+}
+""")
+        self.openNwbButton.setText("Open NWB file...")
+        self.openNwbButton.setToolTip("Open an NWB file directly without creating a project")
+        # Insert after openProjectButton
+        layout = self.ui.verticalLayout_2
+        index = layout.indexOf(self.ui.openProjectButton) + 1
+        layout.insertWidget(index, self.openNwbButton)
+
+        self.setFixedSize(self.sizeHint())
+
     def connect_events(self):
         self.ui.createProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.CREATE_PROJECT))
         self.ui.openProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.OPEN_PROJECT))
+        self.openNwbButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.OPEN_NWB_FILE))
         self.ui.reopenProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.REOPEN_PROJECT))
         self.ui.debugProjectButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.DEBUG_PROJECT))
         self.ui.exitButton.clicked.connect(partial(self.choiceMade.emit, Splash.Option.QUIT))
@@ -117,11 +146,18 @@ class Launcher(QObject):
             self.current_window.openProject.connect(self.open_project_directory)
             self.current_window.openProjectCanceled.connect(self.show_splash)
             self.current_window.show()
+        elif choice == Splash.Option.OPEN_NWB_FILE:
+            self._open_nwb_file_dialog()
         elif choice == Splash.Option.REOPEN_PROJECT:
             if self.qsettings.contains(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]):
                 reopen_path = str(self.qsettings.value(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]))
                 if os.path.exists(reopen_path):
-                    self.open_project_directory(Path(reopen_path))
+                    reopen_path = Path(reopen_path)
+                    # Check if it's an NWB file or a project directory
+                    if reopen_path.is_file() and reopen_path.suffix.lower() == ".nwb":
+                        self.open_nwb_file(reopen_path)
+                    else:
+                        self.open_project_directory(reopen_path)
                     return
             # If we cant reopen the last project, pretend you chose open project
             self.on_splash_choice(Splash.Option.OPEN_PROJECT)
@@ -134,6 +170,62 @@ class Launcher(QObject):
             self.current_window.show()
         elif choice == Splash.Option.QUIT:
             self.splash.close()
+
+    def _open_nwb_file_dialog(self):
+        """Show a file dialog to select an NWB file and open it directly."""
+        reopen_path = "."
+        if self.qsettings.contains(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]):
+            path = str(self.qsettings.value(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"]))
+            if os.path.exists(path):
+                reopen_path = path
+
+        nwb_file, _ = widgets.QFileDialog.getOpenFileName(
+            self.splash,
+            "Open NWB File",
+            reopen_path,
+            "NWB Files (*.nwb);;All Files (*)"
+        )
+
+        if not nwb_file:
+            return
+
+        self.open_nwb_file(Path(nwb_file))
+
+    def open_nwb_file(self, nwb_path: 'pathlib.Path'):
+        """Open an NWB file directly without requiring a project config."""
+        if self.current_window:
+            self.current_window.close()
+        if self.splash:
+            self.splash.close()
+
+        try:
+            app = SoundsepApp.from_nwb_file(nwb_path)
+        except Exception:
+            self.show_splash()
+            logger.exception("Error loading NWB file")
+            widgets.QMessageBox.critical(
+                self.splash,
+                "Error",
+                "An unexpected error occurred loading {}. See logs.".format(nwb_path),
+            )
+            return
+
+        self.current_window = SoundsepMainWindow(app.api)
+        app.instantiate_plugins(gui=self.current_window)
+        app.setup()
+        app.api.projectLoaded.emit()
+        app.api.projectDataLoaded.emit()
+
+        app.api._closeProject.connect(self.show_splash)
+        app.api._switchProject.connect(self.open_project_directory)
+
+        # By default lets open to 3/4 screen size and center
+        screen = widgets.QApplication.primaryScreen()
+        rect = screen.availableGeometry()
+        self.current_window.resize(int(rect.width() * 0.75), int(rect.height() * 0.75))
+        self._center_on(self.current_window)
+
+        self.current_window.show()
 
     def open_project_directory(self, project_dir: 'pathlib.Path'):
         if self.current_window:

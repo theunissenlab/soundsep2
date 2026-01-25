@@ -15,9 +15,11 @@ import soundfile
 
 try:
     from pynwb import NWBHDF5IO
+    import h5py
     HAS_NWB = True
 except ImportError:
     HAS_NWB = False
+    h5py = None
 
 
 class AudioFile:
@@ -311,6 +313,106 @@ class NWBFile:
         
         # Convert to float32 if needed
         return data.astype(np.float32)
+
+    @staticmethod
+    def read_soundsep_sources(nwb_path: str) -> list:
+        """Read soundsep source data from the NWB file's scratch group.
+
+        Arguments
+        ---------
+        nwb_path : str
+            Path to the NWB file
+
+        Returns
+        -------
+        sources : list
+            List of dicts with keys 'SourceName', 'SourceChannel', 'SourceIndex'
+            Returns empty list if no soundsep data exists
+        """
+        if not HAS_NWB:
+            raise ImportError("pynwb/h5py is required to read NWB files")
+
+        sources = []
+        with h5py.File(nwb_path, 'r') as f:
+            if 'scratch' in f and 'soundsep_sources' in f['scratch']:
+                data = f['scratch']['soundsep_sources'][:]
+                for row in data:
+                    sources.append({
+                        'SourceName': row['SourceName'].decode() if isinstance(row['SourceName'], bytes) else str(row['SourceName']),
+                        'SourceChannel': int(row['SourceChannel']),
+                        'SourceIndex': int(row['SourceIndex']),
+                    })
+        return sources
+
+    @staticmethod
+    def write_soundsep_sources(nwb_path: str, sources: list):
+        """Write soundsep source data to the NWB file's scratch group.
+
+        Arguments
+        ---------
+        nwb_path : str
+            Path to the NWB file
+        sources : list
+            List of dicts with keys 'SourceName', 'SourceChannel', 'SourceIndex'
+        """
+        if not HAS_NWB:
+            raise ImportError("pynwb/h5py is required to write to NWB files")
+
+        # Create structured array for sources
+        dtype = np.dtype([
+            ('SourceName', 'S256'),  # String up to 256 chars
+            ('SourceChannel', 'i4'),
+            ('SourceIndex', 'i4'),
+        ])
+
+        if len(sources) > 0:
+            data = np.array([
+                (s['SourceName'].encode() if isinstance(s['SourceName'], str) else s['SourceName'],
+                 s['SourceChannel'],
+                 s['SourceIndex'])
+                for s in sources
+            ], dtype=dtype)
+        else:
+            data = np.array([], dtype=dtype)
+
+        # Use h5py directly for reliable scratch writing
+        with h5py.File(nwb_path, 'a') as f:
+            # Create scratch group if it doesn't exist
+            if 'scratch' not in f:
+                f.create_group('scratch')
+
+            scratch = f['scratch']
+
+            # Remove existing soundsep_sources if present
+            if 'soundsep_sources' in scratch:
+                del scratch['soundsep_sources']
+
+            # Create new dataset
+            scratch.create_dataset('soundsep_sources', data=data)
+
+    @staticmethod
+    def has_soundsep_data(nwb_path: str) -> bool:
+        """Check if an NWB file contains soundsep data.
+
+        Arguments
+        ---------
+        nwb_path : str
+            Path to the NWB file
+
+        Returns
+        -------
+        bool
+            True if the file contains soundsep source data
+        """
+        if not HAS_NWB:
+            return False
+
+        import h5py
+        try:
+            with h5py.File(nwb_path, 'r') as f:
+                return 'scratch' in f and 'soundsep_sources' in f['scratch']
+        except Exception:
+            return False
 
 
 class Block:

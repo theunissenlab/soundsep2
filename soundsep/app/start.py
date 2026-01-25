@@ -8,6 +8,17 @@ from PyQt6.QtCore import Qt
 from qasync import QEventLoop
 
 
+def _activate_window(window):
+    """Bring a window to the foreground, especially needed on macOS."""
+    if hasattr(window, 'splash') and window.splash is not None:
+        # For Launcher which uses a splash widget
+        window.splash.raise_()
+        window.splash.activateWindow()
+    elif hasattr(window, 'raise_'):
+        window.raise_()
+        window.activateWindow()
+
+
 def run_app(*args, MainWindow=None, debug=False, **kwargs):
     """Run an app using asyncio event loop
     """
@@ -40,6 +51,7 @@ def run_app(*args, MainWindow=None, debug=False, **kwargs):
         mainWindow = MainWindow(*args, **kwargs)
 
     mainWindow.show()
+    _activate_window(mainWindow)
     with loop:
         loop.run_forever()
 

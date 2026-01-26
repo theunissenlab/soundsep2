@@ -1,3 +1,3 @@
-from soundsep.plugins.whisperseg.plugin import WhisperSegPlugin
+from soundsep.plugins.whisperseg.plugin import AutoSegmentPlugin, WhisperSegPlugin
 
-__all__ = ["WhisperSegPlugin"]
+__all__ = ["AutoSegmentPlugin", "WhisperSegPlugin"]

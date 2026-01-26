@@ -140,6 +140,7 @@ class AdvancedControlsPanel(widgets.QWidget):
         # Form layout for parameters
         form_layout = widgets.QFormLayout()
         form_layout.setContentsMargins(0, 5, 0, 0)
+        form_layout.setRowWrapPolicy(widgets.QFormLayout.RowWrapPolicy.WrapAllRows)
 
         # Software gain
         self.software_gain_spin = widgets.QDoubleSpinBox()
@@ -174,17 +175,17 @@ class AdvancedControlsPanel(widgets.QWidget):
 
         # Duration parameters
         self.min_gap_spin = widgets.QDoubleSpinBox()
-        self.min_gap_spin.setRange(0, 100)
+        self.min_gap_spin.setRange(0, 1)
         self.min_gap_spin.setDecimals(3)
         self.min_gap_spin.setSuffix(" s")
         self.min_gap_spin.setValue(0.01)
         self.min_dur_spin = widgets.QDoubleSpinBox()
-        self.min_dur_spin.setRange(0, 100)
+        self.min_dur_spin.setRange(0, 1)
         self.min_dur_spin.setDecimals(3)
         self.min_dur_spin.setSuffix(" s")
         self.min_dur_spin.setValue(0.01)
         self.max_dur_spin = widgets.QDoubleSpinBox()
-        self.max_dur_spin.setRange(0, 1000)
+        self.max_dur_spin.setRange(0, 100)
         self.max_dur_spin.setDecimals(2)
         self.max_dur_spin.setSuffix(" s")
         self.max_dur_spin.setValue(10.0)

@@ -358,11 +358,7 @@ class AdvancedPreviewWidget(widgets.QWidget):
 
             self.ampenv_plot.setYRange(log_min - pad, log_max + pad, padding=0)
             self.ampenv_plot.setXRange(x[0], x[-1], padding=0)
-            vb = self.ampenv_plot.getPlotItem().getViewBox()
-            print("y max:", y.max(), "log10:", np.log10(y.max()))
-            print("viewRange:", vb.viewRange())
-            print("Ampenv range: ", np.log10(ampenv.min()), np.log10(ampenv.max()))
-
+            
     def clear(self):
         """Clear all data from the widget"""
         self.spec_image.clear()

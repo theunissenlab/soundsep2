@@ -7,6 +7,8 @@ from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from soundsep.core.base_plugin import BasePlugin
+from soundsep.core.ampenv import advanced_seg, filter_and_ampenv
+from soundsep.plugins.detect import threshold_events
 
 
 logger = logging.getLogger(__name__)
@@ -18,10 +20,10 @@ try:
     HAS_WHISPERSEG = True
 except ImportError:
     HAS_WHISPERSEG = False
-    logger.warning("whisperseg not installed. WhisperSegPlugin will have limited functionality.")
+    logger.warning("whisperseg not installed. WhisperSeg method will be unavailable.")
 
 
-class SegmentationWorker(QThread):
+class WhisperSegWorker(QThread):
     """Worker thread for running WhisperSeg segmentation."""
 
     finished = pyqtSignal(list)  # Emits list of (start, stop) tuples in samples
@@ -62,8 +64,8 @@ class SegmentationWorker(QThread):
             self.error.emit(str(e))
 
 
-class WhisperSegPanel(widgets.QWidget):
-    """Panel widget for WhisperSeg configuration and controls."""
+class AutoSegmentPanel(widgets.QWidget):
+    """Panel widget for AutoSegment configuration and controls."""
 
     segmentRequested = pyqtSignal()
 
@@ -76,12 +78,24 @@ class WhisperSegPanel(widgets.QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
 
         # Title
-        title = widgets.QLabel("WhisperSeg")
+        title = widgets.QLabel("Auto Segment")
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
 
-        # Model selector
+        # Method selector
+        method_layout = widgets.QHBoxLayout()
+        method_label = widgets.QLabel("Method:")
+        self.method_selector = widgets.QComboBox()
+        self.method_selector.addItems(["WhisperSeg", "Basic", "Advanced"])
+        self.method_selector.currentTextChanged.connect(self._on_method_changed)
+        method_layout.addWidget(method_label)
+        method_layout.addWidget(self.method_selector, 1)
+        layout.addLayout(method_layout)
+
+        # Model selector (WhisperSeg only)
+        self.model_group = widgets.QWidget()
         model_layout = widgets.QHBoxLayout()
+        model_layout.setContentsMargins(0, 0, 0, 0)
         model_label = widgets.QLabel("Model:")
         self.model_selector = widgets.QComboBox()
         self.model_selector.addItems([
@@ -94,7 +108,15 @@ class WhisperSegPanel(widgets.QWidget):
         self.model_selector.setInsertPolicy(widgets.QComboBox.InsertPolicy.NoInsert)
         model_layout.addWidget(model_label)
         model_layout.addWidget(self.model_selector, 1)
-        layout.addLayout(model_layout)
+        self.model_group.setLayout(model_layout)
+        layout.addWidget(self.model_group)
+
+        # Detect mode info label (Basic/Advanced only)
+        self.detect_info_label = widgets.QLabel("")
+        self.detect_info_label.setWordWrap(True)
+        self.detect_info_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.detect_info_label.hide()
+        layout.addWidget(self.detect_info_label)
 
         # Channel selector
         channel_layout = widgets.QHBoxLayout()
@@ -130,6 +152,11 @@ class WhisperSegPanel(widgets.QWidget):
         self.use_selection_button.setToolTip("Set time range from current selection in spectrogram")
         layout.addWidget(self.use_selection_button)
 
+        # Use scrollbar selection button
+        self.use_scrollbar_selection_button = widgets.QPushButton("Use Scrollbar Selection")
+        self.use_scrollbar_selection_button.setToolTip("Set time range from scrollbar selection (Shift+drag on scrollbar)")
+        layout.addWidget(self.use_scrollbar_selection_button)
+
         # Status label
         self.status_label = widgets.QLabel("")
         self.status_label.setWordWrap(True)
@@ -151,6 +178,18 @@ class WhisperSegPanel(widgets.QWidget):
         layout.addStretch()
         self.setLayout(layout)
 
+    def _on_method_changed(self, method: str):
+        """Update UI based on selected method."""
+        is_whisperseg = (method == "WhisperSeg")
+        self.model_group.setVisible(is_whisperseg)
+        self.detect_info_label.setVisible(not is_whisperseg)
+
+        if not is_whisperseg:
+            self.detect_info_label.setText(
+                f"Using {method} detection settings from Detect plugin.\n"
+                "Configure frequency bands and threshold there first."
+            )
+
     def set_status(self, message: str, is_error: bool = False):
         self.status_label.setText(message)
         if is_error:
@@ -165,34 +204,37 @@ class WhisperSegPanel(widgets.QWidget):
             self.set_status("Processing...")
 
 
-class WhisperSegPlugin(BasePlugin):
-    """Plugin for automatic audio segmentation using WhisperSeg."""
+class AutoSegmentPlugin(BasePlugin):
+    """Plugin for automatic audio segmentation using multiple methods."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.worker: Optional[SegmentationWorker] = None
+        self.worker: Optional[WhisperSegWorker] = None
         self._pending_channel = None
+        self._pending_start_sample = None
+        self._pending_end_sample = None
 
         self.init_ui()
         self.init_actions()
         self.connect_events()
 
     def init_ui(self):
-        self.panel = WhisperSegPanel()
+        self.panel = AutoSegmentPanel()
 
         # Toolbar button
-        self.toolbar_button = widgets.QPushButton("WhisperSeg")
-        self.toolbar_button.setToolTip("Run WhisperSeg automatic segmentation")
+        self.toolbar_button = widgets.QPushButton("Auto Segment")
+        self.toolbar_button.setToolTip("Run automatic segmentation")
 
     def init_actions(self):
-        self.segment_action = QtGui.QAction("Run WhisperSeg segmentation", self)
+        self.segment_action = QtGui.QAction("Run auto segmentation", self)
         self.segment_action.triggered.connect(self.on_segment_requested)
 
     def connect_events(self):
         self.toolbar_button.clicked.connect(self.on_segment_requested)
         self.panel.segmentRequested.connect(self.on_segment_requested)
         self.panel.use_selection_button.clicked.connect(self.on_use_selection)
+        self.panel.use_scrollbar_selection_button.clicked.connect(self.on_use_scrollbar_selection)
 
         # Connect to API signals
         self.api.projectLoaded.connect(self.on_project_loaded)
@@ -213,7 +255,7 @@ class WhisperSegPlugin(BasePlugin):
         self.panel.end_time_input.setValue(min(60.0, duration))  # Default to first 60s or full duration
 
     def on_selection_changed(self):
-        """Called when user selection changes - could auto-update time range."""
+        """Called when user selection changes."""
         pass
 
     def on_use_selection(self):
@@ -238,8 +280,30 @@ class WhisperSegPlugin(BasePlugin):
         else:
             self.panel.set_status("No selection available", is_error=True)
 
+    def on_use_scrollbar_selection(self):
+        """Set time range from scrollbar selection."""
+        scrollbar = self.gui.scrollbar
+        selection = scrollbar.get_selection_seconds()
+        if selection:
+            self.panel.start_time_input.setValue(selection[0])
+            self.panel.end_time_input.setValue(selection[1])
+            self.panel.set_status(f"Set range: {selection[0]:.3f}s - {selection[1]:.3f}s")
+        else:
+            self.panel.set_status("No scrollbar selection. Shift+drag on scrollbar to select.", is_error=True)
+
     def on_segment_requested(self):
-        """Run WhisperSeg segmentation on the specified audio range."""
+        """Run segmentation with the selected method."""
+        method = self.panel.method_selector.currentText()
+
+        if method == "WhisperSeg":
+            self._run_whisperseg()
+        elif method == "Basic":
+            self._run_basic_segmentation()
+        elif method == "Advanced":
+            self._run_advanced_segmentation()
+
+    def _run_whisperseg(self):
+        """Run WhisperSeg segmentation in background thread."""
         if not HAS_WHISPERSEG:
             self.panel.set_status(
                 "WhisperSeg not installed. Install with: pip install whisperseg",
@@ -286,23 +350,192 @@ class WhisperSegPlugin(BasePlugin):
         # Store info for when segmentation completes
         self._pending_channel = channel
         self._pending_start_sample = start_sample
+        self._pending_end_sample = end_sample
 
         # Start segmentation in background thread
         self.panel.set_processing(True)
 
-        self.worker = SegmentationWorker(audio, sr, model_name)
-        self.worker.finished.connect(self.on_segmentation_finished)
-        self.worker.error.connect(self.on_segmentation_error)
+        self.worker = WhisperSegWorker(audio, sr, model_name)
+        self.worker.finished.connect(self._on_whisperseg_finished)
+        self.worker.error.connect(self._on_segmentation_error)
         self.worker.progress.connect(lambda msg: self.panel.set_status(msg))
         self.worker.start()
 
-    def on_segmentation_finished(self, segments: list):
-        """Handle completed segmentation."""
-        self.panel.set_processing(False)
+    def _run_basic_segmentation(self):
+        """Run basic threshold-based segmentation."""
+        channel = self.panel.channel_selector.currentData()
+        start_time = self.panel.start_time_input.value()
+        end_time = self.panel.end_time_input.value()
 
-        if not segments:
-            self.panel.set_status("No segments detected")
+        if channel is None:
+            self.panel.set_status("Please select a channel", is_error=True)
             return
+
+        if end_time <= start_time:
+            self.panel.set_status("End time must be greater than start time", is_error=True)
+            return
+
+        # Get DetectPlugin for settings
+        detect_plugin = self.api.plugins.get("DetectPlugin")
+        if not detect_plugin:
+            self.panel.set_status("DetectPlugin not available", is_error=True)
+            return
+
+        sr = self.api.project.sampling_rate
+        start_sample = int(start_time * sr)
+        end_sample = int(end_time * sr)
+
+        try:
+            self.panel.set_status("Running basic segmentation...")
+            audio = self.api.project[start_sample:end_sample, channel]
+            audio = audio.astype(np.float32)
+
+            # Get frequency band - use default wide range
+            # or from current selection if available
+            selection = self.api.get_fine_selection()
+            if selection and selection.f0 is not None and selection.f1 is not None:
+                f0, f1 = selection.f0, selection.f1
+            else:
+                # Default: 500Hz to half Nyquist
+                f0 = 500
+                f1 = sr / 4
+
+            # Compute amplitude envelope
+            rectify_lowpass = self.api.config.get("detection.rectify_lowpass", 100)
+            filtered, ampenv = filter_and_ampenv(audio, sr, f0, f1, rectify_lowpass)
+
+            # Get threshold from DetectPlugin or compute default
+            threshold = detect_plugin._threshold
+            if threshold is None:
+                threshold = 0.5 * np.mean(np.abs(ampenv))
+
+            # Get peak threshold if enabled
+            min_peak = False
+            if detect_plugin.using_peak_threshold:
+                min_peak = detect_plugin._peak_threshold
+                if min_peak is None:
+                    min_peak = 2 * threshold
+
+            # Run threshold detection
+            intervals = threshold_events(
+                ampenv,
+                threshold,
+                sampling_rate=sr,
+                ignore_width=self.api.config.get("detection.ignore_width", 0.01),
+                min_size=self.api.config.get("detection.min_size", 0.01),
+                fuse_duration=self.api.config.get("detection.fuse_duration", 0.01),
+                min_peak=min_peak
+            )
+
+            # Create segments
+            self._create_segments_from_intervals(intervals, channel, start_sample, end_sample)
+
+        except Exception as e:
+            logger.exception("Error during basic segmentation")
+            self.panel.set_status(f"Error: {e}", is_error=True)
+
+    def _run_advanced_segmentation(self):
+        """Run advanced multi-band segmentation."""
+        channel = self.panel.channel_selector.currentData()
+        start_time = self.panel.start_time_input.value()
+        end_time = self.panel.end_time_input.value()
+
+        if channel is None:
+            self.panel.set_status("Please select a channel", is_error=True)
+            return
+
+        if end_time <= start_time:
+            self.panel.set_status("End time must be greater than start time", is_error=True)
+            return
+
+        # Get DetectPlugin for settings
+        detect_plugin = self.api.plugins.get("DetectPlugin")
+        if not detect_plugin:
+            self.panel.set_status("DetectPlugin not available", is_error=True)
+            return
+
+        sr = self.api.project.sampling_rate
+        start_sample = int(start_time * sr)
+        end_sample = int(end_time * sr)
+
+        try:
+            self.panel.set_status("Running advanced segmentation...")
+            audio = self.api.project[start_sample:end_sample, channel]
+            audio = audio.astype(np.float32)
+
+            # Get parameters from DetectPlugin's advanced controls
+            signal_band = detect_plugin.advanced_preview.get_signal_band()
+            noise_band = detect_plugin.advanced_preview.get_noise_band()
+            threshold = detect_plugin.advanced_preview.get_threshold()
+
+            params = detect_plugin.detect_controls.advanced_panel.get_advanced_params(
+                sr,
+                signal_band,
+                noise_band,
+                threshold
+            )
+
+            # Run advanced segmentation
+            onsets, offsets = advanced_seg(audio, sr, params)
+
+            if len(onsets) > 0:
+                intervals = np.column_stack([onsets, offsets])
+            else:
+                intervals = np.array([])
+
+            # Create segments
+            self._create_segments_from_intervals(intervals, channel, start_sample, end_sample)
+
+        except Exception as e:
+            logger.exception("Error during advanced segmentation")
+            self.panel.set_status(f"Error: {e}", is_error=True)
+
+    def _create_segments_from_intervals(self, intervals: np.ndarray, channel: int, start_offset: int, end_offset: int):
+        """Create segments from detected intervals, deleting existing segments in the range first."""
+        # Get source for the channel
+        source = self._get_or_create_source_for_channel(channel)
+        if source is None:
+            self.panel.set_status("Could not find or create source for channel", is_error=True)
+            return
+
+        # Delete existing segments in the range first
+        segment_plugin = self.api.plugins.get("SegmentPlugin")
+        if segment_plugin:
+            segment_plugin.delete_segments_between(
+                self.api.make_project_index(start_offset),
+                self.api.make_project_index(end_offset),
+                source
+            )
+
+        if len(intervals) == 0:
+            self.panel.set_status("No segments detected (existing segments in range were deleted)")
+            return
+
+        # Convert to absolute project indices (using ProjectIndex)
+        absolute_segments = [
+            (
+                self.api.make_project_index(start_offset + int(interval[0])),
+                self.api.make_project_index(start_offset + int(interval[1])),
+                source
+            )
+            for interval in intervals
+        ]
+
+        # Create segments using SegmentPlugin
+        try:
+            segment_plugin = self.api.plugins.get("SegmentPlugin")
+            if segment_plugin:
+                segment_plugin.create_segments_batch(absolute_segments)
+                self.panel.set_status(f"Created {len(intervals)} segments")
+            else:
+                self.panel.set_status("SegmentPlugin not available", is_error=True)
+        except Exception as e:
+            logger.exception("Error creating segments")
+            self.panel.set_status(f"Error creating segments: {e}", is_error=True)
+
+    def _on_whisperseg_finished(self, segments: list):
+        """Handle completed WhisperSeg segmentation."""
+        self.panel.set_processing(False)
 
         # Get source for the channel
         source = self._get_or_create_source_for_channel(self._pending_channel)
@@ -310,16 +543,33 @@ class WhisperSegPlugin(BasePlugin):
             self.panel.set_status("Could not find or create source for channel", is_error=True)
             return
 
-        # Convert relative sample indices to absolute project indices
+        # Delete existing segments in the range first
+        segment_plugin = self.api.plugins.get("SegmentPlugin")
+        if segment_plugin:
+            segment_plugin.delete_segments_between(
+                self.api.make_project_index(self._pending_start_sample),
+                self.api.make_project_index(self._pending_end_sample),
+                source
+            )
+
+        if not segments:
+            self.panel.set_status("No segments detected (existing segments in range were deleted)")
+            self.worker = None
+            return
+
+        # Convert relative sample indices to absolute project indices (using ProjectIndex)
         start_offset = self._pending_start_sample
         absolute_segments = [
-            (start_offset + start, start_offset + stop, source)
+            (
+                self.api.make_project_index(start_offset + start),
+                self.api.make_project_index(start_offset + stop),
+                source
+            )
             for start, stop in segments
         ]
 
         # Create segments using SegmentPlugin
         try:
-            segment_plugin = self.api.plugins.get("SegmentPlugin")
             if segment_plugin:
                 segment_plugin.create_segments_batch(absolute_segments)
                 self.panel.set_status(f"Created {len(segments)} segments")
@@ -331,7 +581,7 @@ class WhisperSegPlugin(BasePlugin):
 
         self.worker = None
 
-    def on_segmentation_error(self, error_msg: str):
+    def _on_segmentation_error(self, error_msg: str):
         """Handle segmentation error."""
         self.panel.set_processing(False)
         self.panel.set_status(f"Error: {error_msg}", is_error=True)
@@ -347,13 +597,13 @@ class WhisperSegPlugin(BasePlugin):
                 return source
 
         # Create new source for this channel
-        return self.api.create_source(f"WhisperSeg Ch{channel}", channel)
+        return self.api.create_source(f"AutoSeg Ch{channel}", channel)
 
     def plugin_toolbar_items(self):
         return [self.toolbar_button]
 
     def add_plugin_menu(self, menu_parent):
-        menu = menu_parent.addMenu("&WhisperSeg")
+        menu = menu_parent.addMenu("&Auto Segment")
         menu.addAction(self.segment_action)
         return menu
 
@@ -361,4 +611,8 @@ class WhisperSegPlugin(BasePlugin):
         return [self.panel]
 
     def setup_plugin_shortcuts(self):
-        self.segment_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+W"))
+        self.segment_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+A"))
+
+
+# Keep backward compatibility alias
+WhisperSegPlugin = AutoSegmentPlugin

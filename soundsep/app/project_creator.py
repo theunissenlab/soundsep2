@@ -168,7 +168,7 @@ class ProjectCreator(widgets.QWidget):
                 except Exception as e:
                     errors.append((str(f), str(e)))
                 else:
-                    checked_filelist.append(f)
+                    checked_filelist.append(Path(f))
 
             block_groups, grouping_errors = group_files_by_pattern(
                 base_path,

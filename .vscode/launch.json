@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: sep run (conda env)",
+      "type": "python",
+      "request": "launch",
+
+      // IMPORTANT: point this to the python inside your conda env
+      "python": "/opt/miniconda3/envs/sep/bin/python",
+
+      // Run: python -m sep run ...
+      "program": "/opt/miniconda3/envs/sep/bin/sep",
+      "args": ["run"],
+
+      // If you normally do: sep run --foo bar, add them after "run"
+      // "args": ["run", "--foo", "bar"],
+
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "env": {
+        // Optional but helpful if sep looks at these:
+        // "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  ]
+}

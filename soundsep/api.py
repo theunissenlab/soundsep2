@@ -56,6 +56,16 @@ class Api(QObject):
     def config(self):
         return self._app.config
 
+    @property
+    def is_nwb_mode(self) -> bool:
+        """Return True if the app is in NWB mode (opened from an NWB file directly)."""
+        return getattr(self._app, '_nwb_mode', False)
+
+    @property
+    def nwb_path(self):
+        """Return the NWB file path if in NWB mode, otherwise None."""
+        return getattr(self._app, '_nwb_path', None)
+
     def _close(self):
         self.closingProgram.emit()
         self._app.close()

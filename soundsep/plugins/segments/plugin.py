@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
-from soundsep.core.models import Source, ProjectIndex, StftIndex
+from soundsep.core.models import Source, ProjectIndex, StftIndex, NWBFile
 from soundsep.core.segments import Segment
 from soundsep.core.utils import hhmmss
 
@@ -477,6 +477,11 @@ class SegmentPlugin(BasePlugin):
 
     def on_project_ready(self):
         """Called once"""
+        # Check if we should load from NWB file
+        if self.api.is_nwb_mode and self.api.nwb_path:
+            self._load_from_nwb()
+            return
+
         save_file = self.api.paths.save_dir / self.SAVE_FILENAME
         if not save_file.exists():
             return
@@ -547,22 +552,122 @@ class SegmentPlugin(BasePlugin):
     def needs_saving(self):
         return self._needs_saving
 
+    def _load_from_nwb(self):
+        """Load segments from NWB file's intervals group."""
+        nwb_path = str(self.api.nwb_path)
+        sampling_rate = self.api.project.sampling_rate
+
+        if not NWBFile.has_soundsep_segments(nwb_path):
+            return
+
+        try:
+            segment_data = NWBFile.read_soundsep_segments(nwb_path, sampling_rate)
+        except Exception as e:
+            logger.warning(f"Could not load segments from NWB file: {e}")
+            return
+
+        if not segment_data:
+            return
+
+        seg_df = {
+            "Source": [],
+            "StartIndex": [],
+            "StopIndex": [],
+            "Tags": [],
+            "Coords": [],
+            "SegmentID": []
+        }
+
+        source_lookup = set([
+            (source.name, source.channel) for source in self.api.get_sources()
+        ])
+
+        for row in segment_data:
+            source_key = (row["SourceName"], row["SourceChannel"])
+            if source_key not in source_lookup:
+                source_lookup.add(source_key)
+                self.api.create_source(source_key[0], source_key[1])
+            source = self.api.get_source(source_key[0], source_key[1])
+
+            seg_df['Source'].append(source)
+            seg_df['StartIndex'].append(self.api.make_project_index(row["StartIndex"]))
+            seg_df['StopIndex'].append(self.api.make_project_index(row["StopIndex"]))
+
+            # Parse tags from JSON string
+            if row["Tags"]:
+                try:
+                    seg_df['Tags'].append(set(json.loads(row["Tags"])))
+                except:
+                    seg_df['Tags'].append(set())
+            else:
+                seg_df['Tags'].append(set())
+
+            # Parse coords from JSON string
+            if row["Coords"]:
+                try:
+                    coords = json.loads(row["Coords"])
+                    seg_df['Coords'].append(list(coords) if coords else None)
+                except:
+                    seg_df['Coords'].append(None)
+            else:
+                seg_df['Coords'].append(None)
+
+            seg_df['SegmentID'].append(row['SegmentID'])
+
+        for l in ['StartIndex', 'StopIndex']:
+            seg_df[l] = pd.Series(seg_df[l], index=seg_df['SegmentID'], dtype=object)
+
+        self._segmentation_datastore = pd.DataFrame(seg_df, index=seg_df['SegmentID'])
+        if len(self._segmentation_datastore) > 0:
+            self._next_seg_id = max(self._segmentation_datastore.index) + 1
+
     def save(self):
         """Save pointers within project"""
         # TODO: these pointers could get out of sync with a project if/when files are added.
         # Can we recover from this? or should we hash the project so we can at least
         # warn the user when things dont match up to when the file was saved?
-        # LAT - Not sure if we are still saving pointers here
-        out_csv_df = dict({
-            'SourceName': self._segmentation_datastore['Source'].apply(lambda x: x.name),
-            'SourceChannel': self._segmentation_datastore['Source'].apply(lambda x: x.channel),
-            'StartIndex': self._segmentation_datastore['StartIndex'].apply(lambda x: int(x)),
-            'StopIndex': self._segmentation_datastore['StopIndex'].apply(lambda x: int(x)),
-            'Tags': self._segmentation_datastore['Tags'].apply(lambda x: json.dumps(list(x))),
-            'Coords': self._segmentation_datastore['Coords'].apply(lambda x: json.dumps(x)),
-            'SegmentID': self._segmentation_datastore.index
-        })
-        pd.DataFrame(out_csv_df).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
+
+        # Prepare segment data
+        segment_data = []
+        for idx in self._segmentation_datastore.index:
+            row = self._segmentation_datastore.loc[idx]
+            segment_data.append({
+                'SourceName': row['Source'].name,
+                'SourceChannel': row['Source'].channel,
+                'StartIndex': int(row['StartIndex']),
+                'StopIndex': int(row['StopIndex']),
+                'Tags': json.dumps(list(row['Tags'])),
+                'Coords': json.dumps(row['Coords']),
+                'SegmentID': idx
+            })
+
+        # Save to NWB if in NWB mode
+        if self.api.is_nwb_mode and self.api.nwb_path:
+            nwb_path = str(self.api.nwb_path)
+            sampling_rate = self.api.project.sampling_rate
+
+            # Close files before writing (they'll reopen lazily)
+            self.api.project.close_files()
+
+            try:
+                NWBFile.write_soundsep_segments(nwb_path, segment_data, sampling_rate)
+                logger.info(f"Saved {len(segment_data)} segments to NWB file")
+            except Exception as e:
+                logger.error(f"Could not save segments to NWB file: {e}")
+                raise
+        else:
+            # Save to CSV file
+            out_csv_df = {
+                'SourceName': [s['SourceName'] for s in segment_data],
+                'SourceChannel': [s['SourceChannel'] for s in segment_data],
+                'StartIndex': [s['StartIndex'] for s in segment_data],
+                'StopIndex': [s['StopIndex'] for s in segment_data],
+                'Tags': [s['Tags'] for s in segment_data],
+                'Coords': [s['Coords'] for s in segment_data],
+                'SegmentID': [s['SegmentID'] for s in segment_data]
+            }
+            pd.DataFrame(out_csv_df).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
+
         self._needs_saving = False
 
     def on_sources_changed(self):

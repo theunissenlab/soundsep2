@@ -316,7 +316,7 @@ class NWBFile:
 
     @staticmethod
     def read_soundsep_sources(nwb_path: str) -> list:
-        """Read soundsep source data from the NWB file's scratch group.
+        """Read soundsep source data from the NWB file's analysis group.
 
         Arguments
         ---------
@@ -330,23 +330,32 @@ class NWBFile:
             Returns empty list if no soundsep data exists
         """
         if not HAS_NWB:
-            raise ImportError("pynwb/h5py is required to read NWB files")
+            raise ImportError("pynwb is required to read NWB files")
 
         sources = []
-        with h5py.File(nwb_path, 'r') as f:
-            if 'scratch' in f and 'soundsep_sources' in f['scratch']:
-                data = f['scratch']['soundsep_sources'][:]
-                for row in data:
+        with NWBHDF5IO(nwb_path, 'r') as io:
+            nwbfile = io.read()
+            
+            if 'soundsep_sources' in nwbfile.analysis:
+                table = nwbfile.analysis['soundsep_sources']
+                
+                # Read from DynamicTable
+                source_names = table['SourceName'][:]
+                source_channels = table['SourceChannel'][:]
+                source_indices = table['SourceIndex'][:]
+                
+                for i in range(len(source_names)):
                     sources.append({
-                        'SourceName': row['SourceName'].decode() if isinstance(row['SourceName'], bytes) else str(row['SourceName']),
-                        'SourceChannel': int(row['SourceChannel']),
-                        'SourceIndex': int(row['SourceIndex']),
+                        'SourceName': str(source_names[i]),
+                        'SourceChannel': int(source_channels[i]),
+                        'SourceIndex': int(source_indices[i]),
                     })
+        
         return sources
 
     @staticmethod
     def write_soundsep_sources(nwb_path: str, sources: list):
-        """Write soundsep source data to the NWB file's scratch group.
+        """Write soundsep source data to the NWB file's analysis group.
 
         Arguments
         ---------
@@ -356,39 +365,87 @@ class NWBFile:
             List of dicts with keys 'SourceName', 'SourceChannel', 'SourceIndex'
         """
         if not HAS_NWB:
-            raise ImportError("pynwb/h5py is required to write to NWB files")
+            raise ImportError("pynwb is required to write to NWB files")
 
-        # Create structured array for sources
-        dtype = np.dtype([
-            ('SourceName', 'S256'),  # String up to 256 chars
-            ('SourceChannel', 'i4'),
-            ('SourceIndex', 'i4'),
-        ])
+        import tempfile
+        import shutil
+
+        # Check if soundsep_sources already exists
+        has_existing = False
+        with NWBHDF5IO(nwb_path, 'r') as io:
+            nwbfile = io.read()
+            has_existing = 'soundsep_sources' in nwbfile.analysis
+
+        if has_existing:
+            # Export to a new file, excluding the old soundsep_sources
+            # This avoids hdmf builder comparison issues with numpy arrays
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.nwb')
+            os.close(temp_fd)
+            try:
+                with NWBHDF5IO(nwb_path, 'r') as read_io:
+                    nwbfile = read_io.read()
+
+                    # Remove existing soundsep_sources
+                    del nwbfile.analysis['soundsep_sources']
+
+                    # Add the new sources table
+                    sources_table = NWBFile._create_sources_table(sources)
+                    nwbfile.add_analysis(sources_table)
+
+                    # Export to temp file
+                    with NWBHDF5IO(temp_path, 'w') as export_io:
+                        export_io.export(src_io=read_io, nwbfile=nwbfile)
+
+                # Replace original with temp
+                shutil.move(temp_path, nwb_path)
+            except Exception:
+                # Clean up temp file on error
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                raise
+        else:
+            # No existing data, can just append
+            with NWBHDF5IO(nwb_path, 'r+') as io:
+                nwbfile = io.read()
+                sources_table = NWBFile._create_sources_table(sources)
+                nwbfile.add_analysis(sources_table)
+                io.write(nwbfile)
+
+    @staticmethod
+    def _create_sources_table(sources: list):
+        """Create a DynamicTable for soundsep sources."""
+        from hdmf.common import DynamicTable, VectorData
 
         if len(sources) > 0:
-            data = np.array([
-                (s['SourceName'].encode() if isinstance(s['SourceName'], str) else s['SourceName'],
-                 s['SourceChannel'],
-                 s['SourceIndex'])
-                for s in sources
-            ], dtype=dtype)
+            source_names = [s['SourceName'] for s in sources]
+            source_channels = [s['SourceChannel'] for s in sources]
+            source_indices = [s['SourceIndex'] for s in sources]
         else:
-            data = np.array([], dtype=dtype)
+            source_names = []
+            source_channels = []
+            source_indices = []
 
-        # Use h5py directly for reliable scratch writing
-        with h5py.File(nwb_path, 'a') as f:
-            # Create scratch group if it doesn't exist
-            if 'scratch' not in f:
-                f.create_group('scratch')
-
-            scratch = f['scratch']
-
-            # Remove existing soundsep_sources if present
-            if 'soundsep_sources' in scratch:
-                del scratch['soundsep_sources']
-
-            # Create new dataset
-            scratch.create_dataset('soundsep_sources', data=data)
+        return DynamicTable(
+            name='soundsep_sources',
+            description='Soundsep source definitions',
+            columns=[
+                VectorData(
+                    name='SourceName',
+                    description='Name of the source',
+                    data=source_names
+                ),
+                VectorData(
+                    name='SourceChannel',
+                    description='Channel index of the source',
+                    data=source_channels
+                ),
+                VectorData(
+                    name='SourceIndex',
+                    description='Index of the source',
+                    data=source_indices
+                ),
+            ]
+        )
 
     @staticmethod
     def has_soundsep_data(nwb_path: str) -> bool:
@@ -407,10 +464,159 @@ class NWBFile:
         if not HAS_NWB:
             return False
 
-        import h5py
+        try:
+            with NWBHDF5IO(nwb_path, 'r') as io:
+                nwbfile = io.read()
+                return 'soundsep_sources' in nwbfile.analysis
+        except Exception:
+            return False
+
+    @staticmethod
+    def read_soundsep_segments(nwb_path: str, sampling_rate: int) -> list:
+        """Read soundsep segment data from the NWB file's intervals group.
+
+        Arguments
+        ---------
+        nwb_path : str
+            Path to the NWB file
+        sampling_rate : int
+            Sampling rate to convert times to sample indices
+
+        Returns
+        -------
+        segments : list
+            List of dicts with keys: 'SourceName', 'SourceChannel', 'StartIndex',
+            'StopIndex', 'Tags', 'Coords', 'SegmentID'
+            Returns empty list if no segment data exists
+        """
+        if not HAS_NWB:
+            raise ImportError("pynwb/h5py is required to read NWB files")
+
+        segments = []
+        with h5py.File(nwb_path, 'r') as f:
+            if 'intervals' not in f or 'soundsep_segments' not in f['intervals']:
+                return segments
+
+            intervals = f['intervals']['soundsep_segments']
+
+            # Read the data columns
+            start_times = intervals['start_time'][:]
+            stop_times = intervals['stop_time'][:]
+            segment_ids = intervals['id'][:]
+
+            # Read custom columns
+            source_names = intervals['source_name'][:] if 'source_name' in intervals else [b''] * len(start_times)
+            source_channels = intervals['source_channel'][:] if 'source_channel' in intervals else [0] * len(start_times)
+            tags = intervals['tags'][:] if 'tags' in intervals else [b'[]'] * len(start_times)
+            coords = intervals['coords'][:] if 'coords' in intervals else [b'null'] * len(start_times)
+
+            for i in range(len(start_times)):
+                source_name = source_names[i].decode() if isinstance(source_names[i], bytes) else str(source_names[i])
+                tags_str = tags[i].decode() if isinstance(tags[i], bytes) else str(tags[i])
+                coords_str = coords[i].decode() if isinstance(coords[i], bytes) else str(coords[i])
+
+                segments.append({
+                    'SourceName': source_name,
+                    'SourceChannel': int(source_channels[i]),
+                    'StartIndex': int(start_times[i] * sampling_rate),
+                    'StopIndex': int(stop_times[i] * sampling_rate),
+                    'Tags': tags_str,  # JSON string
+                    'Coords': coords_str,  # JSON string
+                    'SegmentID': int(segment_ids[i]),
+                })
+
+        return segments
+
+    @staticmethod
+    def write_soundsep_segments(nwb_path: str, segments: list, sampling_rate: int):
+        """Write soundsep segment data to the NWB file's intervals group.
+
+        Arguments
+        ---------
+        nwb_path : str
+            Path to the NWB file
+        segments : list
+            List of dicts with keys: 'SourceName', 'SourceChannel', 'StartIndex',
+            'StopIndex', 'Tags', 'Coords', 'SegmentID'
+        sampling_rate : int
+            Sampling rate to convert sample indices to times
+        """
+        if not HAS_NWB:
+            raise ImportError("pynwb/h5py is required to write to NWB files")
+
+        # Use h5py directly for reliable intervals writing
+        with h5py.File(nwb_path, 'a') as f:
+            # Create intervals group if it doesn't exist
+            if 'intervals' not in f:
+                f.create_group('intervals')
+
+            intervals = f['intervals']
+
+            # Remove existing soundsep_segments if present
+            if 'soundsep_segments' in intervals:
+                del intervals['soundsep_segments']
+
+            # Create the intervals table group
+            seg_group = intervals.create_group('soundsep_segments')
+
+            n_segments = len(segments)
+
+            if n_segments > 0:
+                # Standard interval columns
+                start_times = np.array([s['StartIndex'] / sampling_rate for s in segments], dtype=np.float64)
+                stop_times = np.array([s['StopIndex'] / sampling_rate for s in segments], dtype=np.float64)
+                segment_ids = np.array([s['SegmentID'] for s in segments], dtype=np.int64)
+
+                # Custom columns
+                source_names = np.array([s['SourceName'].encode() if isinstance(s['SourceName'], str) else s['SourceName']
+                                        for s in segments], dtype='S256')
+                source_channels = np.array([s['SourceChannel'] for s in segments], dtype=np.int32)
+                tags = np.array([s['Tags'].encode() if isinstance(s['Tags'], str) else s['Tags']
+                                for s in segments], dtype='S1024')
+                coords = np.array([s['Coords'].encode() if isinstance(s['Coords'], str) else s['Coords']
+                                  for s in segments], dtype='S1024')
+            else:
+                start_times = np.array([], dtype=np.float64)
+                stop_times = np.array([], dtype=np.float64)
+                segment_ids = np.array([], dtype=np.int64)
+                source_names = np.array([], dtype='S256')
+                source_channels = np.array([], dtype=np.int32)
+                tags = np.array([], dtype='S1024')
+                coords = np.array([], dtype='S1024')
+
+            # Create datasets
+            seg_group.create_dataset('start_time', data=start_times)
+            seg_group.create_dataset('stop_time', data=stop_times)
+            seg_group.create_dataset('id', data=segment_ids)
+            seg_group.create_dataset('source_name', data=source_names)
+            seg_group.create_dataset('source_channel', data=source_channels)
+            seg_group.create_dataset('tags', data=tags)
+            seg_group.create_dataset('coords', data=coords)
+
+            # Add attributes to make it identifiable as a soundsep intervals table
+            seg_group.attrs['neurodata_type'] = 'TimeIntervals'
+            seg_group.attrs['description'] = 'Soundsep segmentation intervals'
+
+    @staticmethod
+    def has_soundsep_segments(nwb_path: str) -> bool:
+        """Check if an NWB file contains soundsep segment data.
+
+        Arguments
+        ---------
+        nwb_path : str
+            Path to the NWB file
+
+        Returns
+        -------
+        bool
+            True if the file contains soundsep segment data
+        """
+        if not HAS_NWB:
+            return False
+
         try:
             with h5py.File(nwb_path, 'r') as f:
-                return 'scratch' in f and 'soundsep_sources' in f['scratch']
+                return 'intervals' in f and 'soundsep_segments' in f['intervals']
         except Exception:
             return False
 

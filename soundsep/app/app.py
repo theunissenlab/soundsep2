@@ -161,6 +161,10 @@ class SoundsepApp(QObject):
         # Store the NWB file path for reopening
         app.qsettings.setValue(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"], str(nwb_path))
 
+        # Create folders for plugins that still need filesystem storage
+        # (e.g., segments plugin saves to CSV)
+        app.paths.create_folders()
+
         return app
 
     @staticmethod
@@ -265,12 +269,17 @@ class SoundsepApp(QObject):
 
         if self._nwb_mode and self._nwb_path:
             # Save to NWB file scratch group
+            # Must close the file first since it's open for reading audio data
+            # Files will be reopened lazily when audio is needed again
+            self.project.close_files()
             try:
                 NWBFile.write_soundsep_sources(str(self._nwb_path), source_data)
                 logger.info(f"Saved {len(source_data)} sources to NWB file")
             except Exception as e:
                 logger.error(f"Could not save sources to NWB file: {e}")
                 raise
+            # Also create folders for plugins that still need filesystem storage
+            self.paths.create_folders()
         else:
             # Save to CSV file
             self.paths.create_folders()

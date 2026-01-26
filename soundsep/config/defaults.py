@@ -27,4 +27,18 @@ DEFAULTS = {
     "detection.ignore_width": 0.002,
     "detection.min_size": 0.002,
     "detection.fuse_duration": 0.005,
+
+    # Advanced detection defaults
+    "detection.advanced.software_gain": 1.0,
+    "detection.advanced.signal_low": 2000,
+    "detection.advanced.signal_high": 10000,
+    "detection.advanced.noise_low": 500,
+    "detection.advanced.noise_high": 1500,
+    "detection.advanced.signal_gain": 1.0,
+    "detection.advanced.noise_gain": 1.0,
+    "detection.advanced.smooth_ms": 2.0,
+    "detection.advanced.threshold": 0.1,
+    "detection.advanced.min_gap_sec": 0.01,
+    "detection.advanced.min_dur_sec": 0.01,
+    "detection.advanced.max_dur_sec": 10.0,
 }

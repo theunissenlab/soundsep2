@@ -1,10 +1,12 @@
 import logging
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from typing import Optional, List, Tuple
 
 import numpy as np
 import PyQt6.QtWidgets as widgets
 from PyQt6 import QtGui
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 
 from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.ampenv import advanced_seg, filter_and_ampenv
@@ -12,6 +14,15 @@ from soundsep.plugins.detect import threshold_events
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BlockSegmentResult:
+    """Result from processing a single block."""
+    block_index: int
+    block_start_sample: int  # Absolute project index where this block starts
+    intervals: np.ndarray  # Detected intervals relative to block start
+    error: Optional[str] = None
 
 
 # Check if whisperseg is available
@@ -61,6 +72,112 @@ class WhisperSegWorker(QThread):
 
         except Exception as e:
             logger.exception("Error during WhisperSeg segmentation")
+            self.error.emit(str(e))
+
+
+class ParallelSegmentWorker(QThread):
+    """Worker thread for running segmentation across multiple blocks in parallel."""
+
+    finished = pyqtSignal(list)  # Emits list of BlockSegmentResult
+    error = pyqtSignal(str)
+    progress = pyqtSignal(int, int, str)  # current_block, total_blocks, message
+
+    def __init__(
+        self,
+        blocks_data: List[Tuple[int, int, np.ndarray]],  # (block_idx, block_start_sample, audio_data)
+        sampling_rate: int,
+        method: str,  # "basic" or "advanced"
+        params: dict,  # Method-specific parameters
+        max_workers: int = 4
+    ):
+        super().__init__()
+        self.blocks_data = blocks_data
+        self.sampling_rate = sampling_rate
+        self.method = method
+        self.params = params
+        self.max_workers = max_workers
+
+    def _process_block(self, block_info: Tuple[int, int, np.ndarray]) -> BlockSegmentResult:
+        """Process a single block and return detected intervals."""
+        block_idx, block_start_sample, audio = block_info
+        try:
+            audio = audio.astype(np.float32)
+            logger.debug(f"Processing block {block_idx}: {len(audio)} samples starting at {block_start_sample}")
+
+            if self.method == "basic":
+                # Basic threshold detection
+                f0 = self.params.get('f0', 500)
+                f1 = self.params.get('f1', self.sampling_rate / 4)
+                rectify_lowpass = self.params.get('rectify_lowpass', 100)
+                threshold = self.params.get('threshold', 0.01)
+                min_peak = self.params.get('min_peak', False)
+
+                filtered, ampenv = filter_and_ampenv(audio, self.sampling_rate, f0, f1, rectify_lowpass)
+
+                intervals = threshold_events(
+                    ampenv,
+                    threshold,
+                    sampling_rate=self.sampling_rate,
+                    ignore_width=self.params.get('ignore_width', 0.01),
+                    min_size=self.params.get('min_size', 0.01),
+                    fuse_duration=self.params.get('fuse_duration', 0.01),
+                    min_peak=min_peak
+                )
+
+            elif self.method == "advanced":
+                # Advanced multi-band segmentation
+                onsets, offsets = advanced_seg(audio, self.sampling_rate, self.params)
+                if len(onsets) > 0:
+                    intervals = np.column_stack([onsets, offsets])
+                else:
+                    intervals = np.array([])
+            else:
+                raise ValueError(f"Unknown method: {self.method}")
+
+            n_intervals = len(intervals) if len(intervals.shape) > 0 and intervals.shape[0] > 0 else 0
+            logger.debug(f"Block {block_idx}: detected {n_intervals} intervals")
+
+            return BlockSegmentResult(
+                block_index=block_idx,
+                block_start_sample=block_start_sample,
+                intervals=intervals
+            )
+
+        except Exception as e:
+            logger.exception(f"Error processing block {block_idx}")
+            return BlockSegmentResult(
+                block_index=block_idx,
+                block_start_sample=block_start_sample,
+                intervals=np.array([]),
+                error=str(e)
+            )
+
+    def run(self):
+        try:
+            results = []
+            total_blocks = len(self.blocks_data)
+
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_block = {
+                    executor.submit(self._process_block, block_info): block_info[0]
+                    for block_info in self.blocks_data
+                }
+
+                completed = 0
+                for future in as_completed(future_to_block):
+                    block_idx = future_to_block[future]
+                    completed += 1
+                    self.progress.emit(completed, total_blocks, f"Processed block {completed}/{total_blocks}")
+
+                    result = future.result()
+                    results.append(result)
+
+            # Sort results by block index to maintain order
+            results.sort(key=lambda r: r.block_index)
+            self.finished.emit(results)
+
+        except Exception as e:
+            logger.exception("Error during parallel segmentation")
             self.error.emit(str(e))
 
 
@@ -157,6 +274,12 @@ class AutoSegmentPanel(widgets.QWidget):
         self.use_scrollbar_selection_button.setToolTip("Set time range from scrollbar selection (Shift+drag on scrollbar)")
         layout.addWidget(self.use_scrollbar_selection_button)
 
+        # Parallel processing checkbox
+        self.parallel_checkbox = widgets.QCheckBox("Process blocks in parallel")
+        self.parallel_checkbox.setChecked(True)
+        self.parallel_checkbox.setToolTip("Process each audio block in a separate thread for faster segmentation")
+        layout.addWidget(self.parallel_checkbox)
+
         # Status label
         self.status_label = widgets.QLabel("")
         self.status_label.setWordWrap(True)
@@ -197,11 +320,21 @@ class AutoSegmentPanel(widgets.QWidget):
         else:
             self.status_label.setStyleSheet("color: gray; font-style: italic;")
 
-    def set_processing(self, processing: bool):
+    def set_processing(self, processing: bool, determinate: bool = False, total: int = 0):
         self.segment_button.setEnabled(not processing)
         self.progress_bar.setVisible(processing)
         if processing:
+            if determinate and total > 0:
+                self.progress_bar.setRange(0, total)
+                self.progress_bar.setValue(0)
+            else:
+                self.progress_bar.setRange(0, 0)  # Indeterminate
             self.set_status("Processing...")
+
+    def set_progress(self, current: int, total: int):
+        """Update progress bar value."""
+        self.progress_bar.setRange(0, total)
+        self.progress_bar.setValue(current)
 
 
 class AutoSegmentPlugin(BasePlugin):
@@ -211,6 +344,7 @@ class AutoSegmentPlugin(BasePlugin):
         super().__init__(*args, **kwargs)
 
         self.worker: Optional[WhisperSegWorker] = None
+        self.parallel_worker: Optional[ParallelSegmentWorker] = None
         self._pending_channel = None
         self._pending_start_sample = None
         self._pending_end_sample = None
@@ -385,54 +519,73 @@ class AutoSegmentPlugin(BasePlugin):
         start_sample = int(start_time * sr)
         end_sample = int(end_time * sr)
 
-        try:
-            self.panel.set_status("Running basic segmentation...")
-            audio = self.api.project[start_sample:end_sample, channel]
-            audio = audio.astype(np.float32)
+        # Get frequency band - use default wide range
+        # or from current selection if available
+        selection = self.api.get_fine_selection()
+        if selection and selection.f0 is not None and selection.f1 is not None:
+            f0, f1 = selection.f0, selection.f1
+        else:
+            # Default: 500Hz to half Nyquist
+            f0 = 500
+            f1 = sr / 4
 
-            # Get frequency band - use default wide range
-            # or from current selection if available
-            selection = self.api.get_fine_selection()
-            if selection and selection.f0 is not None and selection.f1 is not None:
-                f0, f1 = selection.f0, selection.f1
-            else:
-                # Default: 500Hz to half Nyquist
-                f0 = 500
-                f1 = sr / 4
+        # Get threshold from DetectPlugin
+        threshold = detect_plugin._threshold
+        if threshold is None:
+            # We'll compute a default per-block if needed
+            threshold = 0.01  # Fallback
 
-            # Compute amplitude envelope
-            rectify_lowpass = self.api.config.get("detection.rectify_lowpass", 100)
-            filtered, ampenv = filter_and_ampenv(audio, sr, f0, f1, rectify_lowpass)
+        # Get peak threshold if enabled
+        min_peak = False
+        if detect_plugin.using_peak_threshold:
+            min_peak = detect_plugin._peak_threshold
+            if min_peak is None:
+                min_peak = 2 * threshold
 
-            # Get threshold from DetectPlugin or compute default
-            threshold = detect_plugin._threshold
-            if threshold is None:
-                threshold = 0.5 * np.mean(np.abs(ampenv))
+        # Build params dict for worker
+        params = {
+            'f0': f0,
+            'f1': f1,
+            'rectify_lowpass': self.api.config.get("detection.rectify_lowpass", 100),
+            'threshold': threshold,
+            'min_peak': min_peak,
+            'ignore_width': self.api.config.get("detection.ignore_width", 0.01),
+            'min_size': self.api.config.get("detection.min_size", 0.01),
+            'fuse_duration': self.api.config.get("detection.fuse_duration", 0.01),
+        }
 
-            # Get peak threshold if enabled
-            min_peak = False
-            if detect_plugin.using_peak_threshold:
-                min_peak = detect_plugin._peak_threshold
-                if min_peak is None:
-                    min_peak = 2 * threshold
+        # Check if parallel processing is enabled
+        use_parallel = self.panel.parallel_checkbox.isChecked()
 
-            # Run threshold detection
-            intervals = threshold_events(
-                ampenv,
-                threshold,
-                sampling_rate=sr,
-                ignore_width=self.api.config.get("detection.ignore_width", 0.01),
-                min_size=self.api.config.get("detection.min_size", 0.01),
-                fuse_duration=self.api.config.get("detection.fuse_duration", 0.01),
-                min_peak=min_peak
-            )
+        if use_parallel:
+            self._run_parallel_segmentation("basic", channel, start_sample, end_sample, params)
+        else:
+            # Original single-threaded processing
+            try:
+                self.panel.set_status("Running basic segmentation...")
+                audio = self.api.project[start_sample:end_sample, channel]
+                audio = audio.astype(np.float32)
 
-            # Create segments
-            self._create_segments_from_intervals(intervals, channel, start_sample, end_sample)
+                # Compute amplitude envelope
+                filtered, ampenv = filter_and_ampenv(audio, sr, f0, f1, params['rectify_lowpass'])
 
-        except Exception as e:
-            logger.exception("Error during basic segmentation")
-            self.panel.set_status(f"Error: {e}", is_error=True)
+                # Run threshold detection
+                intervals = threshold_events(
+                    ampenv,
+                    threshold,
+                    sampling_rate=sr,
+                    ignore_width=params['ignore_width'],
+                    min_size=params['min_size'],
+                    fuse_duration=params['fuse_duration'],
+                    min_peak=min_peak
+                )
+
+                # Create segments
+                self._create_segments_from_intervals(intervals, channel, start_sample, end_sample)
+
+            except Exception as e:
+                logger.exception("Error during basic segmentation")
+                self.panel.set_status(f"Error: {e}", is_error=True)
 
     def _run_advanced_segmentation(self):
         """Run advanced multi-band segmentation."""
@@ -458,37 +611,180 @@ class AutoSegmentPlugin(BasePlugin):
         start_sample = int(start_time * sr)
         end_sample = int(end_time * sr)
 
+        # Get parameters from DetectPlugin's advanced controls
+        signal_band = detect_plugin.advanced_preview.get_signal_band()
+        noise_band = detect_plugin.advanced_preview.get_noise_band()
+        threshold = detect_plugin.advanced_preview.get_threshold()
+
+        params = detect_plugin.detect_controls.advanced_panel.get_advanced_params(
+            sr,
+            signal_band,
+            noise_band,
+            threshold
+        )
+
+        # Log the params for debugging
+        logger.info(f"Advanced segmentation params: signal_band={signal_band}, noise_band={noise_band}, "
+                    f"threshold={threshold:.6f}, software_gain={params['software_gain']}, "
+                    f"signal_gain={params['signal_gain']}, noise_gain={params['noise_gain']}")
+
+        # Check if parallel processing is enabled
+        use_parallel = self.panel.parallel_checkbox.isChecked()
+
+        if use_parallel:
+            self._run_parallel_segmentation("advanced", channel, start_sample, end_sample, params)
+        else:
+            # Original single-threaded processing
+            try:
+                self.panel.set_status("Running advanced segmentation...")
+                audio = self.api.project[start_sample:end_sample, channel]
+                audio = audio.astype(np.float32)
+
+                # Run advanced segmentation
+                onsets, offsets = advanced_seg(audio, sr, params)
+
+                if len(onsets) > 0:
+                    intervals = np.column_stack([onsets, offsets])
+                else:
+                    intervals = np.array([])
+
+                # Create segments
+                self._create_segments_from_intervals(intervals, channel, start_sample, end_sample)
+
+            except Exception as e:
+                logger.exception("Error during advanced segmentation")
+                self.panel.set_status(f"Error: {e}", is_error=True)
+
+    def _run_parallel_segmentation(self, method: str, channel: int, start_sample: int, end_sample: int, params: dict):
+        """Run segmentation in parallel across blocks."""
+        if self.parallel_worker is not None and self.parallel_worker.isRunning():
+            self.panel.set_status("Segmentation already in progress", is_error=True)
+            return
+
+        sr = self.api.project.sampling_rate
+        project = self.api.project
+
+        # Log the params being used for debugging
+        logger.info(f"Running parallel {method} segmentation with params: {params}")
+
+        # Read audio by blocks
         try:
-            self.panel.set_status("Running advanced segmentation...")
-            audio = self.api.project[start_sample:end_sample, channel]
-            audio = audio.astype(np.float32)
+            start_idx = self.api.make_project_index(start_sample)
+            end_idx = self.api.make_project_index(end_sample)
+            blocks_data_list = project.read_by_blocks(start_idx, end_idx, [channel])
+        except Exception as e:
+            self.panel.set_status(f"Error reading audio blocks: {e}", is_error=True)
+            return
 
-            # Get parameters from DetectPlugin's advanced controls
-            signal_band = detect_plugin.advanced_preview.get_signal_band()
-            noise_band = detect_plugin.advanced_preview.get_noise_band()
-            threshold = detect_plugin.advanced_preview.get_threshold()
+        if not blocks_data_list:
+            self.panel.set_status("No audio blocks found in range", is_error=True)
+            return
 
-            params = detect_plugin.detect_controls.advanced_panel.get_advanced_params(
-                sr,
-                signal_band,
-                noise_band,
-                threshold
+        # Build list of (block_idx, block_start_sample, audio_data) tuples
+        # We need to figure out the absolute start sample for each block chunk
+        blocks_data = []
+        current_sample = start_sample
+
+        for block_idx, block_audio in enumerate(blocks_data_list):
+            # Squeeze to 1D if needed (read returns (samples, channels))
+            if block_audio.ndim > 1:
+                block_audio = block_audio[:, 0]
+
+            blocks_data.append((block_idx, current_sample, block_audio))
+            current_sample += len(block_audio)
+
+        # Store pending info
+        self._pending_channel = channel
+        self._pending_start_sample = start_sample
+        self._pending_end_sample = end_sample
+
+        # Start parallel worker
+        num_blocks = len(blocks_data)
+        self.panel.set_processing(True, determinate=True, total=num_blocks)
+        self.panel.set_status(f"Processing {num_blocks} blocks in parallel...")
+
+        self.parallel_worker = ParallelSegmentWorker(
+            blocks_data=blocks_data,
+            sampling_rate=sr,
+            method=method,
+            params=params,
+            max_workers=min(4, num_blocks)
+        )
+        self.parallel_worker.finished.connect(self._on_parallel_finished)
+        self.parallel_worker.error.connect(self._on_segmentation_error)
+        self.parallel_worker.progress.connect(self._on_parallel_progress)
+        self.parallel_worker.start()
+
+    def _on_parallel_progress(self, current: int, total: int, message: str):
+        """Update progress during parallel processing."""
+        self.panel.set_progress(current, total)
+        self.panel.set_status(message)
+
+    def _on_parallel_finished(self, results: List[BlockSegmentResult]):
+        """Handle completed parallel segmentation."""
+        self.panel.set_processing(False)
+
+        # Get source for the channel
+        source = self._get_or_create_source_for_channel(self._pending_channel)
+        if source is None:
+            self.panel.set_status("Could not find or create source for channel", is_error=True)
+            return
+
+        # Delete existing segments in the range first
+        segment_plugin = self.api.plugins.get("SegmentPlugin")
+        if segment_plugin:
+            segment_plugin.delete_segments_between(
+                self.api.make_project_index(self._pending_start_sample),
+                self.api.make_project_index(self._pending_end_sample),
+                source
             )
 
-            # Run advanced segmentation
-            onsets, offsets = advanced_seg(audio, sr, params)
+        # Collect all intervals from all blocks, converting to absolute project indices
+        all_segments = []
+        errors = []
 
-            if len(onsets) > 0:
-                intervals = np.column_stack([onsets, offsets])
+        for result in results:
+            if result.error:
+                errors.append(f"Block {result.block_index}: {result.error}")
+                continue
+
+            if len(result.intervals) > 0:
+                for interval in result.intervals:
+                    # interval is relative to block start, add block_start_sample to get absolute
+                    abs_start = result.block_start_sample + int(interval[0])
+                    abs_end = result.block_start_sample + int(interval[1])
+                    all_segments.append((
+                        self.api.make_project_index(abs_start),
+                        self.api.make_project_index(abs_end),
+                        source
+                    ))
+
+        if errors:
+            logger.warning(f"Errors during parallel segmentation: {errors}")
+
+        if not all_segments:
+            msg = "No segments detected (existing segments in range were deleted)"
+            if errors:
+                msg += f". Errors in {len(errors)} blocks."
+            self.panel.set_status(msg)
+            self.parallel_worker = None
+            return
+
+        # Create segments using SegmentPlugin
+        try:
+            if segment_plugin:
+                segment_plugin.create_segments_batch(all_segments, skip_delete_check=True)
+                msg = f"Created {len(all_segments)} segments from {len(results)} blocks"
+                if errors:
+                    msg += f" ({len(errors)} blocks had errors)"
+                self.panel.set_status(msg)
             else:
-                intervals = np.array([])
-
-            # Create segments
-            self._create_segments_from_intervals(intervals, channel, start_sample, end_sample)
-
+                self.panel.set_status("SegmentPlugin not available", is_error=True)
         except Exception as e:
-            logger.exception("Error during advanced segmentation")
-            self.panel.set_status(f"Error: {e}", is_error=True)
+            logger.exception("Error creating segments")
+            self.panel.set_status(f"Error creating segments: {e}", is_error=True)
+
+        self.parallel_worker = None
 
     def _create_segments_from_intervals(self, intervals: np.ndarray, channel: int, start_offset: int, end_offset: int):
         """Create segments from detected intervals, deleting existing segments in the range first."""
@@ -525,7 +821,7 @@ class AutoSegmentPlugin(BasePlugin):
         try:
             segment_plugin = self.api.plugins.get("SegmentPlugin")
             if segment_plugin:
-                segment_plugin.create_segments_batch(absolute_segments)
+                segment_plugin.create_segments_batch(absolute_segments, skip_delete_check=True)
                 self.panel.set_status(f"Created {len(intervals)} segments")
             else:
                 self.panel.set_status("SegmentPlugin not available", is_error=True)
@@ -571,7 +867,7 @@ class AutoSegmentPlugin(BasePlugin):
         # Create segments using SegmentPlugin
         try:
             if segment_plugin:
-                segment_plugin.create_segments_batch(absolute_segments)
+                segment_plugin.create_segments_batch(absolute_segments, skip_delete_check=True)
                 self.panel.set_status(f"Created {len(segments)} segments")
             else:
                 self.panel.set_status("SegmentPlugin not available", is_error=True)

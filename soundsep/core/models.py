@@ -902,6 +902,30 @@ class Project:
         for block in self.blocks:
             block.close_files()
 
+    def read_by_blocks(
+            self,
+            start: Union['BlockIndex', 'ProjectIndex'],
+            stop: Union['BlockIndex', 'ProjectIndex'],
+            channels: List[int]
+        ) -> np.ndarray:
+        """Reads data of a start->stop slice, can use ProjectIndex or BlockIndex values
+
+        Arguments
+        ---------
+        start : BlockIndex or ProjectIndex
+        stop : BlockIndex or ProjectIndex
+        channels : List[int]
+
+        Returns
+        -------
+        data : np.ndarray
+            A 2D array of shape (stop - start, len(channels)) representing data between
+            the start and stop indices.
+        """
+        start = self.to_project_index(start)
+        stop = self.to_project_index(stop)
+        return self._read_by_project_indices(start, stop, channels, concatenate=False)
+    
     def read(
             self,
             start: Union['BlockIndex', 'ProjectIndex'],
@@ -924,19 +948,24 @@ class Project:
         """
         start = self.to_project_index(start)
         stop = self.to_project_index(stop)
-        return self._read_by_project_indices(start, stop, channels)
+        return self._read_by_project_indices(start, stop, channels, concatenate=True)
 
     def _read_by_project_indices(
             self,
             start: 'ProjectIndex',
             stop: 'ProjectIndex',
-            channels: List[int]
+            channels: List[int],
+            concatenate: bool = True
         ) -> np.typing.ArrayLike:
         """Reads slice's data from one or more Blocks in project"""
         if not isinstance(start, ProjectIndex) or not isinstance(stop, ProjectIndex):
             raise RuntimeError("_read_by_project_indicies should never be called with anything but ProjectIndex instances")
 
         out_data = []
+        # TODO: This can be preallocated using a numpy array of the correct shape
+        # TODO: we can predetermine which blocks we need by using searchsorted on self._block_start_frames
+        # start_id = np.searchsorted(self._block_start_frames, start, 'right')
+        # stop_id = np.searchsorted(self._block_start_frames, stop, 'right')
         for (i0, i1), block in self.iter_blocks():
             if i1 < start:
                 continue
@@ -948,8 +977,11 @@ class Project:
                 block_read_start = max(start - i0, 0)
                 block_read_stop = min(stop - i0, block.frames)
                 out_data.append(block.read(block_read_start, block_read_stop, channels=channels))
-
-        return np.concatenate(out_data)
+        
+        if concatenate:
+            return np.concatenate(out_data)
+        else:
+            return out_data
 
     def _normalize_slice(self, slice_: slice, cast_int_to_project_index: bool = False) -> slice:
         """Convert slice of ProjectIndex or BlockIndex values to a slice with explicit endpoints

@@ -61,14 +61,18 @@ class UMAPVisPanel(widgets.QWidget):
         # make a scatter plot for the segments
 
         spots = []
-        for ix,s_row in segments.iterrows():
-            if func_get_color and len(s_row['Tags']) > 0:
-                c = func_get_color(list(s_row['Tags'])[0])
+        # Avoid .iterrows() which triggers pandas type inference
+        seg_ids = list(segments.index)
+        for ix in seg_ids:
+            tags = segments.at[ix, 'Tags']
+            coords = segments.at[ix, 'Coords']
+            if func_get_color and len(tags) > 0:
+                c = func_get_color(list(tags)[0])
             else:
                 c = 'r'
-            if s_row['Coords'] != None and len(s_row['Coords']) >= 2:
+            if coords is not None and len(coords) >= 2:
                 spots.append(dict({
-                    'pos': s_row['Coords'][:2],
+                    'pos': coords[:2],
                     'data': ix,
                     'brush': pg.mkBrush(c),
                     'size': 10
@@ -104,19 +108,47 @@ class UMAPVisPanel(widgets.QWidget):
             )
             self.npoints += 1
 
+    def add_spots_batch(self, segments_df, func_get_color=None):
+        """Add multiple spots at once, much faster than calling add_spot repeatedly."""
+        spots = []
+        # Avoid .iterrows() which triggers pandas type inference
+        seg_ids = list(segments_df.index)
+        for seg_id in seg_ids:
+            tags = segments_df.at[seg_id, 'Tags']
+            coords = segments_df.at[seg_id, 'Coords']
+            if func_get_color and len(tags) > 0:
+                c = func_get_color(list(tags)[0])
+            else:
+                c = 'r'
+            if coords is not None and len(coords) >= 2:
+                spots.append({
+                    'pos': coords[:2],
+                    'data': seg_id,
+                    'brush': pg.mkBrush(c),
+                    'size': 10
+                })
+
+        if spots:
+            self.scatter.addPoints(spots)
+            self.npoints += len(spots)
+
     def update_spots(self, segments, func_get_color=None):
         spot_seg_IDs = [spot['data'] for spot in self.scatter.data]
         spot_brushes = [spot['brush'] for spot in self.scatter.data]
         # first add all the spots that need to be added
         segs_to_add = []
         any_changed = False
-        for ix,s_row in segments.iterrows():
-            if s_row['Coords'] is not None and len(s_row['Coords']) >= 2:
+        # Avoid .iterrows() which triggers pandas type inference
+        seg_ids = list(segments.index)
+        for ix in seg_ids:
+            coords = segments.at[ix, 'Coords']
+            tags = segments.at[ix, 'Tags']
+            if coords is not None and len(coords) >= 2:
                 if ix not in spot_seg_IDs:
-                    segs_to_add.append(s_row)
+                    segs_to_add.append(segments.loc[ix])
                 else:
-                    if func_get_color and len(s_row['Tags']) > 0:
-                        c = func_get_color(list(s_row['Tags'])[0])
+                    if func_get_color and len(tags) > 0:
+                        c = func_get_color(list(tags)[0])
                     else:
                         c = 'r'
                     spot_brushes[spot_seg_IDs.index(ix)] = pg.mkBrush(c)
@@ -213,19 +245,23 @@ class SegmentPanel(widgets.QWidget):
         # TODO Store indices
         # TODO: this is extremely slow - we need a better way to update the table.
         self.table.setRowCount(len(segments))
-        ix = 0
-        for row, segment_row in segments.iterrows():
-            start_time = segment_row['StartIndex'] / project.sampling_rate
-            stop_time = segment_row['StopIndex'] / project.sampling_rate
+        # Avoid .iterrows() which triggers pandas type inference
+        seg_ids = list(segments.index)
+        for ix, row in enumerate(seg_ids):
+            start_idx = segments.at[row, 'StartIndex']
+            stop_idx = segments.at[row, 'StopIndex']
+            source = segments.at[row, 'Source']
+            tags = segments.at[row, 'Tags']
+            start_time = start_idx / project.sampling_rate
+            stop_time = stop_idx / project.sampling_rate
             self.table.setItem(ix, 0, widgets.QTableWidgetItem(str(row)))
-            self.table.setItem(ix, 1, widgets.QTableWidgetItem(segment_row['Source'].name))
+            self.table.setItem(ix, 1, widgets.QTableWidgetItem(source.name))
             self.table.setItem(ix, 2, TimeQTableWidgetItem(start_time))
             self.table.setItem(ix, 3, TimeQTableWidgetItem(stop_time))
-            self.table.setItem(ix, 4, TimeQTableWidgetItem(stop_time-start_time))
+            self.table.setItem(ix, 4, TimeQTableWidgetItem(stop_time - start_time))
             self.table.setItem(ix, 5, widgets.QTableWidgetItem(
-                ",".join(segment_row["Tags"])
+                ",".join(tags)
             ))
-            ix += 1
         self.table.setSortingEnabled(True)
         # sort by start time
         self.table.sortByColumn(2, Qt.SortOrder.AscendingOrder)
@@ -246,19 +282,60 @@ class SegmentPanel(widgets.QWidget):
         ))
         self.table.setSortingEnabled(True)
 
-    def update_rows(self, segments,project):
+    def add_rows_batch(self, segments_df, project):
+        """Add multiple rows at once, much faster than calling add_row repeatedly."""
+        if len(segments_df) == 0:
+            return
+
         self.table.setSortingEnabled(False)
-        for ix, segment in segments.iterrows():
+
+        # Pre-allocate rows
+        start_ind = self.table.rowCount()
+        self.table.setRowCount(start_ind + len(segments_df))
+
+        sr = project.sampling_rate
+        # Avoid .iterrows() which triggers pandas type inference and causes
+        # comparison errors with ProjectIndex objects
+        seg_ids = list(segments_df.index)
+        for i, seg_id in enumerate(seg_ids):
+            ind = start_ind + i
+            start_idx = segments_df.at[seg_id, 'StartIndex']
+            stop_idx = segments_df.at[seg_id, 'StopIndex']
+            source = segments_df.at[seg_id, 'Source']
+            tags = segments_df.at[seg_id, 'Tags']
+            start_time = start_idx / sr
+            stop_time = stop_idx / sr
+            self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(seg_id)))
+            self.table.setItem(ind, 1, widgets.QTableWidgetItem(source.name))
+            self.table.setItem(ind, 2, TimeQTableWidgetItem(start_time))
+            self.table.setItem(ind, 3, TimeQTableWidgetItem(stop_time))
+            self.table.setItem(ind, 4, TimeQTableWidgetItem(stop_time - start_time))
+            self.table.setItem(ind, 5, widgets.QTableWidgetItem(
+                ",".join(tags)
+            ))
+
+        self.table.setSortingEnabled(True)
+        self.table.sortByColumn(2, Qt.SortOrder.AscendingOrder)
+
+    def update_rows(self, segments, project):
+        self.table.setSortingEnabled(False)
+        # Avoid .iterrows() which triggers pandas type inference
+        seg_ids = list(segments.index)
+        for ix in seg_ids:
             ind = self._find_segment_row_by_segID(ix)
             if ind is not None:
-                start_time = segment['StartIndex'] / project.sampling_rate
-                stop_time = segment['StopIndex'] / project.sampling_rate
-                self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
-                self.table.setItem(ix, 2, TimeQTableWidgetItem(start_time))
-                self.table.setItem(ix, 3, TimeQTableWidgetItem(stop_time))
-                self.table.setItem(ix, 4, TimeQTableWidgetItem(stop_time-start_time))
+                start_idx = segments.at[ix, 'StartIndex']
+                stop_idx = segments.at[ix, 'StopIndex']
+                source = segments.at[ix, 'Source']
+                tags = segments.at[ix, 'Tags']
+                start_time = start_idx / project.sampling_rate
+                stop_time = stop_idx / project.sampling_rate
+                self.table.setItem(ind, 1, widgets.QTableWidgetItem(source.name))
+                self.table.setItem(ind, 2, TimeQTableWidgetItem(start_time))
+                self.table.setItem(ind, 3, TimeQTableWidgetItem(stop_time))
+                self.table.setItem(ind, 4, TimeQTableWidgetItem(stop_time - start_time))
                 self.table.setItem(ind, 5, widgets.QTableWidgetItem(
-                    ",".join(segment["Tags"])
+                    ",".join(tags)
                 ))
         self.table.setSortingEnabled(True)
     
@@ -721,12 +798,16 @@ class SegmentPlugin(BasePlugin):
         for source in self.api.get_sources():
             source_view = self.gui.source_views[source.index]
             source_segs = segs_in_view[ segs_in_view['Source'] == source ]
-            for idx, segment_row in source_segs.iterrows():
+            # Avoid .iterrows() which triggers pandas type inference
+            seg_ids = list(source_segs.index)
+            for idx in seg_ids:
+                segment_row = source_segs.loc[idx]
+                tags = segment_row["Tags"]
                 # get the color of the first tag TODO maybe make this different than tags
-                if len(segment_row["Tags"]) == 0:
+                if len(tags) == 0:
                     c = "#00ff00"
                 else:
-                    t = list(segment_row["Tags"])[0]
+                    t = list(tags)[0]
                     c = self.api.plugins["TagPlugin"].get_tag_color(t, as_hex=True)
                 # if this segment is selected in the Segment Table then color it differently
                 if idx in self._selected_segments:
@@ -762,11 +843,70 @@ class SegmentPlugin(BasePlugin):
                 coords=list()
             )
 
-    def create_segments_batch(self, segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]]):
-        """Create multiple segments, only updating the display one time at the end"""
-        # With optimizations, we can create each segment individually
+    def create_segments_batch(
+        self,
+        segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]],
+        skip_delete_check: bool = False
+    ):
+        """Create multiple segments efficiently using batch operations.
+
+        Arguments
+        ---------
+        segment_data : List[Tuple[ProjectIndex, ProjectIndex, Source]]
+            List of (start, stop, source) tuples for each segment to create
+        skip_delete_check : bool
+            If True, skip checking for overlapping segments to delete.
+            Use this when you've already deleted segments in the range (e.g., from AutoSegmentPlugin).
+        """
+        if not segment_data:
+            return
+
+        # Build all segment data at once
+        new_rows = []
+        start_seg_id = self._next_seg_id
+
         for start, stop, source in segment_data:
-            self.create_segment(start, stop, source,tags=set(),coords=list())
+            new_rows.append({
+                'StartIndex': start,
+                'StopIndex': stop,
+                'Source': source,
+                'Tags': set(),
+                'Coords': list()
+            })
+
+        # Update next ID
+        self._next_seg_id = start_seg_id + len(segment_data)
+
+        # Create empty DataFrame first, then assign values to avoid pandas type inference
+        # (ProjectIndex objects can't be compared with ints during type inference)
+        new_df = pd.DataFrame(
+            index=range(start_seg_id, self._next_seg_id),
+            columns=['StartIndex', 'StopIndex', 'Source', 'Tags', 'Coords']
+        )
+        for i, row_data in enumerate(new_rows):
+            seg_id = start_seg_id + i
+            new_df.at[seg_id, 'StartIndex'] = row_data['StartIndex']
+            new_df.at[seg_id, 'StopIndex'] = row_data['StopIndex']
+            new_df.at[seg_id, 'Source'] = row_data['Source']
+            new_df.at[seg_id, 'Tags'] = row_data['Tags']
+            new_df.at[seg_id, 'Coords'] = row_data['Coords']
+
+        # Optionally check for overlaps (slow, so skip when safe)
+        if not skip_delete_check:
+            for start, stop, source in segment_data:
+                self.delete_segments_between(start, stop, source, refresh=False)
+
+        # Concatenate with existing datastore
+        self._segmentation_datastore = pd.concat([self._segmentation_datastore, new_df])
+
+        # Batch update UI
+        self.panel.add_rows_batch(new_df, self.api.project)
+        self.umap_panel.add_spots_batch(new_df, self.api.plugins["TagPlugin"].get_tag_color)
+
+        self.gui.show_status(f"Created {len(segment_data)} segments")
+        logger.debug(f"Created {len(segment_data)} segments in batch")
+        self._needs_saving = True
+        self.refresh()
 
 
     def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = set(), coords: list = list()):

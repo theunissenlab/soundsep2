@@ -73,6 +73,9 @@ class PreviewPlot(pg.PlotWidget):
         if xdata is not None and len(xdata) > 0:
             ymax = np.max(np.abs(ydata)) if len(ydata) > 0 else 1
             ymin = np.min(np.abs(ydata)) if len(ydata) > 0 else 0
+            # Clip to float32-safe range to avoid overflow warnings
+            ymax = np.clip(ymax, 1e-6, 1e30)
+            ymin = np.clip(ymin, 0, 1e30)
             self.advanced_ampenv_viewbox.setYRange(max(1e-6, ymin*0.9), ymax * 1.1, padding=0)
 
     def set_advanced_mode(self, enabled: bool):
@@ -121,6 +124,8 @@ class PreviewPlot(pg.PlotWidget):
             xmin = xrange[0]
             xmax = xrange[-1]
             ymax = np.max(np.abs(np.concatenate([yrange, yrange_ampenv])))
+            # Clip to float32-safe range to avoid overflow warnings
+            ymax = np.clip(ymax, 1e-30, 1e30)
             self.setXRange(xmin, xmax, padding=0.0)
             self.setYRange(-ymax, ymax, padding=0.0)
 
@@ -234,7 +239,7 @@ class AdvancedPreviewWidget(widgets.QWidget):
             pen=pg.mkPen((255, 200, 0), width=3)
         )
         self.threshold_line.setCursor(Qt.CursorShape.SplitVCursor)
-        self.threshold_line.setBounds([-12, None])  # y down to 1e-12
+        self.threshold_line.setBounds([-12, 12])  # y from 1e-12 to 1e12
 
         # self.threshold_line.setBounds([0, None])
         self.threshold_line.sigDragged.connect(self._on_threshold_dragged)
@@ -333,9 +338,9 @@ class AdvancedPreviewWidget(widgets.QWidget):
         self.spec_plot.setYRange(0, min(20000, fs / 2), padding=0)
 
         # Constrain band selectors to valid frequency range
-        max_freq = min(20000, fs / 2)
-        self.signal_band_region.setBounds([0, max_freq])
-        self.noise_band_region.setBounds([0, max_freq])
+        max_freq = float(min(20000, fs / 2))
+        self.signal_band_region.setBounds([0.0, max_freq])
+        self.noise_band_region.setBounds([0.0, max_freq])
 
     def set_ampenv_data(self, t: np.ndarray, ampenv: np.ndarray):
         x = np.array([xx.to_timestamp() for xx in t], dtype=float)
@@ -352,13 +357,17 @@ class AdvancedPreviewWidget(widgets.QWidget):
             log_min = np.log10(ymin)
             log_max = np.log10(ymax)
 
+            # Clip to float32-safe range to avoid overflow warnings
+            log_min = np.clip(log_min, -30, 30)
+            log_max = np.clip(log_max, -30, 30)
+
             # pad in log units
             span = max(1e-6, log_max - log_min)
             pad = 0.05 * span  # 5% headroom in log space
 
             self.ampenv_plot.setYRange(log_min - pad, log_max + pad, padding=0)
             self.ampenv_plot.setXRange(x[0], x[-1], padding=0)
-            
+
     def clear(self):
         """Clear all data from the widget"""
         self.spec_image.clear()

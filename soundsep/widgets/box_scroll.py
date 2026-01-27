@@ -27,8 +27,9 @@ class ProjectScrollbar(pg.PlotWidget):
         self.setAxisItems({
             "bottom": ProjectIndexTimeAxis(project=project, orientation="bottom"),
         })
-        self.setXRange(0, project.frames, padding=0.0)
-        self.setYRange(0, 1, padding=0.0)
+        # Use float to avoid int32 overflow in pyqtgraph with large frame counts
+        self.setXRange(0.0, float(project.frames), padding=0.0)
+        self.setYRange(0.0, 1.0, padding=0.0)
 
         # Store interval rectangles
         self.interval_rects = []
@@ -42,16 +43,17 @@ class ProjectScrollbar(pg.PlotWidget):
         self.addItem(self.rect)
         for handle in self.rect.getHandles():
             self.rect.removeHandle(handle)
-        self.rect.maxBounds = QRectF(0, 0.1, project.frames, 0.8)
+        # Use float to avoid int32 overflow in pyqtgraph
+        self.rect.maxBounds = QRectF(0.0, 0.1, float(project.frames), 0.8)
         self.rect.sigRegionChanged.connect(self.on_move)
 
         # Selection region for time range selection (Shift+drag)
         self.selection_region = pg.LinearRegionItem(
-            values=[0, 0],
+            values=[0.0, 0.0],
             brush=pg.mkBrush(255, 200, 100, 80),  # Orange semi-transparent
             pen=pg.mkPen((255, 150, 50), width=2),
             movable=True,
-            bounds=[0, project.frames],
+            bounds=[0.0, float(project.frames)],
         )
         self.selection_region.setVisible(False)
         self.selection_region.setZValue(10)  # Above interval rects
@@ -88,7 +90,7 @@ class ProjectScrollbar(pg.PlotWidget):
         from PyQt6.QtCore import QPointF
         if self._selecting:
             pos = self.plotItem.vb.mapSceneToView(QPointF(event.pos()))
-            x = max(0, min(pos.x(), self.project.frames))
+            x = max(0.0, min(pos.x(), float(self.project.frames)))
             self.selection_region.setRegion([
                 min(self._selection_start, x),
                 max(self._selection_start, x)
@@ -116,15 +118,16 @@ class ProjectScrollbar(pg.PlotWidget):
 
         # Get current window size
         current_size = self.rect.size().x()
+        max_frames = float(self.project.frames)
 
         # Calculate new position centered on clicked position
-        new_x0 = max(0, clicked_x - current_size / 2)
+        new_x0 = max(0.0, clicked_x - current_size / 2)
         new_x1 = new_x0 + current_size
 
         # Make sure we don't go past the end
-        if new_x1 > self.project.frames:
-            new_x1 = self.project.frames
-            new_x0 = max(0, new_x1 - current_size)
+        if new_x1 > max_frames:
+            new_x1 = max_frames
+            new_x0 = max(0.0, new_x1 - current_size)
 
         # Update the rect position
         self.rect.setPos((new_x0, 0.1), update=True)
@@ -151,11 +154,11 @@ class ProjectScrollbar(pg.PlotWidget):
         sampling_rate = self.project.sampling_rate
         
         for start_time, stop_time in intervals_data:
-            # Convert time in seconds to project frames
-            start_frame = int(start_time * sampling_rate)
-            stop_frame = int(stop_time * sampling_rate)
+            # Convert time in seconds to project frames (use float to avoid int32 overflow)
+            start_frame = float(start_time * sampling_rate)
+            stop_frame = float(stop_time * sampling_rate)
             width = stop_frame - start_frame
-            
+
             # Create a rectangle for this interval
             # Position it below the main scrollbar rect (y=0.0 to y=0.05)
             rect_item = pg.QtWidgets.QGraphicsRectItem(start_frame, 0.0, width, 0.5)

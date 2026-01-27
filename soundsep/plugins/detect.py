@@ -273,7 +273,7 @@ class DetectPlugin(BasePlugin):
         self.threshold_preview_plot = pg.InfiniteLine(pos=0, angle=0, movable=True)
         self.threshold_preview_plot.setCursor(Qt.CursorShape.SplitVCursor)
         self.threshold_preview_plot.setPen(pg.mkPen((20, 200, 20), width=3))
-        self.threshold_preview_plot.setBounds([0, None])
+        self.threshold_preview_plot.setBounds([0, 1e10])
         self.gui.ui.previewPlot.addItem(self.threshold_preview_plot)
 
         self.detect_controls = DetectControls()
@@ -427,7 +427,7 @@ class DetectPlugin(BasePlugin):
             self.peak_threshold_line = pg.InfiniteLine(pos=self.threshold_preview_plot.pos().y() * 2, angle=0, movable=True)
             self.peak_threshold_line.setCursor(Qt.CursorShape.SplitVCursor)
             self.peak_threshold_line.setPen(pg.mkPen((200, 20, 20), width=3))
-            self.peak_threshold_line.setBounds([0, None])
+            self.peak_threshold_line.setBounds([0, 1e10])
             self.peak_threshold_line.sigDragged.connect(self.on_peak_threshold_dragged)
             self.gui.ui.previewPlot.addItem(self.peak_threshold_line)
         else:
@@ -437,7 +437,7 @@ class DetectPlugin(BasePlugin):
     def on_threshold_dragged(self, line):
         self._threshold = line.pos().y()
         if self.using_peak_threshold:
-            self.peak_threshold_line.setBounds([self._threshold, None])
+            self.peak_threshold_line.setBounds([self._threshold, 1e10])
             if self._peak_threshold is None:
                 self.peak_threshold_line.setValue(2 * self._threshold)
 

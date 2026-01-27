@@ -7,6 +7,17 @@ from PyQt6 import QtWidgets as widgets
 from PyQt6.QtCore import Qt
 from qasync import QEventLoop
 
+import warnings
+import numpy as np
+
+# Suppress pyqtgraph ViewBox overflow warning (cosmetic, doesn't affect functionality)
+warnings.filterwarnings(
+    "ignore",
+    message="overflow encountered in cast",
+    category=RuntimeWarning,
+    module="pyqtgraph.graphicsItems.ViewBox.ViewBox"
+)
+
 
 def _activate_window(window):
     """Bring a window to the foreground, especially needed on macOS."""

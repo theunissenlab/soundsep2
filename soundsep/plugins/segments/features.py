@@ -98,20 +98,26 @@ class VisualizationPanel(widgets.QWidget):
     
     def set_data(self, features, func_get_color=None):
         spots = []
-        for ix,feat_row in features.iterrows():
+        seg_db = self.api.get_mut_datastore().get('segments')
+        for ix, feat_row in features.iterrows():
+            # Get segment info (tags, coords) from segment datastore
+            if seg_db is None or ix not in seg_db.index:
+                continue
+            seg_row = seg_db.loc[ix]
             tags = self.api.plugins['segments'].get_tags_for_segment(ix)
-            if func_get_color and len(s_row['Tags']) > 0:
-                c = func_get_color(list(s_row['Tags'])[0])
+            if func_get_color and len(tags) > 0:
+                c = func_get_color(list(tags)[0])
             else:
                 c = 'r'
-            if s_row['Coords'] != None and len(s_row['Coords']) >= 2:
+            coords = seg_row.get('Coords') if hasattr(seg_row, 'get') else seg_row['Coords'] if 'Coords' in seg_db.columns else None
+            if coords is not None and len(coords) >= 2:
                 spots.append(dict({
-                    'pos': s_row['Coords'][:2],
+                    'pos': coords[:2],
                     'data': ix,
                     'brush': pg.mkBrush(c),
                     'size': 10
                 }))
-        
+
         self.npoints = len(spots)
         self.scatter.setData(
             spots=spots,
@@ -156,7 +162,7 @@ class VisualizationPanel(widgets.QWidget):
         # only take segments that are in the feature db
         segments = seg_db.loc[feat_db.index]
         data = self.scatter.data
-        if spot_seg_IDs != []:
+        if spot_seg_IDs.size > 0:
             data['x'] = feat_db[x_axis].loc[spot_seg_IDs]
             data['y'] = feat_db[y_axis].loc[spot_seg_IDs]
             self.scatter.updateSpots()
@@ -200,7 +206,7 @@ class DimensionalityReductionWizard(widgets.QWidget):
                 sub_layouts[k].addWidget(self.feature_checkboxes[kk])
                 pcen = self.feature_percents[k][ix]
                 sub_layouts[k].addWidget(widgets.QLabel("NaNs: %.2f" % (pcen*100)))
-                self.feature_checkboxes[kk].setChecked(pcen < .1)
+                self.feature_checkboxes[kk].setChecked(bool(pcen < .1))
                 self.feature_checkboxes[kk].stateChanged.connect(self.on_box_checked)
             checkbox_layout.addLayout(sub_layouts[k])
         layout.addLayout(checkbox_layout)
@@ -421,7 +427,7 @@ class FeatureGenerationPanel(widgets.QWidget):
         self.table.setSortingEnabled(True)
 
 from sklearn.decomposition import PCA
-import umap
+# Note: umap is imported lazily in generate_UMAP_Feature() to avoid slow startup
 class FeaturePlugin(BasePlugin):
 
     SAVE_FILENAME = "features.csv"
@@ -449,7 +455,8 @@ class FeaturePlugin(BasePlugin):
         return indiv_features
 
     def get_custom_features(self):
-        feature_list = self.current_featurelist()
+        # Compare against ALL standard features, not just currently selected ones
+        feature_list = self.featurelist
         # now get the custom features
         col_names = self._datastore['features'].columns
         custom_features = []
@@ -551,6 +558,14 @@ class FeaturePlugin(BasePlugin):
         """Called each time project data is loaded"""
         self.panel.set_data(self._feature_datastore)
         self.vis_panel.add_features_to_dropdown(self.featurelist)
+        # Also add any custom features (PCA, UMAP, etc.) that were saved
+        custom_features = self.get_custom_features()
+        if custom_features:
+            self.vis_panel.add_features_to_dropdown(custom_features)
+            # Also add custom features to the panel table
+            for feat in custom_features:
+                if feat not in self.panel.indiv_features:
+                    self.panel.add_feature(feat, self._feature_datastore[feat])
         self.vis_panel.update_spots()
     
     def get_feat_percent(self, feature):
@@ -578,10 +593,11 @@ class FeaturePlugin(BasePlugin):
         self.dim_red_window.show()
     
     def on_dim_reduction_generate(self, features, dim_reduction_type, new_feature_name):
-        # TODO generate the new feature
         print(features, dim_reduction_type, new_feature_name)
         if dim_reduction_type == "PCA":
-            self.generate_PCA_Feature(new_feature_name,features)
+            self.generate_PCA_Feature(new_feature_name, features)
+        elif dim_reduction_type == "UMAP":
+            self.generate_UMAP_Feature(new_feature_name, features)
         self.dim_red_window.close()
 
     def generate_PCA_Feature(self, feat_name, features):
@@ -602,7 +618,25 @@ class FeaturePlugin(BasePlugin):
             self.vis_panel.add_features_to_dropdown([feat_name + str(i)])
 
     def generate_UMAP_Feature(self, feat_name, features):
-        pass
+        """Generates UMAP Feature based on selected features"""
+        import umap  # Lazy import to avoid slow startup
+
+        feature_db = self._feature_datastore[features]
+        feature_db = feature_db.dropna()
+        data = feature_db.to_numpy()
+
+        # Z-score normalize
+        Zdata = (data - data.mean(axis=0)) / np.std(data, axis=0, ddof=1)
+
+        # UMAP the data
+        reducer = umap.UMAP(n_components=2)
+        Z_UMAP_DATA = reducer.fit_transform(Zdata)
+
+        # Add the UMAP data to the feature db
+        for i in range(Z_UMAP_DATA.shape[1]):
+            self._feature_datastore.loc[feature_db.index, feat_name + str(i)] = Z_UMAP_DATA[:, i]
+            self.panel.add_feature(feat_name + str(i), self._feature_datastore[feat_name + str(i)])
+            self.vis_panel.add_features_to_dropdown([feat_name + str(i)])
 
 
 # FEATURE GENERATION
@@ -669,10 +703,13 @@ class FeaturePlugin(BasePlugin):
         audio_queue = Queue()
         feature_queue = Queue()
 
+        print(f"Unprocessed segments: {len(unprocessed_segIDs)}", flush=True)
+
         feature_processes = []
         for i in range(nworkers):
             feature_processes.append(FeatureExtractionProcess(audio_queue, feature_queue, done_prep_event, self.feature_selections))
             feature_processes[-1].start()
+            print(f"Process {feature_processes[-1].pid} started, alive={feature_processes[-1].is_alive()}", flush=True)
         
         loading_thread = threading.Thread(target=load_all_audio, args=(self.get_segment_audio, unprocessed_segIDs, audio_queue, 4*nworkers, done_prep_event))
         loading_thread.start()
@@ -718,11 +755,15 @@ def progress_updater(progress_queue_in, progress_signal_out, n):
         progress_signal_out.emit(n_done / n * 100)
 
 def load_all_audio(load_func, seg_ids, queue, max_queue_size, done_event):
-    for seg_id in seg_ids:
+    print(f"Loading thread started, {len(seg_ids)} segments to load", flush=True)
+    for i, seg_id in enumerate(seg_ids):
         audio, sr = load_func(seg_id)
         while queue.qsize() > max_queue_size:
             time.sleep(.1)
         queue.put((seg_id, audio, sr))
+        if i < 3 or i % 10 == 0:
+            print(f"Loaded segment {seg_id} ({i+1}/{len(seg_ids)}), queue size={queue.qsize()}", flush=True)
+    print(f"Loading thread done, setting done_event", flush=True)
     done_event.set()
 class FeatureExtractionProcess(Process):
     def __init__(self, in_queue, out_queue, stop_signal, feature_selections):
@@ -733,15 +774,25 @@ class FeatureExtractionProcess(Process):
         self.feature_selections = feature_selections
 
     def run(self):
-        print("Beginning Feature Extraction Process")
+        import traceback
+        import os
+        from queue import Empty
+        pid = os.getpid()
+        print(f"Beginning Feature Extraction Process (pid={pid})", flush=True)
         while not self.stop_signal.is_set() or not self.input_queue.empty():
             try:
                 segmentID, audio, sr = self.input_queue.get(timeout=.5)
+                print(f"[pid={pid}] Processing segment {segmentID}", flush=True)
                 features = generate_audio_features(audio, sr, segmentID, self.feature_selections)
                 self.output_queue.put(features)
-            except Exception as e:
+            except Empty:
+                # Timeout waiting for queue - this is normal, just loop again
                 continue
-        print("Exiting feature extraction process")
+            except Exception as e:
+                print(f"[pid={pid}] Error in feature extraction: {e}", flush=True)
+                traceback.print_exc()
+                continue
+        print(f"Exiting feature extraction process (pid={pid})", flush=True)
 #from numba import jit
 #@jit(nogil=True)
 def _extract_features( audio: np.ndarray, sr: int, feature_selections: dict, normalize: bool) -> List[float]:
@@ -816,6 +867,7 @@ def features_fundamental(audio, sr, maxFund = 1500, minFund = 300, lowFc = 200, 
     sal_2 = funds_salience[:,3]
     if np.isnan(f0).all():
         fund = np.nan
+        meansal = np.nan
         maxfund = np.nan
         minfund = np.nan
         cvfund = np.nan

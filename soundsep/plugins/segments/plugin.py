@@ -405,7 +405,8 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         )
 
     def mouseClickEvent(self, event):
-        self.segment_plugin.on_segment_selection_changed([self.segment.name])
+        #TODO there is probably a more elegant way to do this
+        self.segment_plugin.api.set_segment_selection([self.segment.name])
 
     def hoverEnterEvent(self, event):
         """Draw vertical lines as boundaries"""
@@ -459,9 +460,11 @@ class SegmentPlugin(BasePlugin):
         self.merge_button.clicked.connect(self.on_merge_segments_activated)
 
         self.panel.contextMenuRequested.connect(self.on_context_menu_requested)
-        self.panel.segmentSelectionChanged.connect(self.on_segment_selection_changed)
-        self.umap_panel.segmentSelectionChanged.connect(self.on_segment_selection_changed)
-        # TODO hook both of them up to this signal too
+        self.panel.segmentSelectionChanged.connect(self.api.set_segment_selection)
+        self.umap_panel.segmentSelectionChanged.connect(self.api.set_segment_selection)
+        
+        # and connect api event to this
+        self.api.segmentSelectionChanged.connect(self.on_segment_selection_changed)
 
         self.api.projectLoaded.connect(self.on_project_ready)
         self.api.projectDataLoaded.connect(self.on_project_data_loaded)
@@ -484,7 +487,8 @@ class SegmentPlugin(BasePlugin):
             action.triggered.connect(partial(self.api.plugins["TagPlugin"].on_toggle_selection_tag, tag, selection))
         self.tag_menu.popup(pos)
 
-    def on_segment_selection_changed(self, selection):
+    def on_segment_selection_changed(self):
+        selection = self.api.get_segment_selection()
         if self._selected_segments == selection:
             return
         if selection != []:
@@ -515,6 +519,7 @@ class SegmentPlugin(BasePlugin):
 
         self._selected_segments = selection
         # call the UI Selection changes
+        # TODO move these to api listeners
         self.panel.on_selection_changed(selection)
         self.umap_panel.on_selection_changed(selection)
 
@@ -925,6 +930,7 @@ class SegmentPlugin(BasePlugin):
         
         
         # TODO change panel to add a single row
+        self.api.segment_created(segID)
         self.panel.add_row(self._segmentation_datastore.loc[segID], self.api.project)
         self.umap_panel.add_spot(self._segmentation_datastore.loc[segID], self.api.plugins["TagPlugin"].get_tag_color)
         
@@ -955,6 +961,7 @@ class SegmentPlugin(BasePlugin):
 
         for segID in seg_ids:
             self.panel.remove_row_by_segID(segID)
+            self.api.segment_deleted(segID)
         self.umap_panel.remove_spots(seg_ids)
         self._needs_saving = True
         if refresh:

@@ -32,6 +32,9 @@ class Api(QObject):
     workspaceChanged = pyqtSignal()
     selectionChanged = pyqtSignal()
     fineSelectionChanged = pyqtSignal()
+    segmentSelectionChanged = pyqtSignal()
+    segmentDeleted = pyqtSignal(int)
+    segmentCreated = pyqtSignal(int)
     closingProgram = pyqtSignal()
 
     def __init__(self, app: 'soundsep.app.app.SoundsepApp'):
@@ -437,6 +440,14 @@ class Api(QObject):
         """
         self._app.state["selection"].set_selection(x0, x1, f0, f1, source)
         self.selectionChanged.emit()
+    
+    def set_segment_selection(
+            self,
+            segIds
+        ):
+        """Set the current selection to a segment"""
+        self._app.state["selection"].set_segment_selection(segIds)
+        self.segmentSelectionChanged.emit()
 
     def set_fine_selection(self, x0: ProjectIndex, x1: ProjectIndex):
         """Set the current fine selection's time bounds, inheriting the existing selections frequency band
@@ -475,6 +486,11 @@ class Api(QObject):
         self._app.state["selection"].clear_fine_selection()
         self.fineSelectionChanged.emit()
 
+    def clear_segment_selection(self):
+        """Clear the current segment selection"""
+        self._app.state["selection"].clear_segment_selection()
+        self.segmentSelectionChanged.emit()
+
     def get_selection(self) -> 'Optional[Selection]':
         """Get the current selection
 
@@ -498,6 +514,18 @@ class Api(QObject):
             return self._app.state["selection"].get_fine_selection()
         else:
             return None
+
+    def get_segment_selection(self):
+        """Get the current segment selection"""
+        return self._app.state["selection"].get_segment_selection()
+
+    def segment_deleted(self, segId):
+        """Notify that a segment has been deleted"""
+        self.segmentDeleted.emit(segId)
+    
+    def segment_created(self, segId):
+        """Notify that a segment has been created"""
+        self.segmentCreated.emit(segId)
 
     def needs_saving(self) -> bool:
         """Returns True if sources or any plugins have unsaved changes

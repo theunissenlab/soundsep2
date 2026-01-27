@@ -5,24 +5,38 @@
       "name": "Debug: sep run (conda env)",
       "type": "python",
       "request": "launch",
-
-      // IMPORTANT: point this to the python inside your conda env
       "python": "/opt/miniconda3/envs/sep/bin/python",
-
-      // Run: python -m sep run ...
       "program": "/opt/miniconda3/envs/sep/bin/sep",
-      "args": ["run"],
-
-      // If you normally do: sep run --foo bar, add them after "run"
-      // "args": ["run", "--foo", "bar"],
-
+      "args": [
+        "run"
+      ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "justMyCode": false,
-      "env": {
-        // Optional but helpful if sep looks at these:
-        // "PYTHONPATH": "${workspaceFolder}"
-      }
+      "env": {}
+    },
+    {
+      "name": "Python Debugger: Python File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}"
+    },
+    {
+      "name": "Python: Attach by Process ID",
+      "type": "debugpy",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Attach to Port 5678",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "justMyCode": false
     }
   ]
 }

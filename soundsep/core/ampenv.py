@@ -99,8 +99,8 @@ def advanced_filter_and_ampenv(data, fs, params):
     data = software_gain * (data - np.mean(data))
 
     # -------- Step 2: bandpass filters --------
-    hb, ha = butter(2, [signal_low, signal_high], 'bandpass', fs=fs)
-    lb, la = butter(2, [noise_low, noise_high], 'bandpass', fs=fs)
+    hb, ha = butter(5, [signal_low, signal_high], 'bandpass', fs=fs)
+    lb, la = butter(5, [noise_low, noise_high], 'bandpass', fs=fs)
     sig = filtfilt(hb, ha, data)
     noi = filtfilt(lb, la, data)
 
@@ -157,39 +157,12 @@ def advanced_seg(data, fs, params, return_amp=False):
     min_gap_sec   = params['min_gap_sec']
     min_dur_sec   = params['min_dur_sec']
     max_dur_sec   = params['max_dur_sec']
+    min_gap_samp  = int(min_gap_sec * fs)
+    min_dur_samp  = int(min_dur_sec * fs)
+    max_dur_samp  = int(max_dur_sec * fs)
     
-    if fs != params['fs']:
-        raise ValueError(f"Sampling rate mismatch: data fs={fs}, params fs={params['fs']}")
-
-    # -------- Precompute constants --------
-    smooth_samples = int(smooth_ms * fs / 1000)
-    min_gap_samp   = int(min_gap_sec * fs)
-    min_dur_samp   = int(min_dur_sec * fs)
-    max_dur_samp   = int(max_dur_sec * fs)
-
-    # -------- Step 1: mean subtract + gain --------
-    data = data.astype(np.float32)
-    data = software_gain * (data - np.mean(data))
-
-    # -------- Step 2: bandpass filters --------
-    hb, ha = butter(2, [signal_low, signal_high], 'bandpass', fs=fs)
-    lb, la = butter(2, [noise_low, noise_high], 'bandpass', fs=fs)
-    sig = filtfilt(hb, ha, data)
-    noi = filtfilt(lb, la, data)
-
-
-    # -------- Step 3–4: energy-based combination --------
-    rms_signal = np.sqrt(np.mean(sig**2))
-    rms_noise  = np.sqrt(np.mean(noi**2))
-
-    amp = (signal_gain * (sig**2 - rms_signal)
-         - noise_gain  * (noi**2 - rms_noise))
     
-    #amp = (signal_gain * sig**2) - (noise_gain  * noi**2)
-    amp = np.maximum(amp, 0)
-
-    # -------- Step 5: smoothing --------
-    amp_smooth = uniform_filter1d(amp, size=smooth_samples, mode='nearest')
+    amp_smooth = advanced_filter_and_ampenv(data, fs, params)
 
     # -------- Step 6: threshold crossings --------
     above = amp_smooth > threshold

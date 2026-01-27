@@ -186,6 +186,7 @@ class AdvancedPreviewWidget(widgets.QWidget):
         self.spec_plot.setMenuEnabled(False)
         self.spec_plot.hideButtons()
         self.spec_plot.setLabel('left', 'Frequency', units='Hz')
+        self.spec_plot.getAxis('bottom').setStyle(showValues=False)  # Hide x-axis labels (shared with ampenv)
 
         self.spec_image = pg.ImageItem()
         self.spec_plot.addItem(self.spec_image)
@@ -223,6 +224,7 @@ class AdvancedPreviewWidget(widgets.QWidget):
         self.ampenv_plot.hideButtons()
         self.ampenv_plot.setLogMode(x=False, y=True)
         self.ampenv_plot.setLabel('left', 'Amplitude (log)')
+        self.ampenv_plot.setLabel('bottom', 'Time', units='s')
         self.ampenv_plot.enableAutoRange(axis='y', enable=False)
 
         # self.ampenv_curve = pg.PlotCurveItem()
@@ -244,6 +246,9 @@ class AdvancedPreviewWidget(widgets.QWidget):
         # self.threshold_line.setBounds([0, None])
         self.threshold_line.sigDragged.connect(self._on_threshold_dragged)
         self.ampenv_plot.addItem(self.threshold_line)
+
+        # Link x-axes so they stay aligned
+        self.ampenv_plot.setXLink(self.spec_plot)
 
         # Add plots to layout (2:1 ratio for spectrogram:ampenv)
         layout.addWidget(self.spec_plot, 2)

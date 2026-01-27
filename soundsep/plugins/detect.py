@@ -1,3 +1,4 @@
+import json
 import logging
 
 import PyQt6.QtWidgets as widgets
@@ -237,6 +238,35 @@ class AdvancedControlsPanel(widgets.QWidget):
         self.min_dur_spin.setValue(config.get("detection.advanced.min_dur_sec", 0.01))
         self.max_dur_spin.setValue(config.get("detection.advanced.max_dur_sec", 10.0))
 
+    def get_state(self) -> dict:
+        """Get all parameter values as a dict for state persistence"""
+        return {
+            'software_gain': self.software_gain_spin.value(),
+            'signal_gain': self.signal_gain_spin.value(),
+            'noise_gain': self.noise_gain_spin.value(),
+            'smooth_ms': self.smooth_ms_spin.value(),
+            'min_gap_sec': self.min_gap_spin.value(),
+            'min_dur_sec': self.min_dur_spin.value(),
+            'max_dur_sec': self.max_dur_spin.value(),
+        }
+
+    def set_state(self, state: dict):
+        """Set all parameter values from a dict"""
+        if 'software_gain' in state:
+            self.software_gain_spin.setValue(state['software_gain'])
+        if 'signal_gain' in state:
+            self.signal_gain_spin.setValue(state['signal_gain'])
+        if 'noise_gain' in state:
+            self.noise_gain_spin.setValue(state['noise_gain'])
+        if 'smooth_ms' in state:
+            self.smooth_ms_spin.setValue(state['smooth_ms'])
+        if 'min_gap_sec' in state:
+            self.min_gap_spin.setValue(state['min_gap_sec'])
+        if 'min_dur_sec' in state:
+            self.min_dur_spin.setValue(state['min_dur_sec'])
+        if 'max_dur_sec' in state:
+            self.max_dur_spin.setValue(state['max_dur_sec'])
+
 
 class DetectControls(widgets.QWidget):
     """Wrapper that provides backward-compatible interface"""
@@ -259,8 +289,12 @@ class DetectControls(widgets.QWidget):
 
 class DetectPlugin(BasePlugin):
 
+    SAVE_FILENAME = "detect_params.json"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self._needs_saving = False
 
         self.init_ui()
         self.init_actions()
@@ -268,6 +302,9 @@ class DetectPlugin(BasePlugin):
 
         self._threshold = None
         self._peak_threshold = None
+
+        # Load saved state (after UI is set up)
+        self._load_state()
 
     def init_ui(self):
         self.threshold_preview_plot = pg.InfiniteLine(pos=0, angle=0, movable=True)
@@ -361,11 +398,13 @@ class DetectPlugin(BasePlugin):
 
     def _on_advanced_param_changed(self, *args):
         """Recalculate ampenv when any advanced parameter changes"""
+        self._needs_saving = True
         if self.detect_controls.is_advanced_mode():
             self._update_advanced_ampenv()
 
     def _on_threshold_changed(self, threshold: float):
         """Update threshold value (no full recalculation needed)"""
+        self._needs_saving = True
         # Threshold line is already updated via the drag
         pass
 
@@ -460,8 +499,8 @@ class DetectPlugin(BasePlugin):
             signal = signal[:, selection.source.channel]
 
             if self.detect_controls.is_advanced_mode():
-                # Set spectrogram data
-                t_offset = t[0] if len(t) > 0 else 0
+                # Set spectrogram data (t_offset must be in seconds to match ampenv)
+                t_offset = t[0].to_timestamp() if len(t) > 0 else 0
                 self.advanced_preview.set_spectrogram_data(
                     signal,
                     self.api.project.sampling_rate,
@@ -545,6 +584,78 @@ class DetectPlugin(BasePlugin):
                 selection.source
             ) for interval0, interval1 in intervals
         ])
+
+    # --- State persistence methods ---
+
+    def _get_state(self) -> dict:
+        """Get all advanced detection parameters as a dict"""
+        signal_band = self.advanced_preview.get_signal_band()
+        noise_band = self.advanced_preview.get_noise_band()
+        return {
+            'signal_band_low': signal_band[0],
+            'signal_band_high': signal_band[1],
+            'noise_band_low': noise_band[0],
+            'noise_band_high': noise_band[1],
+            'threshold': self.advanced_preview.get_threshold(),
+            **self.detect_controls.advanced_panel.get_state()
+        }
+
+    def _set_state(self, state: dict):
+        """Set all advanced detection parameters from a dict"""
+        if 'signal_band_low' in state and 'signal_band_high' in state:
+            self.advanced_preview.set_signal_band(
+                state['signal_band_low'],
+                state['signal_band_high']
+            )
+        if 'noise_band_low' in state and 'noise_band_high' in state:
+            self.advanced_preview.set_noise_band(
+                state['noise_band_low'],
+                state['noise_band_high']
+            )
+        if 'threshold' in state:
+            self.advanced_preview.set_threshold(state['threshold'])
+        self.detect_controls.advanced_panel.set_state(state)
+
+    def _get_save_path(self):
+        """Get the path to the state file"""
+        return self.api.paths.save_dir / self.SAVE_FILENAME
+
+    def _load_state(self):
+        """Load saved state from file if it exists"""
+        save_path = self._get_save_path()
+        if save_path.exists():
+            try:
+                with open(save_path, 'r') as f:
+                    state = json.load(f)
+                self._set_state(state)
+                logger.debug("Loaded detect parameters from {}".format(save_path))
+            except Exception as e:
+                logger.warning("Failed to load detect parameters: {}".format(e))
+
+    def needs_saving(self) -> bool:
+        """Return True if parameters have changed since last save"""
+        return self._needs_saving
+
+    def save(self):
+        """Save advanced detection parameters to file"""
+        if not self._needs_saving:
+            return
+
+        save_path = self._get_save_path()
+        try:
+            # Ensure save directory exists
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+
+            state = self._get_state()
+            with open(save_path, 'w') as f:
+                json.dump(state, f, indent=2)
+
+            self._needs_saving = False
+            logger.debug("Saved detect parameters to {}".format(save_path))
+        except Exception as e:
+            logger.error("Failed to save detect parameters: {}".format(e))
+
+    # --- Plugin interface methods ---
 
     def plugin_toolbar_items(self):
         return [self.button]

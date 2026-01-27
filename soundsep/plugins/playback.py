@@ -1,6 +1,4 @@
-import struct
-
-from PyQt6.QtMultimedia import QAudio, QAudioFormat, QAudioOutput, QSoundEffect, QMediaPlayer, QAudioDevice, QAudioSink
+from PyQt6.QtMultimedia import QAudio, QAudioFormat, QAudioSink
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
 from PyQt6 import QtGui
 from PyQt6 import QtWidgets as widgets
@@ -58,41 +56,73 @@ class PlaybackPlugin(BasePlugin):
         self.stop_playback()
 
     def stop_playback(self):
-        self.output.stop()
-        if self.buffer.isOpen():
-            self.buffer.close()
-        self.data.clear()
-        self._create_output()
+        # Disconnect state handler to prevent callbacks during cleanup
+        try:
+            self.output.stateChanged.disconnect(self.on_state_changed)
+        except (TypeError, RuntimeError):
+            pass
 
-    def _prepare_buffer(self, data):
-        data /= np.max(data)
-        data *= 0.8
-        data *= 32767
-        data = data.astype(np.int16)
-        self.data.clear()
-        for i in range(len(data)):
-            self.data.append(struct.pack("<h", data[i]))
-        self.buffer.setData(self.data)
-        self.buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-        self.buffer.seek(0)
+        # Use reset() instead of stop() - it immediately halts the audio thread
+        # rather than draining buffers first
+        self.output.reset()
+        self.output.deleteLater()
 
-    def _create_output(self):
-        del self.output
+        # Don't close the buffer here - let it be replaced in _prepare_buffer
+        # This avoids race conditions where the audio thread might still be reading
+        # The old buffer/data will be garbage collected when replaced
+
+        # Create a fresh output for next playback
         self.output = QAudioSink(self.qaudiosinkFormat, self)
         self.output.stateChanged.connect(self.on_state_changed)
 
+    def _prepare_buffer(self, data):
+        # Copy data to avoid modifying the original
+        data = data.copy()
+        max_val = np.max(np.abs(data))
+        if max_val > 0:
+            data = data / max_val
+        data = data * 0.8
+        data = (data * 32767).astype(np.int16)
+
+        # Close any existing buffer before creating new one
+        # Safe to do here since output was already reset in stop_playback
+        if self.buffer.isOpen():
+            self.buffer.close()
+
+        # Create fresh buffer and data objects for each playback
+        self.data = QByteArray()
+        self.data.append(data.tobytes())
+
+        # Create a new buffer each time to avoid state issues
+        self.buffer = QBuffer()
+        self.buffer.setData(self.data)
+        self.buffer.open(QIODevice.OpenModeFlag.ReadOnly)
 
     def play_audio(self):
-        if self.button.isChecked():
+        # Check if we're currently playing (before button state change takes effect)
+        was_playing = self.output.state() == QAudio.State.ActiveState
+
+        if self.button.isChecked() or was_playing:
+            # If was playing, we're restarting - ensure button stays checked
+            if was_playing:
+                self.button.setChecked(True)
+                self.playback_action.setChecked(True)
+
             # Fetch the visible data to play
             _, y_data = self.gui.ui.previewPlot.waveform_plot.getData()
 
-            if self.output.state() != QAudio.State.StoppedState:
-                self.stop_playback()
-            if self.buffer.isOpen():
-                self.buffer.close()
+            if y_data is None or len(y_data) == 0:
+                self.button.setChecked(False)
+                self.playback_action.setChecked(False)
+                return
 
+            # Stop any existing playback (also creates fresh output)
+            self.stop_playback()
+
+            # Prepare buffer with audio data
             self._prepare_buffer(y_data)
+
+            # Start playback
             self.output.start(self.buffer)
         else:
             self.stop_playback()

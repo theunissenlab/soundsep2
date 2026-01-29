@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import List
 
 import parse
+from tqdm import tqdm
 
 from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
-from soundsep.core.models import AudioFile, NWBFile, Block, Project
+from soundsep.core.models import AudioFile, DatFile, NWBFile, Block, Project
 
 
 def open_project(path: Path):
@@ -65,7 +66,7 @@ def load_project(
         channel_keys: List[str] = None,
         recursive: bool = False,
     ) -> Project:
-    """Load a single audio file or a directory of audio files (WAV or NWB)
+    """Load a single audio file or a directory of audio files (WAV, NWB, or DAT)
 
     Example
     -------
@@ -90,7 +91,7 @@ def load_project(
     Arguments
     ---------
     directory : str
-        The directory to search for audio files (WAV or NWB) in. If the given path
+        The directory to search for audio files (WAV, NWB, or DAT) in. If the given path
         points to an audio file, create a project containing a single file.
     filename_pattern : str
         A filename pattern with curly bracket "{}" variables. Each set of
@@ -119,7 +120,7 @@ def load_project(
         A soundsep.core.models.Project instance linking all Blocks found that match
         the filename_pattern provided
     """
-    if not directory.is_dir() and directory.suffix in [".wav", ".nwb"]:
+    if not directory.is_dir() and directory.suffix in [".wav", ".nwb", ".dat"]:
         filelist = [directory]
     else:
         filelist = search_for_audio_files(directory, recursive=recursive)
@@ -142,7 +143,7 @@ class LoadProjectError(Exception):
 
 
 def search_for_audio_files(base_directory: Path, recursive: bool = False) -> List[Path]:
-    """Look for audio files (WAV and NWB) in a directory with option to search all subdirectories
+    """Look for audio files (WAV, NWB, and DAT) in a directory with option to search all subdirectories
 
     Arguments
     ---------
@@ -160,11 +161,13 @@ def search_for_audio_files(base_directory: Path, recursive: bool = False) -> Lis
     if recursive:
         wav_files = list(base_directory.rglob("*.wav"))
         nwb_files = list(base_directory.rglob("*.nwb"))
-        return sorted(wav_files + nwb_files)
+        dat_files = list(base_directory.rglob("*.dat"))
+        return sorted(wav_files + nwb_files + dat_files)
     else:
         wav_files = list(base_directory.glob("*.wav"))
         nwb_files = list(base_directory.glob("*.nwb"))
-        return sorted(wav_files + nwb_files)
+        dat_files = list(base_directory.glob("*.dat"))
+        return sorted(wav_files + nwb_files + dat_files)
 
 
 def search_for_wavs(base_directory: Path, recursive: bool = False) -> List[Path]:
@@ -219,7 +222,7 @@ def group_files_by_pattern(
 
     parsed_wav_files = []
     bad_wav_files = []    # List of tuples
-    for path in filelist:
+    for path in tqdm(filelist, desc="Loading audio files", unit="file"):
         relpath = os.path.relpath(path, base_directory)
         parse_result = parse.parse(filename_pattern, relpath)
 
@@ -248,6 +251,8 @@ def group_files_by_pattern(
             # Create appropriate file object based on extension
             if path.suffix.lower() == ".nwb":
                 file_obj = NWBFile(path)
+            elif path.suffix.lower() == ".dat":
+                file_obj = DatFile(path)
             else:
                 file_obj = AudioFile(path)
 

@@ -708,7 +708,7 @@ class AutoSegmentPlugin(BasePlugin):
             sampling_rate=sr,
             method=method,
             params=params,
-            max_workers=min(4, num_blocks)
+            max_workers=min(16, num_blocks)
         )
         self.parallel_worker.finished.connect(self._on_parallel_finished)
         self.parallel_worker.error.connect(self._on_segmentation_error)

@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import os
+import struct
 import warnings
 from collections.abc import Iterable
 from functools import wraps
+from pathlib import Path
 from typing import Dict, List, Tuple, Union
 import bisect
 
@@ -139,6 +142,246 @@ class AudioFile:
 
         self._file.seek(read_start)
         return self._file.read(read_stop - read_start, dtype=np.float32, always_2d=True)
+
+
+def load_dat(filename: str | os.PathLike, loaddata: bool = True) -> tuple[np.ndarray, int, int, dt.datetime]:
+    """
+    Minimal acquisition-GUI .dat loader (format -4 only).
+
+    Returns
+    -------
+    data : np.ndarray
+        Contiguous float32 audio vector (empty if loaddata=False).
+        Shape is (n_samples, n_channels) for multi-channel files.
+    fs : int
+        Sampling rate (Hz), inferred from footer timing fields.
+    n_channels : int
+        Number of channels in the file.
+    start_time : datetime.datetime
+        Acquisition start timestamp from the header.
+    """
+    filename = Path(filename)
+
+    with filename.open("rb") as f:
+        fmt = struct.unpack("<d", f.read(8))[0]
+        if fmt != -4:
+            raise ValueError(f"Only format -4 supported (got {fmt}).")
+
+        # acquisition time
+        acq_time = struct.unpack("<6d", f.read(48))
+        start_time = dt.datetime(*map(int, acq_time))
+
+        # skip file-created time
+        f.read(48)
+
+        # channel info
+        n_chan = int(struct.unpack("<d", f.read(8))[0])
+        f.read(8 * n_chan)  # channel IDs
+
+        # scales and offsets (unused)
+        f.read(8 * n_chan)  # scales
+        f.read(8 * n_chan)  # offsets
+
+        # dtype string encoded as doubles -> chars until sentinel fmt reappears
+        chars: list[str] = []
+        while True:
+            val = struct.unpack("<d", f.read(8))[0]
+            if val == fmt:
+                break
+            chars.append(chr(int(val)))
+        dtype_str = "".join(chars)
+
+        dtype_size = {"double": 8, "int32": 4, "int16": 2}.get(dtype_str, 8)
+
+        # sample/time info for fs estimate
+        start_samp = struct.unpack("<d", f.read(8))[0]
+        start_time_s = struct.unpack("<d", f.read(8))[0]
+
+        f.seek(-16, os.SEEK_END)
+        end_samp = struct.unpack("<d", f.read(8))[0]
+        end_time_s = struct.unpack("<d", f.read(8))[0]
+
+        fs = int(round((end_samp - start_samp) / (end_time_s - start_time_s)))
+
+        if not loaddata:
+            return np.empty((0, n_chan), dtype=np.float32), fs, n_chan, start_time
+
+        # NOTE: These constants are based on the known GUI layout for format -4.
+        header_bytes = 208
+        footer_bytes = 40
+        file_size = filename.stat().st_size
+        n_bytes = file_size - header_bytes - footer_bytes
+        n_samples = n_bytes // dtype_size
+
+        f.seek(header_bytes)
+
+        if dtype_size == 8:
+            raw = np.fromfile(f, dtype=np.float64, count=n_samples)
+            data = raw.astype(np.float32, copy=False)
+        elif dtype_size == 4:
+            data = np.fromfile(f, dtype=np.float32, count=n_samples)
+        else:
+            data = np.fromfile(f, dtype=np.int16, count=n_samples).astype(np.float32)
+
+        # Reshape to (frames, channels) - data is interleaved
+        n_frames = n_samples // n_chan
+        data = data[:n_frames * n_chan].reshape((n_frames, n_chan))
+
+        return np.ascontiguousarray(data), fs, n_chan, start_time
+
+
+class DatFile:
+    """Container for a .dat file on disk (acquisition-GUI format -4)
+
+    This class provides the same interface as AudioFile but reads from .dat files.
+
+    Arguments
+    ---------
+    path : str
+        Full path to the .dat file on disk
+    """
+
+    def __init__(self, path):
+        self._path = path
+        self._max_frame = None
+        self._data = None
+
+        # Read metadata without loading data
+        _, self._sampling_rate, self._channels, self._start_time = load_dat(path, loaddata=False)
+
+        # We need to calculate actual frames from file size
+        path_obj = Path(path)
+        with path_obj.open("rb") as f:
+            fmt = struct.unpack("<d", f.read(8))[0]
+            if fmt != -4:
+                raise ValueError(f"Only format -4 supported (got {fmt}).")
+
+            # Skip to n_chan position
+            f.seek(104)  # Skip format (8) + acq_time (48) + created_time (48)
+            n_chan = int(struct.unpack("<d", f.read(8))[0])
+            f.read(8 * n_chan)  # channel IDs
+            f.read(8 * n_chan)  # scales
+            f.read(8 * n_chan)  # offsets
+
+            # dtype string
+            chars = []
+            while True:
+                val = struct.unpack("<d", f.read(8))[0]
+                if val == fmt:
+                    break
+                chars.append(chr(int(val)))
+            dtype_str = "".join(chars)
+            dtype_size = {"double": 8, "int32": 4, "int16": 2}.get(dtype_str, 8)
+
+        header_bytes = 208
+        footer_bytes = 40
+        file_size = path_obj.stat().st_size
+        n_bytes = file_size - header_bytes - footer_bytes
+        n_samples = n_bytes // dtype_size
+        self._actual_frames = n_samples // self._channels
+
+    def is_open(self):
+        return self._data is not None
+
+    def is_closed(self):
+        return self._data is None
+
+    def open(self):
+        if not self.is_open():
+            self._data, _, _, _ = load_dat(self._path, loaddata=True)
+
+    def close(self):
+        if self.is_open():
+            self._data = None
+
+    def __repr__(self):
+        return "<DatFile: {}; {} Hz; {} Ch; {} frames>".format(
+            os.path.basename(self._path),
+            self.sampling_rate,
+            self.channels,
+            self.frames
+        )
+
+    def set_max_frame(self, frames):
+        """Set the maximum frame to read from the file
+
+        This can be used to force multiple DatFiles to behave as if they have the
+        same duration. Reads beyond the given frame will be cut off.
+
+        Arguments
+        ---------
+        frames : int, optional
+            Truncate reads from this file to force_frames (treat this as the length
+            of the file rather than its actual length).
+        """
+        if not isinstance(frames, int) or frames <= 0:
+            raise ValueError("max_frame must be a positive integer or None: got {}".format(frames))
+        if frames > self._actual_frames:
+            raise RuntimeError("Cannot force DatFile to use more frames than on disk")
+
+        self._max_frame = frames
+
+    def clear_max_frame(self):
+        self._max_frame = None
+
+    def __eq__(self, other_file) -> bool:
+        if isinstance(other_file, DatFile):
+            return self.path == other_file.path
+        else:
+            raise ValueError("Can only compare DatFile equality with other DatFiles")
+
+    def __hash__(self):
+        return id(self)
+
+    @property
+    def path(self) -> str:
+        """str: Full path to dat file"""
+        return self._path
+
+    @property
+    def sampling_rate(self) -> int:
+        """int: Sampling rate of the dat file"""
+        return self._sampling_rate
+
+    @property
+    def frames(self) -> int:
+        """int: Number of readable samples in dat file"""
+        return self._max_frame or self._actual_frames
+
+    @property
+    def channels(self) -> int:
+        """int: Number of channels in dat file"""
+        return self._channels
+
+    @property
+    def start_time(self) -> dt.datetime:
+        """datetime: Acquisition start timestamp"""
+        return self._start_time
+
+    def read(self, i0: int, i1: int) -> np.ndarray:
+        """Read samples from i0 to i1
+
+        Arguments
+        ---------
+        i0 : int
+            Starting index to read from (inclusive)
+        i1 : int
+            Ending index to read until (exclusive)
+
+        Returns
+        -------
+        data : ndarray
+            A 2D array of shape (frames: int, channels: int) containing data.
+            The first dimension is the sample index, the second dimension is the channel
+            axis.
+        """
+        read_start = i0
+        read_stop = min(i1, self.frames)
+
+        if self.is_closed():
+            self.open()
+
+        return self._data[read_start:read_stop, :]
 
 
 class NWBFile:

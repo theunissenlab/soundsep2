@@ -83,16 +83,18 @@ def advanced_filter_and_ampenv(data, fs, params):
     signal_gain   = params['signal_gain']
     noise_gain    = params['noise_gain']
     smooth_ms     = params['smooth_ms']
+    rms_window_ms = params.get('rms_window_ms', 100.0)  # default 100ms if not specified
     threshold     = params['threshold']
     min_gap_sec   = params['min_gap_sec']
     min_dur_sec   = params['min_dur_sec']
     max_dur_sec   = params['max_dur_sec']
-    
+
     if fs != params['fs']:
         raise ValueError(f"Sampling rate mismatch: data fs={fs}, params fs={params['fs']}")
 
     # -------- Precompute constants --------
     smooth_samples = int(smooth_ms * fs / 1000)
+    rms_window_samples = int(rms_window_ms * fs / 1000)
 
     # -------- Step 1: mean subtract + gain --------
     data = data.astype(np.float32)
@@ -105,14 +107,13 @@ def advanced_filter_and_ampenv(data, fs, params):
     noi = filtfilt(lb, la, data)
 
 
-    # -------- Step 3–4: energy-based combination --------
-    rms_signal = np.sqrt(np.mean(sig**2))
-    rms_noise  = np.sqrt(np.mean(noi**2))
+    # -------- Step 3–4: energy-based combination with rolling RMS --------
+    rms_signal = np.sqrt(uniform_filter1d(sig**2, size=rms_window_samples, mode='nearest'))
+    rms_noise  = np.sqrt(uniform_filter1d(noi**2, size=rms_window_samples, mode='nearest'))
 
     amp = (signal_gain * (sig**2 - rms_signal)
          - noise_gain  * (noi**2 - rms_noise))
-    
-    #amp = (signal_gain * sig**2) - (noise_gain  * noi**2)
+
     amp = np.maximum(amp, 0)
 
     # -------- Step 5: smoothing --------

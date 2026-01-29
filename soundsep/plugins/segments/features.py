@@ -698,7 +698,7 @@ class FeaturePlugin(BasePlugin):
                         unprocessed_segIDs.append(segID)
                         break   
 
-        nworkers = 6
+        nworkers = 16
         done_prep_event = Event()
         audio_queue = Queue()
         feature_queue = Queue()

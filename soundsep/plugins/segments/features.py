@@ -147,40 +147,42 @@ class VisualizationPanel(widgets.QWidget):
         spot_seg_IDs = self.scatter.data['data']
         spot_brushes = [spot['brush'] for spot in self.scatter.data]
         mut_ds = self.api.get_mut_datastore()
-        seg_db = mut_ds['segments']
-        feat_db = mut_ds['features']
-        # confirm that the x and y axis are in the features
+        seg_db = mut_ds.get('segments')
+        if seg_db is None:
+            return
+
+        # Features are now columns in the segments datastore
         x_axis = self.x_axis.currentText()
         y_axis = self.y_axis.currentText()
 
         if x_axis == "" or y_axis == "":
             return
 
-        if x_axis not in feat_db.columns or y_axis not in feat_db.columns:
+        if x_axis not in seg_db.columns or y_axis not in seg_db.columns:
             return
 
-        # only take segments that are in the feature db
-        segments = seg_db.loc[feat_db.index]
         data = self.scatter.data
         if spot_seg_IDs.size > 0:
-            data['x'] = feat_db[x_axis].loc[spot_seg_IDs]
-            data['y'] = feat_db[y_axis].loc[spot_seg_IDs]
+            data['x'] = seg_db[x_axis].loc[spot_seg_IDs]
+            data['y'] = seg_db[y_axis].loc[spot_seg_IDs]
             self.scatter.updateSpots()
             vb = self.scatter.getViewBox()
             xrange = self.scatter.dataBounds(0)
             vb.setXRange(xrange[0], xrange[1])
             yrange = self.scatter.dataBounds(1)
             vb.setYRange(yrange[0], yrange[1])
-            # self.scatter.invalidate()
+
         segs_to_add = []
-        segments_not_present = segments[~segments.index.isin(spot_seg_IDs)]
-        for ix, s_row in segments_not_present.iterrows():
-            if feat_db.loc[ix][x_axis] is not np.nan and feat_db.loc[ix][y_axis] is not np.nan:
-                segs_to_add.append((s_row, [feat_db.loc[ix][x_axis], feat_db.loc[ix][y_axis]]))
+        segments_not_present = seg_db[~seg_db.index.isin(spot_seg_IDs)]
+        for ix in segments_not_present.index:
+            x_val = seg_db.at[ix, x_axis]
+            y_val = seg_db.at[ix, y_axis]
+            if not pd.isna(x_val) and not pd.isna(y_val):
+                segs_to_add.append((ix, [x_val, y_val]))
 
         # now add the ones that were not present
-        for s_row, coords in segs_to_add:
-            self.add_spot(s_row.name, coords)# TODO func_get_color
+        for seg_id, coords in segs_to_add:
+            self.add_spot(seg_id, coords)  # TODO func_get_color
 
 class DimensionalityReductionWizard(widgets.QWidget):
     """ Window for selecting features to include in PCA"""
@@ -430,7 +432,7 @@ from sklearn.decomposition import PCA
 # Note: umap is imported lazily in generate_UMAP_Feature() to avoid slow startup
 class FeaturePlugin(BasePlugin):
 
-    SAVE_FILENAME = "features.csv"
+    # Features are now stored directly in the segments datastore (no separate file)
     FEATUREDICT = dict({
         "Amplitude":["rms","meantime","stdT","skewT","kurtT","entT","maxAmp"],
         "Fundamental":["fund","sal","fund2","sal2","maxfund","minfund","cvfund","cvfund2","devfund"],
@@ -457,12 +459,16 @@ class FeaturePlugin(BasePlugin):
     def get_custom_features(self):
         # Compare against ALL standard features, not just currently selected ones
         feature_list = self.featurelist
-        # now get the custom features
-        col_names = self._datastore['features'].columns
+        # Base segment columns that are not features
+        base_segment_columns = {'Source', 'StartIndex', 'StopIndex', 'Tags', 'Coords', 'SegmentID'}
+        # Get custom features from the segments datastore
+        seg_db = self._segments_datastore
+        if seg_db is None:
+            return []
         custom_features = []
-        for feature in col_names:
-            if feature not in feature_list:
-                custom_features.append(feature)
+        for col in seg_db.columns:
+            if col not in feature_list and col not in base_segment_columns:
+                custom_features.append(col)
         return custom_features
     
     def __init__(self, *args, **kwargs):
@@ -525,53 +531,52 @@ class FeaturePlugin(BasePlugin):
         return self.api.get_mut_datastore()
 
     @property
-    def _feature_datastore(self):
+    def _segments_datastore(self):
+        """Returns the segments datastore, ensuring feature columns exist"""
         datastore = self._datastore
-        if 'features' not in datastore:
-            datastore['features'] = pd.DataFrame(columns= self.featurelist)
-        return datastore['features']
+        if 'segments' not in datastore:
+            return None
+        seg_df = datastore['segments']
+        # Ensure all feature columns exist in the segments datastore
+        for feat in self.featurelist:
+            if feat not in seg_df.columns:
+                seg_df[feat] = np.nan
+        return seg_df
 
-    @_feature_datastore.setter
-    def _feature_datastore(self, value):
-        # check that the value is a pandas dataframe
-        if not isinstance(value, pd.DataFrame):
-            raise ValueError("Feature datastore must be a pandas dataframe")
-        # check that it has the requisite columns
-        if not all([c in value.columns for c in self.featurelist]):
-            raise ValueError("Featire datastore must have columns %s" % (self.featurelist))
-        self._datastore["features"] = value
+    def _get_feature_value(self, seg_id, feature):
+        """Get a feature value for a segment"""
+        seg_df = self._segments_datastore
+        if seg_df is None or seg_id not in seg_df.index:
+            return np.nan
+        return seg_df.at[seg_id, feature]
+
+    def _set_feature_value(self, seg_id, feature, value):
+        """Set a feature value for a segment"""
+        seg_df = self._segments_datastore
+        if seg_df is not None and seg_id in seg_df.index:
+            seg_df.at[seg_id, feature] = value
 
     def needs_saving(self):
         return self._needs_saving
 
     def on_project_ready(self):
-        """Called once"""
-        save_file = self.api.paths.save_dir / self.SAVE_FILENAME
-        if not save_file.exists():
-            # initialize feature_datastore to an empty dataframe
-            # with the correct columns
-            self._feature_datastore = pd.DataFrame(columns=self.featurelist)
-            return
-        
-        self._feature_datastore = pd.read_csv(save_file, index_col=0)
+        """Called once - features are now loaded as part of segments.csv by the segments plugin"""
+        # Features are stored directly in the segments datastore
+        # The segments plugin handles loading, we just ensure columns exist when accessed
+        pass
 
     def on_project_data_loaded(self):
         """Called each time project data is loaded"""
-        # Sync feature datastore with segment datastore
-        seg_db = self._datastore.get('segments')
-        if seg_db is not None:
-            # Add empty rows for segments that don't have feature data yet
-            missing_segments = [idx for idx in seg_db.index if idx not in self._feature_datastore.index]
-            for seg_id in missing_segments:
-                self._feature_datastore.loc[seg_id] = pd.Series({feat: np.nan for feat in self.featurelist})
+        # Features are now stored directly in the segments datastore
+        seg_db = self._segments_datastore
+        if seg_db is None:
+            return
 
-            # Remove orphan feature entries (features for segments that no longer exist)
-            orphan_features = [idx for idx in self._feature_datastore.index if idx not in seg_db.index]
-            if orphan_features:
-                self._feature_datastore.drop(orphan_features, inplace=True)
-
-        self.panel.set_data(self._feature_datastore)
+        # Extract just the feature columns for the panel
+        feature_df = seg_db[self.featurelist].copy()
+        self.panel.set_data(feature_df)
         self.vis_panel.add_features_to_dropdown(self.featurelist)
+
         # Also add any custom features (PCA, UMAP, etc.) that were saved
         custom_features = self.get_custom_features()
         if custom_features:
@@ -579,17 +584,22 @@ class FeaturePlugin(BasePlugin):
             # Also add custom features to the panel table
             for feat in custom_features:
                 if feat not in self.panel.indiv_features:
-                    self.panel.add_feature(feat, self._feature_datastore[feat])
+                    self.panel.add_feature(feat, seg_db[feat])
         self.vis_panel.update_spots()
     
     def get_feat_percent(self, feature):
-        feature_db = self._feature_datastore[feature]
-        return feature_db.isnull().mean()
+        seg_db = self._segments_datastore
+        if seg_db is None or feature not in seg_db.columns:
+            return 1.0  # 100% null if no data
+        return seg_db[feature].isnull().mean()
 
     def get_number_of_stim_for_selection(self, features):
-        feature_db = self._feature_datastore[features]
+        seg_db = self._segments_datastore
+        if seg_db is None or not features:
+            return 0, 0
+        feature_db = seg_db[features]
         feature_db_tmp = feature_db.dropna()
-        return len(feature_db_tmp),len(feature_db)
+        return len(feature_db_tmp), len(feature_db)
 
     def on_dim_reduce_button_press(self):
         # Make a popup window to select the features to include
@@ -616,8 +626,10 @@ class FeaturePlugin(BasePlugin):
 
     def generate_PCA_Feature(self, feat_name, features):
         """Generates PCA Feature based on currently visible features"""
-        feature_db = self._feature_datastore[features]
-        feature_db = feature_db.dropna()
+        seg_db = self._segments_datastore
+        if seg_db is None:
+            return
+        feature_db = seg_db[features].dropna()
         data = feature_db.to_numpy()
         # todo could balance across channels
         Zdata = (data - data.mean(axis=0))/ np.std(data,axis=0,ddof=1)
@@ -625,18 +637,22 @@ class FeaturePlugin(BasePlugin):
         # PCA the data
         pca = PCA(n_components=10, svd_solver='full')
         Z_PCA_DATA = pca.fit_transform(Zdata)
-        # Add the PCA data to the feature db
+        # Add the PCA data directly to the segments datastore
         for i in range(Z_PCA_DATA.shape[1]):
-            self._feature_datastore.loc[feature_db.index, feat_name + str(i)] = Z_PCA_DATA[:,i]
-            self.panel.add_feature(feat_name + str(i),  self._feature_datastore[feat_name + str(i)])
-            self.vis_panel.add_features_to_dropdown([feat_name + str(i)])
+            col_name = feat_name + str(i)
+            seg_db.loc[feature_db.index, col_name] = Z_PCA_DATA[:,i]
+            self.panel.add_feature(col_name, seg_db[col_name])
+            self.vis_panel.add_features_to_dropdown([col_name])
+        self._needs_saving = True
 
     def generate_UMAP_Feature(self, feat_name, features):
         """Generates UMAP Feature based on selected features"""
         import umap  # Lazy import to avoid slow startup
 
-        feature_db = self._feature_datastore[features]
-        feature_db = feature_db.dropna()
+        seg_db = self._segments_datastore
+        if seg_db is None:
+            return
+        feature_db = seg_db[features].dropna()
         data = feature_db.to_numpy()
 
         # Z-score normalize
@@ -646,11 +662,13 @@ class FeaturePlugin(BasePlugin):
         reducer = umap.UMAP(n_components=2)
         Z_UMAP_DATA = reducer.fit_transform(Zdata)
 
-        # Add the UMAP data to the feature db
+        # Add the UMAP data directly to the segments datastore
         for i in range(Z_UMAP_DATA.shape[1]):
-            self._feature_datastore.loc[feature_db.index, feat_name + str(i)] = Z_UMAP_DATA[:, i]
-            self.panel.add_feature(feat_name + str(i), self._feature_datastore[feat_name + str(i)])
-            self.vis_panel.add_features_to_dropdown([feat_name + str(i)])
+            col_name = feat_name + str(i)
+            seg_db.loc[feature_db.index, col_name] = Z_UMAP_DATA[:, i]
+            self.panel.add_feature(col_name, seg_db[col_name])
+            self.vis_panel.add_features_to_dropdown([col_name])
+        self._needs_saving = True
 
 
 # FEATURE GENERATION
@@ -660,21 +678,27 @@ class FeaturePlugin(BasePlugin):
         self.worker.submit(self.generate_all_features)
 
     def on_segment_created(self, segmentID):
-        """Handle a newly created segment by adding an empty row to the feature table"""
-        if segmentID not in self._feature_datastore.index:
-            self._feature_datastore.loc[segmentID] = pd.Series({feat: np.nan for feat in self.featurelist})
-            self._needs_saving = True
-            self.panel.add_row(self._feature_datastore.loc[segmentID])
+        """Handle a newly created segment - ensure feature columns exist with NaN values"""
+        seg_db = self._segments_datastore
+        if seg_db is None or segmentID not in seg_db.index:
+            return
+        # Ensure feature columns have NaN values for the new segment
+        for feat in self.featurelist:
+            if pd.isna(seg_db.at[segmentID, feat]) or seg_db.at[segmentID, feat] is None:
+                seg_db.at[segmentID, feat] = np.nan
+        # Add row to panel - create a Series with just the feature values
+        feature_row = seg_db.loc[segmentID, self.featurelist]
+        feature_row.name = segmentID
+        self.panel.add_row(feature_row)
 
     def on_segment_deleted(self, segmentID):
-        # Only process if segment exists in feature datastore
-        if segmentID in self._feature_datastore.index:
-            self._feature_datastore.drop(segmentID, inplace=True)
-            self._needs_saving = True
-            try:
-                self.panel.remove_row_by_segID(segmentID)
-            except ValueError:
-                pass  # Row wasn't in panel
+        """Handle segment deletion - update UI panels"""
+        # Segment is already removed from datastore by segments plugin
+        # Just update the UI
+        try:
+            self.panel.remove_row_by_segID(segmentID)
+        except ValueError:
+            pass  # Row wasn't in panel
         self.vis_panel.remove_spots([segmentID])
     
     def get_segment_audio(self, segmentID, lowpass=6000, highpass=200):
@@ -704,25 +728,28 @@ class FeaturePlugin(BasePlugin):
         # first go through all segments and identify the segments
         # that have not been processed yet
         # then generate features for those segments
-        # and update the feature_datastore
-        
-        all_segIDs = self._datastore['segments'].index
+        # and update the segments datastore
+
+        seg_db = self._segments_datastore
+        if seg_db is None:
+            return
+
+        all_segIDs = seg_db.index
         if overwrite:
-            processed_segIDs = []
+            unprocessed_segIDs = list(all_segIDs)
         else:
-            processed_segIDs = self._feature_datastore.index
-
-        # get segIDs that have not been processed
-        unprocessed_segIDs = [segID for segID in all_segIDs if segID not in processed_segIDs]
-
-        # TODO CHeck if the other ones have had the feautres i want extracted
-        # if not, then add them to the unprocessed_segIDs
-        for segID in processed_segIDs:
-            for feature_cat in self.feature_selections.keys():
-                if self.feature_selections[feature_cat]:
-                    if all([np.isnan(self._feature_datastore.at[segID, feature]) for feature in self.FEATUREDICT[feature_cat]]):
-                        unprocessed_segIDs.append(segID)
-                        break   
+            # get segIDs that have not been processed (all features are NaN)
+            unprocessed_segIDs = []
+            for segID in all_segIDs:
+                # Check if any selected feature category has all NaN values
+                needs_processing = False
+                for feature_cat in self.feature_selections.keys():
+                    if self.feature_selections[feature_cat]:
+                        if all([pd.isna(seg_db.at[segID, feature]) for feature in self.FEATUREDICT[feature_cat]]):
+                            needs_processing = True
+                            break
+                if needs_processing:
+                    unprocessed_segIDs.append(segID)
 
         nworkers = 16
         done_prep_event = Event()
@@ -736,7 +763,7 @@ class FeaturePlugin(BasePlugin):
             feature_processes.append(FeatureExtractionProcess(audio_queue, feature_queue, done_prep_event, self.feature_selections))
             feature_processes[-1].start()
             print(f"Process {feature_processes[-1].pid} started, alive={feature_processes[-1].is_alive()}", flush=True)
-        
+
         loading_thread = threading.Thread(target=load_all_audio, args=(self.get_segment_audio, unprocessed_segIDs, audio_queue, 4*nworkers, done_prep_event))
         loading_thread.start()
 
@@ -745,16 +772,17 @@ class FeaturePlugin(BasePlugin):
             try:
                 segmentID, all_features = feature_queue.get(timeout=.5)
 
-                if segmentID not in self._feature_datastore.index:
-                    self._feature_datastore.loc[segmentID] = pd.Series()
-                for k,v in all_features.items():
+                # Write features directly to the segments datastore
+                for k, v in all_features.items():
                     # Outer is Amplitude etc
-                    for kk,vv in v.items():
+                    for kk, vv in v.items():
                         # inner is columns
-                        self._feature_datastore.at[segmentID, kk] = vv
+                        seg_db.at[segmentID, kk] = vv
                 n_complete += 1
-                # This should be on a signal probably
-                self.panel.add_or_edit_row(self._feature_datastore.loc[segmentID])
+                # Update the panel - create a Series with just feature values
+                feature_row = seg_db.loc[segmentID, self.featurelist]
+                feature_row.name = segmentID
+                self.panel.add_or_edit_row(feature_row)
                 self.worker_signals.progress.emit(n_complete / len(unprocessed_segIDs) * 100)
             except Exception as e:
                 continue
@@ -768,8 +796,8 @@ class FeaturePlugin(BasePlugin):
 
 
     def save(self):
-        save_file = self.api.paths.save_dir / self.SAVE_FILENAME
-        self._feature_datastore.to_csv(save_file, index_label='SegmentID')
+        """Features are saved as part of segments.csv by the segments plugin"""
+        # The segments plugin handles saving all columns including features
         self._needs_saving = False
 
 def progress_updater(progress_queue_in, progress_signal_out, n):

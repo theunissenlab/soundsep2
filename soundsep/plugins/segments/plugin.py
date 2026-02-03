@@ -570,6 +570,11 @@ class SegmentPlugin(BasePlugin):
 
         data = pd.read_csv(save_file, converters={"Tags": str, "Coords": str})
 
+        # Base segment columns
+        base_columns = {'Source', 'SourceName', 'SourceChannel', 'StartIndex', 'StopIndex', 'Tags', 'Coords', 'SegmentID'}
+        # Identify feature columns (any column not in base_columns)
+        feature_columns = [col for col in data.columns if col not in base_columns and not col.startswith('Unnamed')]
+
         seg_df = dict({
                 "Source": [],
                 "StartIndex": [],
@@ -578,7 +583,10 @@ class SegmentPlugin(BasePlugin):
                 "Coords": [],
                 "SegmentID": []
             })
-        
+        # Initialize feature column lists
+        for feat_col in feature_columns:
+            seg_df[feat_col] = []
+
         source_lookup = set([
             (source.name, source.channel) for source in self.api.get_sources()
         ])
@@ -588,7 +596,7 @@ class SegmentPlugin(BasePlugin):
             if "SourceName" not in row or "SourceChannel" not in row:
                 if row['Source'] not in sources_ptr:
                     sources_ptr.append(row['Source'])
-                    
+
                 ind = sources_ptr.index(row['Source'])
                 source_key = list(source_lookup)[ind]
             else:
@@ -611,12 +619,19 @@ class SegmentPlugin(BasePlugin):
                     seg_df['Coords'].append(list([float(x) for x in json.loads(row['Coords'])]))
             else:
                 # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
-                seg_df['Coords'].append(None) 
+                seg_df['Coords'].append(None)
             if 'SegmentID' in row:
                 seg_df['SegmentID'].append(row['SegmentID'])
             else:
                 # else well just count up
                 seg_df['SegmentID'].append(len(seg_df['SegmentID']))
+            # Load feature columns
+            for feat_col in feature_columns:
+                if feat_col in row:
+                    seg_df[feat_col].append(row[feat_col])
+                else:
+                    seg_df[feat_col].append(np.nan)
+
         data.apply(_read, axis=1)
         for l in ['StartIndex', 'StopIndex']:
             seg_df[l] = pd.Series(seg_df[l],index=seg_df['SegmentID'],dtype=object)
@@ -709,11 +724,14 @@ class SegmentPlugin(BasePlugin):
         # Can we recover from this? or should we hash the project so we can at least
         # warn the user when things dont match up to when the file was saved?
 
+        # Base segment columns that need special handling
+        base_columns = {'Source', 'StartIndex', 'StopIndex', 'Tags', 'Coords', 'SegmentID'}
+
         # Prepare segment data
         segment_data = []
         for idx in self._segmentation_datastore.index:
             row = self._segmentation_datastore.loc[idx]
-            segment_data.append({
+            row_data = {
                 'SourceName': row['Source'].name,
                 'SourceChannel': row['Source'].channel,
                 'StartIndex': int(row['StartIndex']),
@@ -721,7 +739,12 @@ class SegmentPlugin(BasePlugin):
                 'Tags': json.dumps(list(row['Tags'])),
                 'Coords': json.dumps(row['Coords']),
                 'SegmentID': idx
-            })
+            }
+            # Include all additional columns (features, PCA, UMAP, etc.)
+            for col in self._segmentation_datastore.columns:
+                if col not in base_columns:
+                    row_data[col] = row[col]
+            segment_data.append(row_data)
 
         # Save to NWB if in NWB mode
         if self.api.is_nwb_mode and self.api.nwb_path:
@@ -738,17 +761,12 @@ class SegmentPlugin(BasePlugin):
                 logger.error(f"Could not save segments to NWB file: {e}")
                 raise
         else:
-            # Save to CSV file
-            out_csv_df = {
-                'SourceName': [s['SourceName'] for s in segment_data],
-                'SourceChannel': [s['SourceChannel'] for s in segment_data],
-                'StartIndex': [s['StartIndex'] for s in segment_data],
-                'StopIndex': [s['StopIndex'] for s in segment_data],
-                'Tags': [s['Tags'] for s in segment_data],
-                'Coords': [s['Coords'] for s in segment_data],
-                'SegmentID': [s['SegmentID'] for s in segment_data]
-            }
-            pd.DataFrame(out_csv_df).to_csv(self.api.paths.save_dir / self.SAVE_FILENAME)
+            # Save to CSV file - build DataFrame from segment_data
+            if segment_data:
+                out_csv_df = pd.DataFrame(segment_data)
+            else:
+                out_csv_df = pd.DataFrame(columns=['SourceName', 'SourceChannel', 'StartIndex', 'StopIndex', 'Tags', 'Coords', 'SegmentID'])
+            out_csv_df.to_csv(self.api.paths.save_dir / self.SAVE_FILENAME, index=False)
 
         self._needs_saving = False
 

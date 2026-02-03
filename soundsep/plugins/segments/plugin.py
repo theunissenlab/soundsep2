@@ -7,7 +7,7 @@ import PyQt6.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QAbstractTableModel, QModelIndex, QItemSelectionModel
 from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
@@ -57,27 +57,36 @@ class UMAPVisPanel(widgets.QWidget):
         self.scatter.setSize(sizes)
     
     def set_data(self, segments, func_get_color=None):
-        # TODO: this is extremely slow - we need a better way to update the table.
-        # make a scatter plot for the segments
+        """Set scatter plot data from segments DataFrame.
 
+        Optimized to extract data using vectorized column access rather than
+        row-by-row iteration.
+        """
+        if len(segments) == 0:
+            self.npoints = 0
+            self.scatter.setData(spots=[], hoverSize=20, hoverable=True)
+            return
+
+        # Extract columns as lists for faster access
+        seg_ids = segments.index.tolist()
+        coords_list = segments['Coords'].tolist()
+        tags_list = segments['Tags'].tolist()
+
+        # Build spots list - only include segments with valid coords
         spots = []
-        # Avoid .iterrows() which triggers pandas type inference
-        seg_ids = list(segments.index)
-        for ix in seg_ids:
-            tags = segments.at[ix, 'Tags']
-            coords = segments.at[ix, 'Coords']
-            if func_get_color and len(tags) > 0:
-                c = func_get_color(list(tags)[0])
-            else:
-                c = 'r'
+        for ix, coords, tags in zip(seg_ids, coords_list, tags_list):
             if coords is not None and len(coords) >= 2:
-                spots.append(dict({
+                if func_get_color and len(tags) > 0:
+                    c = func_get_color(list(tags)[0])
+                else:
+                    c = 'r'
+                spots.append({
                     'pos': coords[:2],
                     'data': ix,
                     'brush': pg.mkBrush(c),
                     'size': 10
-                }))
-        
+                })
+
         self.npoints = len(spots)
         self.scatter.setData(
             spots=spots,
@@ -159,16 +168,178 @@ class UMAPVisPanel(widgets.QWidget):
         for s_row in segs_to_add:
             self.add_spot(s_row, func_get_color)
         
-class TimeQTableWidgetItem(widgets.QTableWidgetItem):
-    def __init__(self, time: float):
-        """A QTableWidgetItem that sorts by time"""
-        super().__init__(hhmmss(time, dec=3))
-        self.time = time
+class SegmentTableModel(QAbstractTableModel):
+    """High-performance table model for segments using model-view architecture.
 
-    def __lt__(self, other):
-        return self.time < other.time
+    Instead of creating QTableWidgetItem objects for every cell, this model
+    directly references the segments DataFrame and provides data on-demand.
+    Only visible rows are rendered, making it efficient for large datasets.
+    """
+
+    COLUMNS = ["SegID", "SourceName", "Start", "Stop", "Duration", "Tags"]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._segments_df = pd.DataFrame()
+        self._project = None
+        self._sorted_indices = []  # Sorted row indices into _segments_df
+        self._sort_column = 2  # Default sort by Start time
+        self._sort_order = Qt.SortOrder.AscendingOrder
+
+    def set_data(self, segments_df, project):
+        """Replace all data in the model.
+
+        Note: We store a reference to the DataFrame rather than copying it.
+        The model is read-only so this is safe and avoids expensive copy overhead.
+        """
+        self.beginResetModel()
+        self._segments_df = segments_df if len(segments_df) > 0 else pd.DataFrame()
+        self._project = project
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def add_rows(self, new_segments_df):
+        """Add new rows to the model."""
+        if len(new_segments_df) == 0:
+            return
+
+        # Append to internal dataframe
+        start_row = len(self._sorted_indices)
+        self._segments_df = pd.concat([self._segments_df, new_segments_df])
+
+        # Re-sort to maintain order
+        self.beginResetModel()
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def update_rows(self, updated_segments_df):
+        """Update existing rows in the model."""
+        if len(updated_segments_df) == 0:
+            return
+
+        for seg_id in updated_segments_df.index:
+            if seg_id in self._segments_df.index:
+                self._segments_df.loc[seg_id] = updated_segments_df.loc[seg_id]
+
+        # Re-sort and refresh
+        self.beginResetModel()
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def remove_row_by_id(self, seg_id):
+        """Remove a row by segment ID."""
+        if seg_id in self._segments_df.index:
+            self.beginResetModel()
+            self._segments_df = self._segments_df.drop(seg_id)
+            self._rebuild_sorted_indices()
+            self.endResetModel()
+            return True
+        return False
+
+    def _rebuild_sorted_indices(self):
+        """Rebuild the sorted index mapping."""
+        if len(self._segments_df) == 0:
+            self._sorted_indices = []
+            return
+
+        # Get sort values based on column
+        if self._sort_column == 2:  # Start time
+            sort_values = [int(idx) for idx in self._segments_df['StartIndex'].values]
+        elif self._sort_column == 3:  # Stop time
+            sort_values = [int(idx) for idx in self._segments_df['StopIndex'].values]
+        elif self._sort_column == 4:  # Duration
+            sort_values = [int(stop) - int(start) for start, stop in
+                          zip(self._segments_df['StartIndex'].values,
+                              self._segments_df['StopIndex'].values)]
+        elif self._sort_column == 1:  # Source name
+            sort_values = [s.name for s in self._segments_df['Source'].values]
+        elif self._sort_column == 5:  # Tags
+            sort_values = [",".join(t) for t in self._segments_df['Tags'].values]
+        else:  # SegID (column 0)
+            sort_values = list(self._segments_df.index)
+
+        # Create (value, original_index) pairs and sort
+        indexed_values = list(enumerate(sort_values))
+        reverse = self._sort_order == Qt.SortOrder.DescendingOrder
+        indexed_values.sort(key=lambda x: x[1], reverse=reverse)
+        self._sorted_indices = [idx for idx, _ in indexed_values]
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._sorted_indices)
+
+    def columnCount(self, parent=QModelIndex()):
+        return len(self.COLUMNS)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or self._project is None:
+            return None
+
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
+
+        # Map view row to dataframe row using sorted indices
+        df_row_idx = self._sorted_indices[index.row()]
+        seg_id = self._segments_df.index[df_row_idx]
+        row_data = self._segments_df.iloc[df_row_idx]
+        col = index.column()
+
+        sr = self._project.sampling_rate
+
+        if col == 0:  # SegID
+            return str(seg_id)
+        elif col == 1:  # SourceName
+            return row_data['Source'].name
+        elif col == 2:  # Start
+            return hhmmss(int(row_data['StartIndex']) / sr, dec=3)
+        elif col == 3:  # Stop
+            return hhmmss(int(row_data['StopIndex']) / sr, dec=3)
+        elif col == 4:  # Duration
+            duration = (int(row_data['StopIndex']) - int(row_data['StartIndex'])) / sr
+            return hhmmss(duration, dec=3)
+        elif col == 5:  # Tags
+            return ",".join(row_data['Tags'])
+
+        return None
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
+        if orientation == Qt.Orientation.Horizontal:
+            return self.COLUMNS[section]
+        return str(section + 1)
+
+    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
+        self._sort_column = column
+        self._sort_order = order
+        self.beginResetModel()
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def get_seg_id_for_row(self, view_row):
+        """Get the segment ID for a view row index."""
+        if 0 <= view_row < len(self._sorted_indices):
+            df_row_idx = self._sorted_indices[view_row]
+            return self._segments_df.index[df_row_idx]
+        return None
+
+    def get_row_for_seg_id(self, seg_id):
+        """Get the view row index for a segment ID."""
+        if seg_id not in self._segments_df.index:
+            return None
+        df_row_idx = self._segments_df.index.get_loc(seg_id)
+        try:
+            return self._sorted_indices.index(df_row_idx)
+        except ValueError:
+            return None
+
 
 class SegmentPanel(widgets.QWidget):
+    """Segment table panel using model-view architecture for performance.
+
+    Uses QTableView with SegmentTableModel instead of QTableWidget to handle
+    large datasets efficiently. The model only renders visible rows and doesn't
+    create QTableWidgetItem objects for every cell.
+    """
 
     contextMenuRequested = pyqtSignal(QPoint, object)
     segmentSelectionChanged = pyqtSignal(object)
@@ -177,37 +348,37 @@ class SegmentPanel(widgets.QWidget):
     # TODO jump to time with click events
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._project = None
         self.init_ui()
         self.init_actions()
 
     def init_ui(self):
         layout = widgets.QVBoxLayout()
-        self.table = widgets.QTableWidget(0, 6)
-        self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
+
+        # Use QTableView with custom model instead of QTableWidget
+        self.model = SegmentTableModel(self)
+        self.table = widgets.QTableView()
+        self.table.setModel(self.model)
+
+        self.table.setEditTriggers(widgets.QTableView.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
-        self.table.setColumnHidden(0, True)
+        self.table.setSelectionBehavior(widgets.QTableView.SelectionBehavior.SelectRows)
+        self.table.setColumnHidden(0, True)  # Hide SegID column
+        self.table.setSortingEnabled(True)
+
         header = self.table.horizontalHeader()
-        self.table.setHorizontalHeaderLabels([
-            "SegID",
-            "SourceName",
-            "Start",
-            "Stop",
-            "Duration",
-            "Tags",
-        ])
-        #
         header.setSectionResizeMode(0, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(4, widgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(5, widgets.QHeaderView.ResizeMode.Stretch)
+
         layout.addWidget(self.table)
         self.setLayout(layout)
 
     def init_actions(self):
-        self.table.itemSelectionChanged.connect(self.on_click)
-        # self.table.customContextMenuRequested.connect(self.on_context_menu)
+        self.table.selectionModel().selectionChanged.connect(self.on_click)
 
     def contextMenuEvent(self, event):
         pos = event.globalPos()
@@ -218,141 +389,72 @@ class SegmentPanel(widgets.QWidget):
         self.segmentSelectionChanged.emit(selection)
 
     def on_selection_changed(self, selection):
-        self.table.itemSelectionChanged.disconnect(self.on_click)
+        # Temporarily disconnect to avoid feedback loop
+        self.table.selectionModel().selectionChanged.disconnect(self.on_click)
         self.set_selection(selection)
-        self.table.itemSelectionChanged.connect(self.on_click)
+        self.table.selectionModel().selectionChanged.connect(self.on_click)
 
     def set_selection(self, selection):
         self.table.clearSelection()
-            
+        selection_model = self.table.selectionModel()
+
         for seg_id in selection:
-            table_ind = self._find_segment_row_by_segID(seg_id)
-            if table_ind is not None:
-                self.table.selectRow(table_ind)
+            view_row = self.model.get_row_for_seg_id(seg_id)
+            if view_row is not None:
+                index = self.model.index(view_row, 0)
+                selection_model.select(
+                    index,
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+                )
             else:
                 raise ValueError("Cannot select Segment ID {}: not found in table".format(seg_id))
-    
+
     def get_selection(self):
-        selection = []
-        ranges = self.table.selectedRanges()
-        for selection_range in ranges:
-            selection += list(range(selection_range.topRow(), selection_range.bottomRow() + 1))
-        # Get IDS for each selected ROW
-        ids = [int(self.table.item(row, 0).text()) for row in selection]
+        """Get list of selected segment IDs."""
+        selection_model = self.table.selectionModel()
+        selected_rows = set()
+        for index in selection_model.selectedIndexes():
+            selected_rows.add(index.row())
+
+        ids = []
+        for row in selected_rows:
+            seg_id = self.model.get_seg_id_for_row(row)
+            if seg_id is not None:
+                ids.append(seg_id)
         return sorted(ids)
 
     def set_data(self, segments, project):
-        # TODO Store indices
-        # TODO: this is extremely slow - we need a better way to update the table.
-        self.table.setRowCount(len(segments))
-        # Avoid .iterrows() which triggers pandas type inference
-        seg_ids = list(segments.index)
-        for ix, row in enumerate(seg_ids):
-            start_idx = segments.at[row, 'StartIndex']
-            stop_idx = segments.at[row, 'StopIndex']
-            source = segments.at[row, 'Source']
-            tags = segments.at[row, 'Tags']
-            start_time = start_idx / project.sampling_rate
-            stop_time = stop_idx / project.sampling_rate
-            self.table.setItem(ix, 0, widgets.QTableWidgetItem(str(row)))
-            self.table.setItem(ix, 1, widgets.QTableWidgetItem(source.name))
-            self.table.setItem(ix, 2, TimeQTableWidgetItem(start_time))
-            self.table.setItem(ix, 3, TimeQTableWidgetItem(stop_time))
-            self.table.setItem(ix, 4, TimeQTableWidgetItem(stop_time - start_time))
-            self.table.setItem(ix, 5, widgets.QTableWidgetItem(
-                ",".join(tags)
-            ))
-        self.table.setSortingEnabled(True)
-        # sort by start time
-        self.table.sortByColumn(2, Qt.SortOrder.AscendingOrder)
+        """Replace all data in the table."""
+        self._project = project
+        self.model.set_data(segments, project)
+        # Sort by start time (column 2)
+        self.model.sort(2, Qt.SortOrder.AscendingOrder)
 
     def add_row(self, segment, project):
-        self.table.setSortingEnabled(False)
-        ind = self.table.rowCount()
-        self.table.insertRow(self.table.rowCount())
-        start_time = segment['StartIndex'] / project.sampling_rate
-        stop_time = segment['StopIndex'] / project.sampling_rate
-        self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(segment.name)))
-        self.table.setItem(ind, 1, widgets.QTableWidgetItem(segment['Source'].name))
-        self.table.setItem(ind, 2, TimeQTableWidgetItem(start_time))
-        self.table.setItem(ind, 3, TimeQTableWidgetItem(stop_time))
-        self.table.setItem(ind, 4, TimeQTableWidgetItem(stop_time-start_time))
-        self.table.setItem(ind, 5, widgets.QTableWidgetItem(
-            ",".join(segment["Tags"])
-        ))
-        self.table.setSortingEnabled(True)
+        """Add a single row. For bulk additions, use add_rows_batch."""
+        self._project = project
+        # Convert single Series to DataFrame with proper index
+        segment_df = segment.to_frame().T
+        self.model.add_rows(segment_df)
 
     def add_rows_batch(self, segments_df, project):
-        """Add multiple rows at once, much faster than calling add_row repeatedly."""
+        """Add multiple rows at once - now very fast with model-view architecture."""
         if len(segments_df) == 0:
             return
-
-        self.table.setSortingEnabled(False)
-
-        # Pre-allocate rows
-        start_ind = self.table.rowCount()
-        self.table.setRowCount(start_ind + len(segments_df))
-
-        sr = project.sampling_rate
-        # Avoid .iterrows() which triggers pandas type inference and causes
-        # comparison errors with ProjectIndex objects
-        seg_ids = list(segments_df.index)
-        for i, seg_id in enumerate(seg_ids):
-            ind = start_ind + i
-            start_idx = segments_df.at[seg_id, 'StartIndex']
-            stop_idx = segments_df.at[seg_id, 'StopIndex']
-            source = segments_df.at[seg_id, 'Source']
-            tags = segments_df.at[seg_id, 'Tags']
-            start_time = start_idx / sr
-            stop_time = stop_idx / sr
-            self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(seg_id)))
-            self.table.setItem(ind, 1, widgets.QTableWidgetItem(source.name))
-            self.table.setItem(ind, 2, TimeQTableWidgetItem(start_time))
-            self.table.setItem(ind, 3, TimeQTableWidgetItem(stop_time))
-            self.table.setItem(ind, 4, TimeQTableWidgetItem(stop_time - start_time))
-            self.table.setItem(ind, 5, widgets.QTableWidgetItem(
-                ",".join(tags)
-            ))
-
-        self.table.setSortingEnabled(True)
-        self.table.sortByColumn(2, Qt.SortOrder.AscendingOrder)
+        self._project = project
+        self.model.add_rows(segments_df)
 
     def update_rows(self, segments, project):
-        self.table.setSortingEnabled(False)
-        # Avoid .iterrows() which triggers pandas type inference
-        seg_ids = list(segments.index)
-        for ix in seg_ids:
-            ind = self._find_segment_row_by_segID(ix)
-            if ind is not None:
-                start_idx = segments.at[ix, 'StartIndex']
-                stop_idx = segments.at[ix, 'StopIndex']
-                source = segments.at[ix, 'Source']
-                tags = segments.at[ix, 'Tags']
-                start_time = start_idx / project.sampling_rate
-                stop_time = stop_idx / project.sampling_rate
-                self.table.setItem(ind, 1, widgets.QTableWidgetItem(source.name))
-                self.table.setItem(ind, 2, TimeQTableWidgetItem(start_time))
-                self.table.setItem(ind, 3, TimeQTableWidgetItem(stop_time))
-                self.table.setItem(ind, 4, TimeQTableWidgetItem(stop_time - start_time))
-                self.table.setItem(ind, 5, widgets.QTableWidgetItem(
-                    ",".join(tags)
-                ))
-        self.table.setSortingEnabled(True)
-    
+        """Update existing rows."""
+        self._project = project
+        self.model.update_rows(segments)
+
     def remove_row_by_segID(self, seg_id):
-        ind = self._find_segment_row_by_segID(seg_id)
+        """Remove a row by segment ID."""
         if seg_id in self.get_selection():
             self.table.clearSelection()
-        if ind is not None:
-            self.table.removeRow(ind)
-        else:
+        if not self.model.remove_row_by_id(seg_id):
             raise ValueError("Cannot remove Segment ID {}: not found in table".format(seg_id))
-
-    def _find_segment_row_by_segID(self, seg_id):
-        for i in range(self.table.rowCount()):
-            if self.table.item(i, 0).text() == str(seg_id):
-                return i
-        return None
 
 class SegmentVisualizer(widgets.QGraphicsRectItem):
     def __init__(
@@ -633,10 +735,11 @@ class SegmentPlugin(BasePlugin):
         stop_indices = [self.api.make_project_index(int(v)) for v in data['StopIndex'].values]
 
         # Build the DataFrame directly without row-by-row iteration
+        # Use plain lists (not Series) to avoid slow index alignment
         seg_df = {
             'Source': sources_list,
-            'StartIndex': pd.Series(start_indices, index=segment_ids, dtype=object),
-            'StopIndex': pd.Series(stop_indices, index=segment_ids, dtype=object),
+            'StartIndex': start_indices,
+            'StopIndex': stop_indices,
             'Tags': tags_list,
             'Coords': coords_list,
             'SegmentID': segment_ids
@@ -646,7 +749,11 @@ class SegmentPlugin(BasePlugin):
         for feat_col in feature_columns:
             seg_df[feat_col] = data[feat_col].tolist()
 
-        self._segmentation_datastore = pd.DataFrame(seg_df, index=segment_ids)
+        # Create DataFrame from dict of lists (faster than dict of Series)
+        # Then set index once at the end to avoid alignment overhead
+        df = pd.DataFrame(seg_df)
+        df.index = segment_ids
+        self._segmentation_datastore = df
         # Store the max of the segmentIDs so we can increment
         self._next_seg_id = max(self._segmentation_datastore.index)+1
         #self._segmentation_datastore.sort()

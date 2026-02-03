@@ -583,7 +583,7 @@ class DetectPlugin(BasePlugin):
                 selection.x0 + int(interval1),
                 selection.source
             ) for interval0, interval1 in intervals
-        ])
+        ], skip_delete_check=True)  # Already deleted overlapping segments above
 
     # --- State persistence methods ---
 

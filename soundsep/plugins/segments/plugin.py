@@ -570,73 +570,83 @@ class SegmentPlugin(BasePlugin):
 
         data = pd.read_csv(save_file, converters={"Tags": str, "Coords": str})
 
+        if len(data) == 0:
+            return
+
         # Base segment columns
         base_columns = {'Source', 'SourceName', 'SourceChannel', 'StartIndex', 'StopIndex', 'Tags', 'Coords', 'SegmentID'}
         # Identify feature columns (any column not in base_columns)
         feature_columns = [col for col in data.columns if col not in base_columns and not col.startswith('Unnamed')]
 
-        seg_df = dict({
-                "Source": [],
-                "StartIndex": [],
-                "StopIndex": [],
-                "Tags": [],
-                "Coords": [],
-                "SegmentID": []
-            })
-        # Initialize feature column lists
+        # Build source lookup and cache
+        existing_sources = {(s.name, s.channel): s for s in self.api.get_sources()}
+
+        # Vectorized: get SegmentIDs
+        if 'SegmentID' in data.columns:
+            segment_ids = data['SegmentID'].tolist()
+        else:
+            segment_ids = list(range(len(data)))
+
+        # Vectorized: parse Tags column
+        def parse_tags(val):
+            if val and isinstance(val, str):
+                try:
+                    return set(json.loads(val))
+                except:
+                    return set()
+            return set()
+        tags_list = [parse_tags(v) for v in data['Tags'].values]
+
+        # Vectorized: parse Coords column
+        def parse_coords(val):
+            if val and isinstance(val, str):
+                try:
+                    parsed = json.loads(val)
+                    return [float(x) for x in parsed] if parsed else None
+                except:
+                    return None
+            return None
+        coords_list = [parse_coords(v) for v in data['Coords'].values]
+
+        # Vectorized: build Source objects
+        # First, create any missing sources
+        if 'SourceName' in data.columns and 'SourceChannel' in data.columns:
+            source_keys = list(zip(data['SourceName'].values, data['SourceChannel'].values))
+        else:
+            # Legacy format - map Source column to existing sources by index
+            unique_sources = data['Source'].unique()
+            source_mapping = {s: list(existing_sources.keys())[i] for i, s in enumerate(unique_sources)}
+            source_keys = [source_mapping[s] for s in data['Source'].values]
+
+        # Create any sources that don't exist
+        unique_keys = set(source_keys)
+        for key in unique_keys:
+            if key not in existing_sources:
+                self.api.create_source(key[0], key[1])
+                existing_sources[key] = self.api.get_source(key[0], key[1])
+
+        # Map source keys to Source objects
+        sources_list = [existing_sources[k] for k in source_keys]
+
+        # Vectorized: create ProjectIndex objects
+        start_indices = [self.api.make_project_index(int(v)) for v in data['StartIndex'].values]
+        stop_indices = [self.api.make_project_index(int(v)) for v in data['StopIndex'].values]
+
+        # Build the DataFrame directly without row-by-row iteration
+        seg_df = {
+            'Source': sources_list,
+            'StartIndex': pd.Series(start_indices, index=segment_ids, dtype=object),
+            'StopIndex': pd.Series(stop_indices, index=segment_ids, dtype=object),
+            'Tags': tags_list,
+            'Coords': coords_list,
+            'SegmentID': segment_ids
+        }
+
+        # Add feature columns directly from the source DataFrame
         for feat_col in feature_columns:
-            seg_df[feat_col] = []
+            seg_df[feat_col] = data[feat_col].tolist()
 
-        source_lookup = set([
-            (source.name, source.channel) for source in self.api.get_sources()
-        ])
-        sources_ptr = []
-
-        def _read(row):
-            if "SourceName" not in row or "SourceChannel" not in row:
-                if row['Source'] not in sources_ptr:
-                    sources_ptr.append(row['Source'])
-
-                ind = sources_ptr.index(row['Source'])
-                source_key = list(source_lookup)[ind]
-            else:
-                source_key = (row["SourceName"], row["SourceChannel"])
-            if source_key not in source_lookup:
-                source_lookup.add(source_key)
-                self.api.create_source(source_key[0], source_key[1])
-            source = self.api.get_source(source_key[0], source_key[1])
-            seg_df['Source'].append(source)
-            seg_df['StartIndex'].append(self.api.make_project_index(row["StartIndex"]))
-            seg_df['StopIndex'].append(self.api.make_project_index(row["StopIndex"]))
-            if "Tags" in row and row["Tags"]:
-                seg_df['Tags'].append(set([t for t in json.loads(row["Tags"])]))
-            else:
-                seg_df['Tags'].append(set())
-            if 'Coords' in row and row['Coords']:
-                if json.loads(row['Coords']) == None:
-                    seg_df['Coords'].append(None)
-                else:
-                    seg_df['Coords'].append(list([float(x) for x in json.loads(row['Coords'])]))
-            else:
-                # TODO figure out what we want to do in the case that coords is not there. Could sort by amplitude and duration or something
-                seg_df['Coords'].append(None)
-            if 'SegmentID' in row:
-                seg_df['SegmentID'].append(row['SegmentID'])
-            else:
-                # else well just count up
-                seg_df['SegmentID'].append(len(seg_df['SegmentID']))
-            # Load feature columns
-            for feat_col in feature_columns:
-                if feat_col in row:
-                    seg_df[feat_col].append(row[feat_col])
-                else:
-                    seg_df[feat_col].append(np.nan)
-
-        data.apply(_read, axis=1)
-        for l in ['StartIndex', 'StopIndex']:
-            seg_df[l] = pd.Series(seg_df[l],index=seg_df['SegmentID'],dtype=object)
-
-        self._segmentation_datastore = pd.DataFrame(seg_df,index=seg_df['SegmentID'])
+        self._segmentation_datastore = pd.DataFrame(seg_df, index=segment_ids)
         # Store the max of the segmentIDs so we can increment
         self._next_seg_id = max(self._segmentation_datastore.index)+1
         #self._segmentation_datastore.sort()

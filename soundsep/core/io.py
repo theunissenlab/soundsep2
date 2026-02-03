@@ -6,6 +6,7 @@ import os
 import re
 import yaml
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List
 
@@ -211,7 +212,9 @@ def group_files_by_pattern(
         filename_pattern: str,
         block_keys: List[str],
         channel_keys: List[str],
-        load_files: bool = True
+        load_files: bool = True,
+        parallel: bool = True,
+        max_workers: int = None
         ) -> Iterable:
     """Build a generator that yields the files in each block
 
@@ -232,9 +235,10 @@ def group_files_by_pattern(
     if filename_pattern is None:
         filename_pattern = "{}"
 
-    parsed_wav_files = []
-    bad_wav_files = []    # List of tuples
-    for path in tqdm(filelist, desc="GR: Loading audio files", unit="file"):
+    # First pass: parse filenames and build metadata (no file loading)
+    parsed_entries = []
+    bad_wav_files = []
+    for path in filelist:
         relpath = os.path.relpath(path, base_directory)
         parse_result = parse.parse(filename_pattern, relpath)
 
@@ -260,20 +264,65 @@ def group_files_by_pattern(
             if block_id is None and channel_id is None:
                 block_id = str(path)
 
-            # Create appropriate file object based on extension
-            if not load_files:
-                file_obj = None
-            else:
-                file_obj = load_file(path)
-
-            parsed_wav_files.append({
-                "wav_file": file_obj,
+            parsed_entries.append({
                 "block_id": block_id,
                 "channel_id": channel_id,
                 "path": path
             })
         except KeyError:
             bad_wav_files.append((relpath, parse_result))
+
+    # Second pass: load files (optionally in parallel)
+    parsed_wav_files = []
+    if load_files and parsed_entries:
+        paths_to_load = [e["path"] for e in parsed_entries]
+
+        if parallel and len(paths_to_load) > 1:
+            # Load files in parallel using threads (I/O bound)
+            loaded_files = {}
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_path = {executor.submit(load_file, p): p for p in paths_to_load}
+                for future in tqdm(as_completed(future_to_path), total=len(paths_to_load),
+                                   desc="Loading audio files", unit="file"):
+                    path = future_to_path[future]
+                    try:
+                        loaded_files[path] = future.result()
+                    except Exception as e:
+                        relpath = os.path.relpath(path, base_directory)
+                        bad_wav_files.append((relpath, str(e)))
+
+            # Build final list with loaded files
+            for entry in parsed_entries:
+                if entry["path"] in loaded_files:
+                    parsed_wav_files.append({
+                        "wav_file": loaded_files[entry["path"]],
+                        "block_id": entry["block_id"],
+                        "channel_id": entry["channel_id"],
+                        "path": entry["path"]
+                    })
+        else:
+            # Load files sequentially
+            for entry in tqdm(parsed_entries, desc="Loading audio files", unit="file"):
+                try:
+                    file_obj = load_file(entry["path"])
+                    parsed_wav_files.append({
+                        "wav_file": file_obj,
+                        "block_id": entry["block_id"],
+                        "channel_id": entry["channel_id"],
+                        "path": entry["path"]
+                    })
+                except Exception as e:
+                    relpath = os.path.relpath(entry["path"], base_directory)
+                    bad_wav_files.append((relpath, str(e)))
+    else:
+        # No file loading needed
+        for entry in parsed_entries:
+            parsed_wav_files.append({
+                "wav_file": None,
+                "block_id": entry["block_id"],
+                "channel_id": entry["channel_id"],
+                "path": entry["path"]
+            })
 
     parsed_wav_files = sorted(parsed_wav_files, key=lambda x: (x["block_id"], x["channel_id"]))
 

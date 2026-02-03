@@ -193,6 +193,17 @@ def search_for_wavs(base_directory: Path, recursive: bool = False) -> List[Path]
     else:
         return list(base_directory.glob("*.wav"))
 
+def load_file(path: Path):
+    """Load a single audio file based on its extension"""
+    # if path is a string, turn it into a path
+    if isinstance(path, str):
+        path = Path(path)
+    if path.suffix.lower() == ".nwb":
+        return NWBFile(path)
+    elif path.suffix.lower() == ".dat":
+        return DatFile(path)
+    else:
+        return AudioFile(path)
 
 def group_files_by_pattern(
         base_directory: Path,
@@ -200,15 +211,16 @@ def group_files_by_pattern(
         filename_pattern: str,
         block_keys: List[str],
         channel_keys: List[str],
+        load_files: bool = True
         ) -> Iterable:
     """Build a generator that yields the files in each block
 
     Returns
     -------
-    block_groups : List[Tuple[str, List[Union[AudioFile, NWBFile]]]]
-        Yields tuples of the form (str, List[AudioFile/NWBFile]), where the
+    block_groups : List[Tuple[str, List[Union[AudioFile, NWBFile, DatFile]]]]
+        Yields tuples of the form (str, List[AudioFile/NWBFile/DatFile]), where the
         first element is the block_id parsed from the list of audio
-        files in the second element. The AudioFiles/NWBFiles in the second
+        files in the second element. The AudioFiles/NWBFiles/DatFiles in the second
         element are sorted according to the parsed channel_ids
 
         These potential blocks have not been validated for consistency
@@ -222,7 +234,7 @@ def group_files_by_pattern(
 
     parsed_wav_files = []
     bad_wav_files = []    # List of tuples
-    for path in tqdm(filelist, desc="Loading audio files", unit="file"):
+    for path in tqdm(filelist, desc="GR: Loading audio files", unit="file"):
         relpath = os.path.relpath(path, base_directory)
         parse_result = parse.parse(filename_pattern, relpath)
 
@@ -249,17 +261,16 @@ def group_files_by_pattern(
                 block_id = str(path)
 
             # Create appropriate file object based on extension
-            if path.suffix.lower() == ".nwb":
-                file_obj = NWBFile(path)
-            elif path.suffix.lower() == ".dat":
-                file_obj = DatFile(path)
+            if not load_files:
+                file_obj = None
             else:
-                file_obj = AudioFile(path)
+                file_obj = load_file(path)
 
             parsed_wav_files.append({
                 "wav_file": file_obj,
                 "block_id": block_id,
                 "channel_id": channel_id,
+                "path": path
             })
         except KeyError:
             bad_wav_files.append((relpath, parse_result))
@@ -417,7 +428,8 @@ def guess_filename_pattern(base_directory: Path, filelist: List[str]):
                 filelist,
                 filename_pattern,
                 block_keys=group_keys,
-                channel_keys=None
+                channel_keys=None, 
+                load_files=False
             )
 
             is_valid = True
@@ -425,9 +437,12 @@ def guess_filename_pattern(base_directory: Path, filelist: List[str]):
             if len(errors):
                 is_valid = False
 
-            for k, block_info in groups:
-                block_len = block_info[0]["wav_file"].frames
-                if not all([b["wav_file"].frames == block_len for b in block_info]):
+            # lets test up to 10 random groups
+            group_inds_to_test = np.random.choice(len(groups), min(10, len(groups)), replace=False)
+            for k, block_info in [groups[i] for i in group_inds_to_test]:
+                loaded_file = load_file(block_info[0]["path"])
+                block_len = loaded_file.frames
+                if not all([load_file(b["path"]).frames == block_len for b in block_info]):
                     is_valid = False
 
             if is_valid:

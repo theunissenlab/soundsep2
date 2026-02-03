@@ -500,6 +500,7 @@ class FeaturePlugin(BasePlugin):
         self.api.projectLoaded.connect(self.on_project_ready)
         self.api.projectDataLoaded.connect(self.on_project_data_loaded)
         self.api.segmentDeleted.connect(self.on_segment_deleted)
+        self.api.segmentCreated.connect(self.on_segment_created)
 
 
     def on_segment_selection_changed(self):
@@ -556,6 +557,19 @@ class FeaturePlugin(BasePlugin):
 
     def on_project_data_loaded(self):
         """Called each time project data is loaded"""
+        # Sync feature datastore with segment datastore
+        seg_db = self._datastore.get('segments')
+        if seg_db is not None:
+            # Add empty rows for segments that don't have feature data yet
+            missing_segments = [idx for idx in seg_db.index if idx not in self._feature_datastore.index]
+            for seg_id in missing_segments:
+                self._feature_datastore.loc[seg_id] = pd.Series({feat: np.nan for feat in self.featurelist})
+
+            # Remove orphan feature entries (features for segments that no longer exist)
+            orphan_features = [idx for idx in self._feature_datastore.index if idx not in seg_db.index]
+            if orphan_features:
+                self._feature_datastore.drop(orphan_features, inplace=True)
+
         self.panel.set_data(self._feature_datastore)
         self.vis_panel.add_features_to_dropdown(self.featurelist)
         # Also add any custom features (PCA, UMAP, etc.) that were saved
@@ -645,10 +659,22 @@ class FeaturePlugin(BasePlugin):
         self.worker = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.worker.submit(self.generate_all_features)
 
+    def on_segment_created(self, segmentID):
+        """Handle a newly created segment by adding an empty row to the feature table"""
+        if segmentID not in self._feature_datastore.index:
+            self._feature_datastore.loc[segmentID] = pd.Series({feat: np.nan for feat in self.featurelist})
+            self._needs_saving = True
+            self.panel.add_row(self._feature_datastore.loc[segmentID])
+
     def on_segment_deleted(self, segmentID):
-        self._feature_datastore.drop(segmentID, inplace=True)
-        self._needs_saving = True
-        self.panel.remove_row_by_segID(segmentID)
+        # Only process if segment exists in feature datastore
+        if segmentID in self._feature_datastore.index:
+            self._feature_datastore.drop(segmentID, inplace=True)
+            self._needs_saving = True
+            try:
+                self.panel.remove_row_by_segID(segmentID)
+            except ValueError:
+                pass  # Row wasn't in panel
         self.vis_panel.remove_spots([segmentID])
     
     def get_segment_audio(self, segmentID, lowpass=6000, highpass=200):

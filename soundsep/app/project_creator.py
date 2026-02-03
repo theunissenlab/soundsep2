@@ -1,4 +1,5 @@
 import collections
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import glob
 import os
 import yaml
@@ -10,10 +11,12 @@ from PyQt6 import QtWidgets as widgets
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from soundsep.config.defaults import DEFAULTS
-from soundsep.core.io import group_files_by_pattern, guess_filename_pattern, search_for_audio_files
+from soundsep.core.io import group_files_by_pattern, guess_filename_pattern, search_for_audio_files, load_file
 from soundsep.core.models import AudioFile, NWBFile, Block
 from soundsep.ui.project_creator import Ui_ProjectCreator
 
+
+from tqdm import tqdm
 
 class ProjectCreator(widgets.QWidget):
 
@@ -22,6 +25,11 @@ class ProjectCreator(widgets.QWidget):
 
     def __init__(self):
         super().__init__()
+
+        # Cache for loaded audio files: path -> file object
+        self._file_cache = {}
+        self._cached_base_path = None
+        self._cached_recursive = None
 
         self.init_ui()
         self.connect_events()
@@ -125,7 +133,6 @@ class ProjectCreator(widgets.QWidget):
 
         base_path = self.ui.basePathEdit.text()
         template_string = self.ui.templateEdit.text()
-        recursive = self.ui.recursiveSearchCheckBox.checkState() == Qt.CheckState.Checked
 
         def _parse_block(path):
             """Gets format variables in """
@@ -150,25 +157,10 @@ class ProjectCreator(widgets.QWidget):
             self.ui.treeView.clear()
 
             errors = []
-
             base_path = Path(base_path)
-            filelist = []
-            for f in search_for_audio_files(base_path, recursive=recursive):
-                filelist.append(str(f))
 
-            # filter out any audio files that didn't work
-            checked_filelist = []
-            for f in filelist:
-                try:
-                    # Create appropriate file object based on extension
-                    if Path(f).suffix.lower() == ".nwb":
-                        NWBFile(f)
-                    else:
-                        AudioFile(f)
-                except Exception as e:
-                    errors.append((str(f), str(e)))
-                else:
-                    checked_filelist.append(Path(f))
+            # Use cached files instead of reloading
+            checked_filelist = [Path(p) for p in self._file_cache.keys()]
 
             block_groups, grouping_errors = group_files_by_pattern(
                 base_path,
@@ -176,6 +168,7 @@ class ProjectCreator(widgets.QWidget):
                 filename_pattern=template_string,
                 block_keys=new_keys["block_keys"],
                 channel_keys=new_keys["channel_keys"],
+                load_files=False,  # Don't load files, we'll use cache
             )
             errors += grouping_errors
 
@@ -183,6 +176,10 @@ class ProjectCreator(widgets.QWidget):
             channel_id_sets = collections.defaultdict(list)
             for key, group in block_groups:
                 group = list(group)
+                # Get cached file objects
+                for g in group:
+                    g["wav_file"] = self._file_cache[str(g["path"])]
+
                 try:
                     new_block = Block([g["wav_file"] for g in group], fix_uneven_frame_counts=False)
                 except ValueError as e:
@@ -195,7 +192,6 @@ class ProjectCreator(widgets.QWidget):
 
             # Validate that each block shares the same channel_ids across files
             if new_keys["channel_keys"] and len(channel_id_sets) != 1:
-                # for k, v in [str(([os.path.basename(f.path) for f in v[0]._files], k))
                 for k, v in channel_id_sets.items():
                     errors.append((
                         ",".join([str(f.path) for f in v[0]._files]),
@@ -230,24 +226,41 @@ class ProjectCreator(widgets.QWidget):
 
         if base_path:
             base_path = Path(base_path)
-            filelist = []
-            for f in search_for_audio_files(base_path, recursive=recursive):
-                filelist.append(f)
 
-            audio_files = []
-            errors = []
-            for f in filelist:
-                try:
-                    # Create appropriate file object based on extension
-                    if f.suffix.lower() == ".nwb":
-                        audio_files.append(NWBFile(f))
-                    else:
-                        audio_files.append(AudioFile(f))
-                except Exception as e:
-                    errors.append((str(f), str(e)))
+            # Check if we need to reload (path or recursive changed)
+            cache_valid = (
+                self._cached_base_path == base_path and
+                self._cached_recursive == recursive and
+                len(self._file_cache) > 0
+            )
 
-            if errors:
-                self.show_errors(errors)
+            if not cache_valid:
+                # Clear cache and reload
+                self._file_cache = {}
+                self._cached_base_path = base_path
+                self._cached_recursive = recursive
+
+                filelist = list(search_for_audio_files(base_path, recursive=recursive))
+
+                errors = []
+                # load files in parallel
+                with ThreadPoolExecutor() as executor:
+                    future_to_file = {executor.submit(load_file, f): f for f in filelist}
+                    prog_bar = tqdm(total=len(filelist), desc="TV Loading audio files")
+                    for future in as_completed(future_to_file):
+                        f = future_to_file[future]
+                        try:
+                            audio_file = future.result()
+                            self._file_cache[str(f)] = audio_file
+                        except Exception as e:
+                            errors.append((str(f), str(e)))
+                        prog_bar.update(1)
+                    prog_bar.close()
+
+                if errors:
+                    self.show_errors(errors)
+
+            audio_files = list(self._file_cache.values())
 
             if len(audio_files):
                 self.ui.treeView.set_audio_files(audio_files, keys_fn)

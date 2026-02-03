@@ -754,9 +754,17 @@ class SegmentPlugin(BasePlugin):
 
     def on_sources_changed(self):
         # We need to check if any sources have been deleted and remove their segments
-        # TODO: maybe we just shouldnt show the segments in the panel
-        self._segmentation_datastore = self._segmentation_datastore[
-            self._segmentation_datastore['Source'].isin(self.api.get_sources())]
+        valid_sources = self.api.get_sources()
+        invalid_mask = ~self._segmentation_datastore['Source'].isin(valid_sources)
+        invalid_seg_ids = self._segmentation_datastore[invalid_mask].index.tolist()
+
+        if invalid_seg_ids:
+            # Remove from datastore
+            self._segmentation_datastore = self._segmentation_datastore[~invalid_mask]
+            # Emit signals for each deleted segment
+            for seg_id in invalid_seg_ids:
+                self.api.segment_deleted(seg_id)
+
         self.refresh()
 
     def on_workspace_changed(self):
@@ -903,6 +911,10 @@ class SegmentPlugin(BasePlugin):
 
         # Concatenate with existing datastore
         self._segmentation_datastore = pd.concat([self._segmentation_datastore, new_df])
+
+        # Emit signals for each created segment
+        for seg_id in new_df.index:
+            self.api.segment_created(seg_id)
 
         # Batch update UI
         self.panel.add_rows_batch(new_df, self.api.project)

@@ -94,8 +94,10 @@ class TagPlugin(BasePlugin):
         self._needs_saving = True
 
     def apply_tag(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source', tag: 'str'):
-        segs_to_tag = ((self._datastore["segments"]['StopIndex'].between(start,stop) |\
-                                self._datastore["segments"]['StartIndex'].between(start,stop)) &\
+        # Convert ProjectIndex to int since datastore stores raw integers
+        start_int, stop_int = int(start), int(stop)
+        segs_to_tag = ((self._datastore["segments"]['StopIndex'].between(start_int, stop_int) |\
+                                self._datastore["segments"]['StartIndex'].between(start_int, stop_int)) &\
                             (self._datastore["segments"]['Source'] == source))
         
         if not np.any(segs_to_tag):
@@ -111,8 +113,10 @@ class TagPlugin(BasePlugin):
         self._needs_saving = True
 
     def clear_tags(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source'):
-        segs_to_untag = ((self._datastore["segments"]['StopIndex'].between(start,stop) |\
-                                self._datastore["segments"]['StartIndex'].between(start,stop)) &\
+        # Convert ProjectIndex to int since datastore stores raw integers
+        start_int, stop_int = int(start), int(stop)
+        segs_to_untag = ((self._datastore["segments"]['StopIndex'].between(start_int, stop_int) |\
+                                self._datastore["segments"]['StartIndex'].between(start_int, stop_int)) &\
                             (self._datastore["segments"]['Source'] == source))
         if not np.any(segs_to_untag):
             return

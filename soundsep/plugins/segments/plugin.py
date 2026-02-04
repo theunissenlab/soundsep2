@@ -486,11 +486,15 @@ class SegmentVisualizer(widgets.QGraphicsRectItem):
         self.setBrush(pg.mkBrush(None))
         self.setAcceptHoverEvents(True)
 
+        # StartIndex/StopIndex are now raw integers, compute timestamps using sampling rate
+        sr = plugin.api.project.sampling_rate
+        start_time = self.segment.StartIndex / sr
+        stop_time = self.segment.StopIndex / sr
         self.setToolTip("{}\n{:.2f}s to {:.2f}s\nDuration: {:.1f} ms\nTags: {}".format(
             self.segment.Source.name,
-            self.segment.StartIndex.to_timestamp(),
-            self.segment.StopIndex.to_timestamp(),
-            (self.segment.StopIndex.to_timestamp() - self.segment.StartIndex.to_timestamp()) * 1000,
+            start_time,
+            stop_time,
+            (stop_time - start_time) * 1000,
             ",".join([t for t in self.segment.Tags]),
         ))
 
@@ -730,9 +734,10 @@ class SegmentPlugin(BasePlugin):
         # Map source keys to Source objects
         sources_list = [existing_sources[k] for k in source_keys]
 
-        # Vectorized: create ProjectIndex objects
-        start_indices = [self.api.make_project_index(int(v)) for v in data['StartIndex'].values]
-        stop_indices = [self.api.make_project_index(int(v)) for v in data['StopIndex'].values]
+        # Store raw integers instead of ProjectIndex objects for faster loading
+        # ProjectIndex will be created on-demand when needed via get_segment_as_project_index()
+        start_indices = data['StartIndex'].astype(int).tolist()
+        stop_indices = data['StopIndex'].astype(int).tolist()
 
         # Build the DataFrame directly without row-by-row iteration
         # Use plain lists (not Series) to avoid slow index alignment
@@ -804,8 +809,9 @@ class SegmentPlugin(BasePlugin):
             source = self.api.get_source(source_key[0], source_key[1])
 
             seg_df['Source'].append(source)
-            seg_df['StartIndex'].append(self.api.make_project_index(row["StartIndex"]))
-            seg_df['StopIndex'].append(self.api.make_project_index(row["StopIndex"]))
+            # Store raw integers, not ProjectIndex objects
+            seg_df['StartIndex'].append(int(row["StartIndex"]))
+            seg_df['StopIndex'].append(int(row["StopIndex"]))
 
             # Parse tags from JSON string
             if row["Tags"]:
@@ -828,8 +834,7 @@ class SegmentPlugin(BasePlugin):
 
             seg_df['SegmentID'].append(row['SegmentID'])
 
-        for l in ['StartIndex', 'StopIndex']:
-            seg_df[l] = pd.Series(seg_df[l], index=seg_df['SegmentID'], dtype=object)
+        # StartIndex/StopIndex are now raw integers, no need for object dtype
 
         self._segmentation_datastore = pd.DataFrame(seg_df, index=seg_df['SegmentID'])
         if len(self._segmentation_datastore) > 0:
@@ -925,6 +930,8 @@ class SegmentPlugin(BasePlugin):
         ws0, ws1 = self.api.workspace_get_lim()
         ws0 = ws0.to_project_index()
         ws1 = ws1.to_project_index()
+        # Convert to int since datastore stores raw integers
+        ws0_int, ws1_int = int(ws0), int(ws1)
 
         # Also highlight all points visible
         for parent, annotation in self._annotations:
@@ -939,7 +946,7 @@ class SegmentPlugin(BasePlugin):
         # first_segment_idx = self._segmentation_datastore['StopIndex'].searchsorted(ws0)
         # last_segment_idx = self._segmentation_datastore['StartIndex'].searchsorted(ws1)
         # get all segments where the start index is less than ws1 and the stop index is greater than ws0
-        segs_in_view = self._segmentation_datastore[ (self._segmentation_datastore['StartIndex'] < ws1) & (self._segmentation_datastore['StopIndex'] > ws0) ]
+        segs_in_view = self._segmentation_datastore[ (self._segmentation_datastore['StartIndex'] < ws1_int) & (self._segmentation_datastore['StopIndex'] > ws0_int) ]
         selection = self.api.get_fine_selection()
         
         # Go through each source view and draw the segments
@@ -1015,8 +1022,8 @@ class SegmentPlugin(BasePlugin):
 
         for start, stop, source in segment_data:
             new_rows.append({
-                'StartIndex': start,
-                'StopIndex': stop,
+                'StartIndex': int(start),  # Store raw integer, not ProjectIndex
+                'StopIndex': int(stop),    # Store raw integer, not ProjectIndex
                 'Source': source,
                 'Tags': set(),
                 'Coords': list()
@@ -1068,8 +1075,8 @@ class SegmentPlugin(BasePlugin):
         assert(segID not in self._segmentation_datastore.index)
         self._next_seg_id += 1
         self._segmentation_datastore.loc[segID] = pd.Series()
-        self._segmentation_datastore.at[segID,'StartIndex'] = start
-        self._segmentation_datastore.at[segID,'StopIndex'] = stop
+        self._segmentation_datastore.at[segID,'StartIndex'] = int(start)  # Store raw integer
+        self._segmentation_datastore.at[segID,'StopIndex'] = int(stop)    # Store raw integer
         self._segmentation_datastore.at[segID,'Source'] = source
         self._segmentation_datastore.at[segID,'Tags'] = tags
         self._segmentation_datastore.at[segID,'Coords'] = coords
@@ -1090,8 +1097,10 @@ class SegmentPlugin(BasePlugin):
 
     def delete_segments_between(self, start: ProjectIndex, stop: ProjectIndex, source: Source, refresh: bool = True):
         # Delete all segments from this source who have a start OR stop index within the range
-        segs_to_delete = ((self._segmentation_datastore['StopIndex'].between(start,stop) |\
-                                self._segmentation_datastore['StartIndex'].between(start,stop)) &\
+        # Convert ProjectIndex to int since datastore stores raw integers
+        start_int, stop_int = int(start), int(stop)
+        segs_to_delete = ((self._segmentation_datastore['StopIndex'].between(start_int, stop_int) |\
+                                self._segmentation_datastore['StartIndex'].between(start_int, stop_int)) &\
                             (self._segmentation_datastore['Source'] == source))
         
         deleted_inds = self._segmentation_datastore[segs_to_delete].index
@@ -1116,8 +1125,10 @@ class SegmentPlugin(BasePlugin):
 
     def merge_segments(self, start: ProjectIndex, stop: ProjectIndex, source: Source):
         # Merge all segments from this source who have a start OR stop index within the range
-        segs_to_merge = self._segmentation_datastore[((self._segmentation_datastore['StopIndex'].between(start, stop) |\
-                            self._segmentation_datastore['StartIndex'].between(start, stop)) &\
+        # Convert ProjectIndex to int since datastore stores raw integers
+        start_int, stop_int = int(start), int(stop)
+        segs_to_merge = self._segmentation_datastore[((self._segmentation_datastore['StopIndex'].between(start_int, stop_int) |\
+                            self._segmentation_datastore['StartIndex'].between(start_int, stop_int)) &\
                             (self._segmentation_datastore['Source'] == source))]
 
         if not len(segs_to_merge):
@@ -1126,8 +1137,9 @@ class SegmentPlugin(BasePlugin):
         self.gui.show_status("Merging {} segments from {} to {}".format(len(segs_to_merge), start, stop))
         logger.debug("Merging {} segments from {} to {}".format(len(segs_to_merge), start, stop))
         new_tags = set.union(*list(segs_to_merge['Tags'].values))
-        new_start = min(segs_to_merge['StartIndex'])
-        new_stop = max(segs_to_merge['StopIndex'])
+        # StartIndex/StopIndex are now raw integers, convert to ProjectIndex for create_segment
+        new_start = self.api.make_project_index(min(segs_to_merge['StartIndex']))
+        new_stop = self.api.make_project_index(max(segs_to_merge['StopIndex']))
         # TODO, can maybe take coords too? or the mean
         self.delete_segments(segs_to_merge.index, refresh=False)
         self.create_segment(new_start, new_stop, source, new_tags)

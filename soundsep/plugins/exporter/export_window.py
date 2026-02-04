@@ -49,18 +49,27 @@ SETTINGS = (
 def segment_to_dict(segment, project_dir: 'pathlib.Path'):
     source = segment.Source
     project = source.project
-    block_start = project.to_block_index(segment.StartIndex)
-    block_stop = project.to_block_index(segment.StopIndex)
+    # StartIndex/StopIndex are now raw integers, create ProjectIndex on demand
+    from soundsep.core.models import ProjectIndex
+    start_idx = ProjectIndex(project, int(segment.StartIndex))
+    stop_idx = ProjectIndex(project, int(segment.StopIndex))
+    block_start = project.to_block_index(start_idx)
+    block_stop = project.to_block_index(stop_idx)
     block = block_start.block
     original_file, original_channel = block.get_channel_info(source.channel)
+
+    # Calculate timestamps from raw integers
+    sr = project.sampling_rate
+    t_start = int(segment.StartIndex) / sr
+    t_stop = int(segment.StopIndex) / sr
 
     return {
         "source.name": source.name,
         "source.channel": source.channel,
         "project.start_index": int(segment.StartIndex),
         "project.stop_index": int(segment.StopIndex),
-        "project.t_start": segment.StartIndex.to_timestamp(),
-        "project.t_stop": segment.StopIndex.to_timestamp(),
+        "project.t_start": t_start,
+        "project.t_stop": t_stop,
         "file.name": original_file,
         "file.relative_path": Path(original_file).relative_to(project_dir),
         "file.channel": original_channel,

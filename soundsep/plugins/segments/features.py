@@ -705,7 +705,10 @@ class FeaturePlugin(BasePlugin):
         """Get the audio data for a segment"""
         seg = self._datastore['segments'].loc[segmentID]
         sr = self.api.project.sampling_rate
-        t, audio = self.api.get_signal(seg.StartIndex, seg.StopIndex)
+        # StartIndex/StopIndex are now raw integers, convert to ProjectIndex for API call
+        start_idx = self.api.make_project_index(seg.StartIndex)
+        stop_idx = self.api.make_project_index(seg.StopIndex)
+        t, audio = self.api.get_signal(start_idx, stop_idx)
         audio = audio[:,seg.Source.channel]
 
         # Apply filtering
@@ -877,8 +880,11 @@ def generate_segment_features(segmentID, seg_datastore, api):
     seg = seg_datastore.loc[segmentID]
     sr = api.project.sampling_rate
     # get the audio data for the segment
+    # StartIndex/StopIndex are now raw integers, convert to ProjectIndex for API call
+    start_idx = api.make_project_index(seg.StartIndex)
+    stop_idx = api.make_project_index(seg.StopIndex)
     # TODO could pad small segments here
-    t, audio = api.get_signal(seg.StartIndex, seg.StopIndex)
+    t, audio = api.get_signal(start_idx, stop_idx)
     audio = audio[:,seg.Source.channel]
     # get the sampling rate
     # get the features

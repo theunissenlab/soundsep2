@@ -17,6 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class BlockReadInfo:
+    """Info needed to read audio data for a block."""
+    block_index: int
+    block_start_sample: int  # Absolute project index where this block starts
+    block: object  # The Block object to read from
+    channel: int  # Channel index to read
+    read_start: int  # Start index within the block
+    read_end: int  # End index within the block
+
+
+@dataclass
 class BlockSegmentResult:
     """Result from processing a single block."""
     block_index: int
@@ -84,25 +95,31 @@ class ParallelSegmentWorker(QThread):
 
     def __init__(
         self,
-        blocks_data: List[Tuple[int, int, np.ndarray]],  # (block_idx, block_start_sample, audio_data)
+        blocks_info: List[BlockReadInfo],  # Block metadata for workers to read files
         sampling_rate: int,
         method: str,  # "basic" or "advanced"
         params: dict,  # Method-specific parameters
         max_workers: int = 4
     ):
         super().__init__()
-        self.blocks_data = blocks_data
+        self.blocks_info = blocks_info
         self.sampling_rate = sampling_rate
         self.method = method
         self.params = params
         self.max_workers = max_workers
 
-    def _process_block(self, block_info: Tuple[int, int, np.ndarray]) -> BlockSegmentResult:
+    def _process_block(self, block_info: BlockReadInfo) -> BlockSegmentResult:
         """Process a single block and return detected intervals."""
-        block_idx, block_start_sample, audio = block_info
         try:
-            audio = audio.astype(np.float32)
-            logger.debug(f"Processing block {block_idx}: {len(audio)} samples starting at {block_start_sample}")
+            # Read audio data using the Block's read method (handles WAV, NWB, DAT)
+            audio = block_info.block.read(
+                block_info.read_start,
+                block_info.read_end,
+                channels=[block_info.channel]
+            )
+            # Squeeze to 1D (block.read returns shape (samples, channels))
+            audio = audio[:, 0].astype(np.float32)
+            logger.debug(f"Processing block {block_info.block_index}: {len(audio)} samples starting at {block_info.block_start_sample}")
 
             if self.method == "basic":
                 # Basic threshold detection
@@ -135,19 +152,19 @@ class ParallelSegmentWorker(QThread):
                 raise ValueError(f"Unknown method: {self.method}")
 
             n_intervals = len(intervals) if len(intervals.shape) > 0 and intervals.shape[0] > 0 else 0
-            logger.debug(f"Block {block_idx}: detected {n_intervals} intervals")
+            logger.debug(f"Block {block_info.block_index}: detected {n_intervals} intervals")
 
             return BlockSegmentResult(
-                block_index=block_idx,
-                block_start_sample=block_start_sample,
+                block_index=block_info.block_index,
+                block_start_sample=block_info.block_start_sample,
                 intervals=intervals
             )
 
         except Exception as e:
-            logger.exception(f"Error processing block {block_idx}")
+            logger.exception(f"Error processing block {block_info.block_index}")
             return BlockSegmentResult(
-                block_index=block_idx,
-                block_start_sample=block_start_sample,
+                block_index=block_info.block_index,
+                block_start_sample=block_info.block_start_sample,
                 intervals=np.array([]),
                 error=str(e)
             )
@@ -155,12 +172,12 @@ class ParallelSegmentWorker(QThread):
     def run(self):
         try:
             results = []
-            total_blocks = len(self.blocks_data)
+            total_blocks = len(self.blocks_info)
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 future_to_block = {
-                    executor.submit(self._process_block, block_info): block_info[0]
-                    for block_info in self.blocks_data
+                    executor.submit(self._process_block, block_info): block_info.block_index
+                    for block_info in self.blocks_info
                 }
 
                 completed = 0
@@ -667,31 +684,47 @@ class AutoSegmentPlugin(BasePlugin):
         # Log the params being used for debugging
         logger.info(f"Running parallel {method} segmentation with params: {params}")
 
-        # Read audio by blocks
+        # Build block metadata for workers to read files themselves
+        # This avoids loading all data into memory before parallelizing
+        blocks_info = []
+        block_idx = 0
+
         try:
-            start_idx = self.api.make_project_index(start_sample)
-            end_idx = self.api.make_project_index(end_sample)
-            blocks_data_list = project.read_by_blocks(start_idx, end_idx, [channel])
+            for (i0, i1), block in project.iter_blocks():
+                block_start = int(i0)
+                block_end = int(i1)
+
+                # Skip blocks outside our range
+                if block_end <= start_sample:
+                    continue
+                if block_start >= end_sample:
+                    break
+
+                # Calculate read range within this block
+                read_start_in_block = max(start_sample - block_start, 0)
+                read_end_in_block = min(end_sample - block_start, block.frames)
+
+                # Calculate the absolute start sample for results
+                # This is where in the project this chunk starts
+                abs_start = block_start + read_start_in_block
+
+                blocks_info.append(BlockReadInfo(
+                    block_index=block_idx,
+                    block_start_sample=abs_start,
+                    block=block,
+                    channel=channel,
+                    read_start=read_start_in_block,
+                    read_end=read_end_in_block
+                ))
+                block_idx += 1
+
         except Exception as e:
-            self.panel.set_status(f"Error reading audio blocks: {e}", is_error=True)
+            self.panel.set_status(f"Error building block info: {e}", is_error=True)
             return
 
-        if not blocks_data_list:
+        if not blocks_info:
             self.panel.set_status("No audio blocks found in range", is_error=True)
             return
-
-        # Build list of (block_idx, block_start_sample, audio_data) tuples
-        # We need to figure out the absolute start sample for each block chunk
-        blocks_data = []
-        current_sample = start_sample
-
-        for block_idx, block_audio in enumerate(blocks_data_list):
-            # Squeeze to 1D if needed (read returns (samples, channels))
-            if block_audio.ndim > 1:
-                block_audio = block_audio[:, 0]
-
-            blocks_data.append((block_idx, current_sample, block_audio))
-            current_sample += len(block_audio)
 
         # Store pending info
         self._pending_channel = channel
@@ -699,12 +732,12 @@ class AutoSegmentPlugin(BasePlugin):
         self._pending_end_sample = end_sample
 
         # Start parallel worker
-        num_blocks = len(blocks_data)
+        num_blocks = len(blocks_info)
         self.panel.set_processing(True, determinate=True, total=num_blocks)
         self.panel.set_status(f"Processing {num_blocks} blocks in parallel...")
 
         self.parallel_worker = ParallelSegmentWorker(
-            blocks_data=blocks_data,
+            blocks_info=blocks_info,
             sampling_rate=sr,
             method=method,
             params=params,

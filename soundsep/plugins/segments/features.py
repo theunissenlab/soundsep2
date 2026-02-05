@@ -1,11 +1,16 @@
 import logging
 import json
 import time
+import traceback
+import os
 from multiprocessing import Queue, Process, Event
 import threading
 from functools import partial
 from typing import List, Tuple
 import concurrent.futures
+from queue import Empty
+
+from sklearn import logger
 from soundsig.sound import BioSound
 import soundsig.sound as sound
 import warnings
@@ -17,7 +22,7 @@ import PyQt6.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QObject, QAbstractTableModel, QModelIndex, QItemSelectionModel
 from PyQt6 import QtGui
 
 from soundsep.core.base_plugin import BasePlugin
@@ -262,12 +267,183 @@ class DimensionalityReductionWizard(widgets.QWidget):
         new_feature_name = self.feat_name.text()
         self.feature_generation_signal.emit(selected_features, dim_reduction_type, new_feature_name)
 
+
+class FeatureTableModel(QAbstractTableModel):
+    """High-performance table model for features using model-view architecture.
+
+    Instead of creating QTableWidgetItem objects for every cell, this model
+    directly references the feature DataFrame and provides data on-demand.
+    Only visible rows are rendered, making it efficient for large datasets.
+    """
+
+    def __init__(self, features_list, parent=None):
+        super().__init__(parent)
+        self._feature_df = pd.DataFrame()
+        self._features_list = features_list  # List of feature column names
+        self._sorted_indices = []  # Sorted row indices into _feature_df
+        self._sort_column = 0
+        self._sort_order = Qt.SortOrder.AscendingOrder
+
+    def set_data(self, feature_df):
+        """Replace all data in the model."""
+        self.beginResetModel()
+        self._feature_df = feature_df if len(feature_df) > 0 else pd.DataFrame()
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def add_rows(self, new_feature_df):
+        """Add new rows to the model."""
+        if len(new_feature_df) == 0:
+            return
+        self._feature_df = pd.concat([self._feature_df, new_feature_df])
+        self.beginResetModel()
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def update_row(self, seg_id, feature_row):
+        """Update an existing row in the model."""
+        if seg_id in self._feature_df.index:
+            self._feature_df.loc[seg_id] = feature_row
+            # Find the view row and emit dataChanged
+            view_row = self.get_row_for_seg_id(seg_id)
+            if view_row is not None:
+                top_left = self.index(view_row, 0)
+                bottom_right = self.index(view_row, self.columnCount() - 1)
+                self.dataChanged.emit(top_left, bottom_right)
+
+    def remove_row_by_id(self, seg_id):
+        """Remove a row by segment ID."""
+        if seg_id in self._feature_df.index:
+            self.beginResetModel()
+            self._feature_df = self._feature_df.drop(seg_id)
+            self._rebuild_sorted_indices()
+            self.endResetModel()
+            return True
+        return False
+
+    def remove_rows_by_ids(self, seg_ids):
+        """Remove multiple rows by segment IDs in a single batch operation.
+
+        This is much faster than calling remove_row_by_id() in a loop because
+        it only does one model reset and one sorted indices rebuild.
+        """
+        # Filter to only IDs that exist
+        ids_to_remove = [sid for sid in seg_ids if sid in self._feature_df.index]
+        if not ids_to_remove:
+            return 0
+
+        self.beginResetModel()
+        self._feature_df = self._feature_df.drop(ids_to_remove)
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+        return len(ids_to_remove)
+
+    def add_feature_column(self, feature_name):
+        """Add a new feature column."""
+        if feature_name not in self._features_list:
+            self._features_list.append(feature_name)
+            if len(self._feature_df) > 0 and feature_name not in self._feature_df.columns:
+                self._feature_df[feature_name] = np.nan
+            self.beginResetModel()
+            self.endResetModel()
+
+    def _rebuild_sorted_indices(self):
+        """Rebuild the sorted index mapping."""
+        if len(self._feature_df) == 0:
+            self._sorted_indices = []
+            return
+
+        # Sort by the current sort column
+        if self._sort_column == 0:  # SegID
+            sort_values = list(self._feature_df.index)
+        elif self._sort_column - 1 < len(self._features_list):
+            feat_name = self._features_list[self._sort_column - 1]
+            if feat_name in self._feature_df.columns:
+                sort_values = self._feature_df[feat_name].fillna(float('inf')).tolist()
+            else:
+                sort_values = list(range(len(self._feature_df)))
+        else:
+            sort_values = list(range(len(self._feature_df)))
+
+        indexed_values = list(enumerate(sort_values))
+        reverse = self._sort_order == Qt.SortOrder.DescendingOrder
+        indexed_values.sort(key=lambda x: x[1], reverse=reverse)
+        self._sorted_indices = [idx for idx, _ in indexed_values]
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._sorted_indices)
+
+    def columnCount(self, parent=QModelIndex()):
+        return 1 + len(self._features_list)  # SegID + features
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
+
+        df_row_idx = self._sorted_indices[index.row()]
+        col = index.column()
+
+        if col == 0:  # SegID
+            return str(self._feature_df.index[df_row_idx])
+        else:
+            feat_idx = col - 1
+            if feat_idx < len(self._features_list):
+                feat_name = self._features_list[feat_idx]
+                if feat_name in self._feature_df.columns:
+                    val = self._feature_df.iloc[df_row_idx][feat_name]
+                    if pd.isna(val):
+                        return ""
+                    return "%.2f" % val
+        return None
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
+        if orientation == Qt.Orientation.Horizontal:
+            if section == 0:
+                return "segID"
+            elif section - 1 < len(self._features_list):
+                return self._features_list[section - 1]
+        return str(section + 1)
+
+    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
+        self._sort_column = column
+        self._sort_order = order
+        self.beginResetModel()
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+
+    def get_seg_id_for_row(self, view_row):
+        """Get the segment ID for a view row index."""
+        if 0 <= view_row < len(self._sorted_indices):
+            df_row_idx = self._sorted_indices[view_row]
+            return self._feature_df.index[df_row_idx]
+        return None
+
+    def get_row_for_seg_id(self, seg_id):
+        """Get the view row index for a segment ID."""
+        if seg_id not in self._feature_df.index:
+            return None
+        df_row_idx = self._feature_df.index.get_loc(seg_id)
+        try:
+            return self._sorted_indices.index(df_row_idx)
+        except ValueError:
+            return None
+
+    def set_column_hidden_state(self, feature_name, hidden):
+        """Track hidden state for features (used by parent widget)."""
+        pass  # Column visibility is handled by the view, not the model
+
+
 class FeatureGenerationPanel(widgets.QWidget):
     segmentSelectionChanged = pyqtSignal(object)
     def __init__(self, parent=None,features=None):
         super().__init__(parent)
 
-        self.FEATUREDICT=features        
+        self.FEATUREDICT=features
         self.indiv_features = []
         if features is not None:
             for k,v in features.items():
@@ -281,24 +457,28 @@ class FeatureGenerationPanel(widgets.QWidget):
         self.generate_button = widgets.QPushButton("Generate")
         layout.addWidget(self.generate_button)
         self.generate_button.clicked.connect(self.on_generate_button_press)
-        
+
         # Add checkboxes for each feature class
         self.feature_checkboxes = {}
         checkbox_layout = widgets.QHBoxLayout()
         for k in self.FEATUREDICT.keys():
             self.feature_checkboxes[k] = widgets.QCheckBox(k)
             self.feature_checkboxes[k].setChecked(True)
-
             checkbox_layout.addWidget(self.feature_checkboxes[k])
         layout.addLayout(checkbox_layout)
 
-        # add the feature table
-        self.feature_to_column = dict(zip(self.indiv_features, range(1, len(self.indiv_features)+1))) 
-        self.table = widgets.QTableWidget(0, len(self.indiv_features)+1)
-        self.table.setEditTriggers(widgets.QTableWidget.EditTrigger.NoEditTriggers)
+        # Use QTableView with custom model for performance
+        self.feature_to_column = dict(zip(self.indiv_features, range(1, len(self.indiv_features)+1)))
+        self.model = FeatureTableModel(self.indiv_features.copy(), self)
+        self.table = widgets.QTableView()
+        self.table.setModel(self.model)
+
+        self.table.setEditTriggers(widgets.QTableView.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
-        self.table.setColumnHidden(0, True)
-        self.table.setHorizontalHeaderLabels(['segID'] + self.indiv_features)
+        self.table.setSelectionBehavior(widgets.QTableView.SelectionBehavior.SelectRows)
+        self.table.setColumnHidden(0, True)  # Hide SegID column
+        self.table.setSortingEnabled(True)
+
         header = self.table.horizontalHeader()
         for i in range(1, len(self.indiv_features)+1):
             header.setSectionResizeMode(i, widgets.QHeaderView.ResizeMode.Stretch)
@@ -311,7 +491,7 @@ class FeatureGenerationPanel(widgets.QWidget):
         self.setLayout(layout)
 
         # init actions
-        self.table.itemSelectionChanged.connect(self.on_click)
+        self.table.selectionModel().selectionChanged.connect(self.on_click)
 
     
     def set_feature_selection(self, feature_selections):
@@ -319,7 +499,8 @@ class FeatureGenerationPanel(widgets.QWidget):
             if self.feature_checkboxes[k].isChecked() != v:
                 self.feature_checkboxes[k].setChecked(v)
             for feature in self.FEATUREDICT[k]:
-                self.table.setColumnHidden(self.feature_to_column[feature], not v)
+                if feature in self.feature_to_column:
+                    self.table.setColumnHidden(self.feature_to_column[feature], not v)
 
     def on_generate_button_press(self):
         # Add a progress bar into the qvboxlayout
@@ -336,38 +517,39 @@ class FeatureGenerationPanel(widgets.QWidget):
         self.progress.deleteLater()
 
     def add_feature(self, feature_name, df_feature_data):
-        self.indiv_features.append(feature_name)
-        self.table.insertColumn(self.table.columnCount())
-        self.table.setHorizontalHeaderItem(self.table.columnCount()-1, widgets.QTableWidgetItem(feature_name))
-        self.table.setColumnHidden(self.table.columnCount()-1, True)
-        self.feature_to_column[feature_name] = self.table.columnCount()-1
-        for i in range(self.table.rowCount()):
-            segID = int(self.table.item(i, 0).text())
-            if segID in df_feature_data.index:
-                self.table.setItem(i, self.table.columnCount()-1, widgets.QTableWidgetItem(str("%.2f"%df_feature_data.at[segID])))
-
-        
+        """Add a new feature column to the table."""
+        if feature_name not in self.indiv_features:
+            self.indiv_features.append(feature_name)
+            self.feature_to_column[feature_name] = len(self.indiv_features)
+        self.model.add_feature_column(feature_name)
+        # Update the model's internal dataframe with the new feature data
+        if len(df_feature_data) > 0:
+            for seg_id in df_feature_data.index:
+                if seg_id in self.model._feature_df.index:
+                    self.model._feature_df.at[seg_id, feature_name] = df_feature_data.at[seg_id]
+            self.model.beginResetModel()
+            self.model.endResetModel()
+        # Hide the new column by default
+        self.table.setColumnHidden(self.feature_to_column[feature_name], True)
 
     def add_or_edit_row(self, feature_row):
-        ind = self._find_segment_row_by_segID(feature_row.name)
-        if ind is not None:
-            self.table.setSortingEnabled(False)
-            # Edit the row
-            for i, feature in enumerate(self.indiv_features):
-                self.table.setItem(ind, i+1, widgets.QTableWidgetItem(str("%.2f"%feature_row[feature])))
-            self.table.setSortingEnabled(True)
-            return
+        """Add or update a row in the model."""
+        seg_id = feature_row.name
+        if seg_id in self.model._feature_df.index:
+            self.model.update_row(seg_id, feature_row)
         else:
             self.add_row(feature_row)
+
     def add_row(self, feature_row):
-        # Add the row
-        self.table.setSortingEnabled(False)
-        ind = self.table.rowCount()
-        self.table.insertRow(self.table.rowCount())
-        self.table.setItem(ind, 0, widgets.QTableWidgetItem(str(feature_row.name)))
-        for i, feature in enumerate(self.indiv_features):
-            self.table.setItem(ind, i+1, widgets.QTableWidgetItem(str("%.2f"%feature_row[feature])))
-        self.table.setSortingEnabled(True)
+        """Add a single row to the model."""
+        segment_df = feature_row.to_frame().T
+        self.model.add_rows(segment_df)
+
+    def add_rows_batch(self, feature_df):
+        """Add multiple rows at once - efficient batch operation."""
+        if len(feature_df) == 0:
+            return
+        self.model.add_rows(feature_df)
 
     # Selection functions
     def on_click(self):
@@ -375,58 +557,58 @@ class FeatureGenerationPanel(widgets.QWidget):
         self.segmentSelectionChanged.emit(selection)
 
     def on_selection_changed(self, selection):
-        self.table.itemSelectionChanged.disconnect(self.on_click)
+        self.table.selectionModel().selectionChanged.disconnect(self.on_click)
         self.set_selection(selection)
-        self.table.itemSelectionChanged.connect(self.on_click)
+        self.table.selectionModel().selectionChanged.connect(self.on_click)
 
-
-
-    def _find_segment_row_by_segID(self, seg_id):
-        for i in range(self.table.rowCount()):
-            if self.table.item(i, 0).text() == str(seg_id):
-                return i
-        return None
-    
     def remove_row_by_segID(self, seg_id):
-        ind = self._find_segment_row_by_segID(seg_id)
+        """Remove a row by segment ID."""
         if seg_id in self.get_selection():
             self.table.clearSelection()
-        if ind is not None:
-            self.table.removeRow(ind)
-        else:
+        if not self.model.remove_row_by_id(seg_id):
             raise ValueError("Cannot remove Segment ID {}: not found in table".format(seg_id))
 
+    def remove_rows_by_segIDs(self, seg_ids):
+        """Remove multiple rows by segment IDs in a single batch operation."""
+        # Clear selection if any of the deleted segments are selected
+        current_selection = self.get_selection()
+        if any(sid in current_selection for sid in seg_ids):
+            self.table.clearSelection()
+        return self.model.remove_rows_by_ids(seg_ids)
 
     def get_selection(self):
-        selection = []
-        ranges = self.table.selectedRanges()
-        for selection_range in ranges:
-            selection += list(range(selection_range.topRow(), selection_range.bottomRow() + 1))
-        # Get IDS for each selected ROW
-        ids = [int(self.table.item(row, 0).text()) for row in selection]
+        """Get list of selected segment IDs."""
+        selection_model = self.table.selectionModel()
+        selected_rows = set()
+        for index in selection_model.selectedIndexes():
+            selected_rows.add(index.row())
+
+        ids = []
+        for row in selected_rows:
+            seg_id = self.model.get_seg_id_for_row(row)
+            if seg_id is not None:
+                ids.append(seg_id)
         return sorted(ids)
 
     def set_selection(self, selection):
+        """Set the selection by segment IDs."""
         self.table.clearSelection()
-            
+        selection_model = self.table.selectionModel()
+
         for seg_id in selection:
-            table_ind = self._find_segment_row_by_segID(seg_id)
-            if table_ind is not None:
-                self.table.selectRow(table_ind)
-            else:
-                return
-            
+            view_row = self.model.get_row_for_seg_id(seg_id)
+            if view_row is not None:
+                index = self.model.index(view_row, 0)
+                selection_model.select(
+                    index,
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+                )
+
     def set_data(self, feature_db):
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(0)
-        self.table.setRowCount(len(feature_db))
-        ix = 0
-        for row, feature_row in feature_db.iterrows():
-            self.table.setItem(ix, 0, widgets.QTableWidgetItem(str(row)))
-            for i, feature in enumerate(self.indiv_features):
-                self.table.setItem(ix, i+1, widgets.QTableWidgetItem(str("%.2f"%feature_row[feature])))
-            ix += 1
-        self.table.setSortingEnabled(True)
+        """Replace all data in the table - now very fast with model-view architecture."""
+        self.model.set_data(feature_db)
+        # The model handles everything, no row-by-row iteration needed
+        return
 
 from sklearn.decomposition import PCA
 # Note: umap is imported lazily in generate_UMAP_Feature() to avoid slow startup
@@ -505,8 +687,8 @@ class FeaturePlugin(BasePlugin):
         self.api.segmentSelectionChanged.connect(self.on_segment_selection_changed)
         self.api.projectLoaded.connect(self.on_project_ready)
         self.api.projectDataLoaded.connect(self.on_project_data_loaded)
-        self.api.segmentDeleted.connect(self.on_segment_deleted)
-        self.api.segmentCreated.connect(self.on_segment_created)
+        self.api.segmentsDeleted.connect(self.on_segments_deleted)
+        self.api.segmentsCreated.connect(self.on_segments_created)
 
 
     def on_segment_selection_changed(self):
@@ -673,34 +855,38 @@ class FeaturePlugin(BasePlugin):
 
 # FEATURE GENERATION
     def launch_feature_generation_async(self):
-        # launch feature generation in a separate thread
-        self.worker = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        self.worker.submit(self.generate_all_features)
+        # ParallelFeatureWorker is a QThread, so just call generate_all_features
+        # directly from the main thread — QThread.start() handles the background work
+        self.generate_all_features()
 
-    def on_segment_created(self, segmentID):
-        """Handle a newly created segment - ensure feature columns exist with NaN values"""
+    def on_segments_created(self, seg_ids):
+        """Handle segment creation - efficiently add rows (works for single or batch)"""
         seg_db = self._segments_datastore
-        if seg_db is None or segmentID not in seg_db.index:
+        if seg_db is None:
             return
-        # Ensure feature columns have NaN values for the new segment
-        for feat in self.featurelist:
-            if pd.isna(seg_db.at[segmentID, feat]) or seg_db.at[segmentID, feat] is None:
-                seg_db.at[segmentID, feat] = np.nan
-        # Add row to panel - create a Series with just the feature values
-        feature_row = seg_db.loc[segmentID, self.featurelist]
-        feature_row.name = segmentID
-        self.panel.add_row(feature_row)
 
-    def on_segment_deleted(self, segmentID):
-        """Handle segment deletion - update UI panels"""
+        # Feature columns are already NaN by default (ensured by _segments_datastore property)
+        # seg_ids are guaranteed to exist since SegmentPlugin adds to datastore before emitting signal
+        feature_df = seg_db.loc[seg_ids, self.featurelist]
+        self.panel.add_rows_batch(feature_df)
+
+    def on_segments_deleted(self, seg_ids):
+        """Handle segment deletion - efficiently remove rows (works for single or batch)"""
         # Segment is already removed from datastore by segments plugin
-        # Just update the UI
-        try:
-            self.panel.remove_row_by_segID(segmentID)
-        except ValueError:
-            pass  # Row wasn't in panel
-        self.vis_panel.remove_spots([segmentID])
-    
+        # Use batch removal for efficiency
+        self.panel.remove_rows_by_segIDs(seg_ids)
+        self.vis_panel.remove_spots(seg_ids)
+
+    def _get_cached_filters(self, sr, lowpass=6000, highpass=200):
+        """Return cached (highpass, lowpass) filter coefficients, recomputing only if sr changes."""
+        cache_key = (sr, lowpass, highpass)
+        if not hasattr(self, '_filter_cache') or self._filter_cache_key != cache_key:
+            nfilt = 1024
+            self._cached_highpass_filter = firwin(nfilt - 1, 2.0 * highpass / sr, pass_zero=False)
+            self._cached_lowpass_filter = firwin(nfilt, 2.0 * lowpass / sr)
+            self._filter_cache_key = cache_key
+        return self._cached_highpass_filter, self._cached_lowpass_filter
+
     def get_segment_audio(self, segmentID, lowpass=6000, highpass=200):
         """Get the audio data for a segment"""
         seg = self._datastore['segments'].loc[segmentID]
@@ -711,20 +897,17 @@ class FeaturePlugin(BasePlugin):
         t, audio = self.api.get_signal(start_idx, stop_idx)
         audio = audio[:,seg.Source.channel]
 
-        # Apply filtering
-        # high pass filter the signal
-        nfilt = 1024
+        # Apply filtering using cached coefficients
+        highpassFilter, lowpassFilter = self._get_cached_filters(sr, lowpass, highpass)
+
         soundLen = len(audio)
-        highpassFilter = firwin(nfilt-1, 2.0*highpass/sr, pass_zero=False)
         padlen = min(soundLen-10, 3*len(highpassFilter))
         soundIn = filtfilt(highpassFilter, [1.0], audio, padlen=padlen)
 
-        # low pass filter the signal
-        lowpassFilter = firwin(nfilt, 2.0*lowpass/sr)
         padlen = min(soundLen-10, 3*len(lowpassFilter))
-        soundIn = filtfilt(lowpassFilter, [1.0], audio, padlen=padlen)
+        soundIn = filtfilt(lowpassFilter, [1.0], soundIn, padlen=padlen)
 
-        return audio, sr
+        return soundIn, sr
 
     def generate_all_features(self, overwrite=False):
         """Generate features for all segments"""
@@ -741,61 +924,92 @@ class FeaturePlugin(BasePlugin):
         if overwrite:
             unprocessed_segIDs = list(all_segIDs)
         else:
-            # get segIDs that have not been processed (all features are NaN)
-            unprocessed_segIDs = []
-            for segID in all_segIDs:
-                # Check if any selected feature category has all NaN values
-                needs_processing = False
-                for feature_cat in self.feature_selections.keys():
-                    if self.feature_selections[feature_cat]:
-                        if all([pd.isna(seg_db.at[segID, feature]) for feature in self.FEATUREDICT[feature_cat]]):
-                            needs_processing = True
-                            break
-                if needs_processing:
-                    unprocessed_segIDs.append(segID)
+            # Vectorized: find segments where any selected feature category has all NaN values
+            needs_processing = pd.Series(False, index=all_segIDs)
+            for feature_cat, selected in self.feature_selections.items():
+                if selected:
+                    cat_features = self.FEATUREDICT[feature_cat]
+                    # A category needs processing if ALL its features are NaN for a segment
+                    all_nan_in_cat = seg_db[cat_features].isna().all(axis=1)
+                    needs_processing |= all_nan_in_cat
+            unprocessed_segIDs = list(all_segIDs[needs_processing])
 
-        nworkers = 16
-        done_prep_event = Event()
-        audio_queue = Queue()
-        feature_queue = Queue()
-
+        self.n_to_process = len(unprocessed_segIDs)
         print(f"Unprocessed segments: {len(unprocessed_segIDs)}", flush=True)
+        print(f"Feature selections: {self.feature_selections}", flush=True)
 
-        feature_processes = []
-        for i in range(nworkers):
-            feature_processes.append(FeatureExtractionProcess(audio_queue, feature_queue, done_prep_event, self.feature_selections))
-            feature_processes[-1].start()
-            print(f"Process {feature_processes[-1].pid} started, alive={feature_processes[-1].is_alive()}", flush=True)
+        if self.n_to_process == 0:
+            print("No segments to process.", flush=True)
+            return
 
-        loading_thread = threading.Thread(target=load_all_audio, args=(self.get_segment_audio, unprocessed_segIDs, audio_queue, 4*nworkers, done_prep_event))
-        loading_thread.start()
+        nworkers = min(16, self.n_to_process)
+        print(f"Starting {nworkers} worker threads...", flush=True)
 
-        n_complete = 0
-        while np.any([p.is_alive() for p in feature_processes]) or not feature_queue.empty():
-            try:
-                segmentID, all_features = feature_queue.get(timeout=.5)
+        # Initialize batch buffer for progress updates
+        self._progress_buffer = {}
+        self._PROGRESS_FLUSH_INTERVAL = max(1, self.n_to_process // 20)  # ~20 UI updates total
 
-                # Write features directly to the segments datastore
-                for k, v in all_features.items():
-                    # Outer is Amplitude etc
-                    for kk, vv in v.items():
-                        # inner is columns
-                        seg_db.at[segmentID, kk] = vv
-                n_complete += 1
-                # Update the panel - create a Series with just feature values
-                feature_row = seg_db.loc[segmentID, self.featurelist]
-                feature_row.name = segmentID
-                self.panel.add_or_edit_row(feature_row)
-                self.worker_signals.progress.emit(n_complete / len(unprocessed_segIDs) * 100)
-            except Exception as e:
-                continue
-        print("OUT O HERE")
+        self.parallel_worker = ParallelFeatureWorker(
+            segment_ids=unprocessed_segIDs,
+            load_func=self.get_segment_audio,
+            feature_selections=self.feature_selections,
+            max_workers=nworkers
+        )
+        self.parallel_worker.progress.connect(self._on_parallel_progress)
+        self.parallel_worker.start()
+
+    
+    def _on_parallel_progress(self, segID: int, result: SegmentFeatureResult, current: int, total: int, message: str):
+        """Update progress during parallel processing.
+
+        Accumulates results and flushes to the datastore/UI in batches
+        to avoid per-segment overhead from pandas .at[] and panel updates.
+        """
+        self.n_to_process -= 1
+
+        if result.features is not None:
+            # Flatten nested feature dict and buffer it
+            flat = {}
+            for category, feat_dict in result.features.items():
+                flat.update(feat_dict)
+            self._progress_buffer[segID] = flat
+
+        # Flush buffer every _PROGRESS_FLUSH_INTERVAL results, or when done
+        if len(self._progress_buffer) >= self._PROGRESS_FLUSH_INTERVAL or self.n_to_process == 0:
+            self._flush_progress_buffer()
+
+        self.worker_signals.progress.emit(int(current / total * 100))
+
+        if self.n_to_process == 0:
+            self._on_parallel_finished()
+
+    def _flush_progress_buffer(self):
+        """Write buffered feature results to the datastore and update UI in one batch."""
+        if not self._progress_buffer:
+            return
+
+        seg_db = self.api.get_mut_datastore().get('segments')
+        featurelist = self.featurelist
+
+        # Build a DataFrame from the buffer and write all at once
+        batch_df = pd.DataFrame.from_dict(self._progress_buffer, orient='index')
+        for col in batch_df.columns:
+            if col in seg_db.columns:
+                seg_db.loc[batch_df.index, col] = batch_df[col]
+
+        # Batch update the panel
+        feature_df = seg_db.loc[list(self._progress_buffer.keys()), featurelist]
+        self.panel.model.set_data(
+            seg_db[featurelist].copy()
+        )
+
+        self._progress_buffer.clear()
+
+    def _on_parallel_finished(self):
+        """Handle completed parallel feature generation."""
         self.worker_signals.finished.emit()
+        self.parallel_worker = None
         self._needs_saving = True
-        # do the cleanup
-        for p in feature_processes:
-            p.join()
-        loading_thread.join()
 
 
     def save(self):
@@ -831,25 +1045,148 @@ class FeatureExtractionProcess(Process):
         self.feature_selections = feature_selections
 
     def run(self):
-        import traceback
-        import os
-        from queue import Empty
-        pid = os.getpid()
-        print(f"Beginning Feature Extraction Process (pid={pid})", flush=True)
-        while not self.stop_signal.is_set() or not self.input_queue.empty():
-            try:
-                segmentID, audio, sr = self.input_queue.get(timeout=.5)
-                print(f"[pid={pid}] Processing segment {segmentID}", flush=True)
-                features = generate_audio_features(audio, sr, segmentID, self.feature_selections)
-                self.output_queue.put(features)
-            except Empty:
-                # Timeout waiting for queue - this is normal, just loop again
-                continue
-            except Exception as e:
-                print(f"[pid={pid}] Error in feature extraction: {e}", flush=True)
-                traceback.print_exc()
-                continue
-        print(f"Exiting feature extraction process (pid={pid})", flush=True)
+        try:
+            pid = os.getpid()
+            print(f"Beginning Feature Extraction Process (pid={pid})", flush=True)
+            print(f"[pid={pid}] Feature selections: {self.feature_selections}", flush=True)
+            
+            processed_count = 0
+            # Continue while stop signal is not set, OR while there might still be items
+            while True:
+                # Check if we should stop
+                if self.stop_signal.is_set():
+                    # Do one final check for remaining items
+                    try:
+                        segmentID, audio, sr = self.input_queue.get_nowait()
+                    except:
+                        print(f"[pid={pid}] Stop signal received, no more items. Processed {processed_count} segments.", flush=True)
+                        break
+                else:
+                    # Normal operation - wait for items
+                    try:
+                        segmentID, audio, sr = self.input_queue.get(timeout=0.5)
+                    except Empty:
+                        # Timeout is normal - just loop again
+                        continue
+                
+                # Process the segment
+                try:
+                    print(f"[pid={pid}] Processing segment {segmentID}", flush=True)
+                    features = generate_audio_features(audio, sr, segmentID, self.feature_selections)
+                    self.output_queue.put(features)
+                    processed_count += 1
+                    if processed_count % 10 == 0:
+                        print(f"[pid={pid}] Processed {processed_count} segments", flush=True)
+                except Exception as e:
+                    print(f"[pid={pid}] Error processing segment {segmentID}: {e}", flush=True)
+                    traceback.print_exc()
+                    continue
+                    
+            print(f"[pid={pid}] Exiting feature extraction process. Total processed: {processed_count}", flush=True)
+        except Exception as e:
+            print(f"[pid={os.getpid()}] Fatal error in process: {e}", flush=True)
+            traceback.print_exc()
+
+
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from typing import Optional, List, Tuple
+from dataclasses import dataclass
+
+@dataclass
+class SegmentFeatureResult:
+    """Result from processing a single segment."""
+    segmentID: int
+    features: dict  # Detected intervals relative to block start
+    error: Optional[str] = None
+
+class ParallelFeatureWorker(QThread):
+    """Worker thread for parallel feature extraction.
+
+    Uses a two-phase approach:
+      Phase 1: Load audio sequentially (I/O bound, avoids file-handle races)
+      Phase 2: Extract features with ProcessPoolExecutor (CPU bound, true multi-core)
+
+    ThreadPoolExecutor cannot speed up CPU-bound feature extraction (fundEstOptim,
+    formantEstimator, etc.) because Python's GIL serializes all threads. Using
+    ProcessPoolExecutor gives real parallelism across cores.
+    """
+    progress = pyqtSignal(int, object, int, int, str)  # segmentID, result, current, total, message
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        segment_ids: List[int],
+        load_func,
+        feature_selections,
+        max_workers: int = 4
+    ):
+        super().__init__()
+        self.segment_ids = segment_ids
+        self.feature_selections = feature_selections
+        self.max_workers = max_workers
+        self.load_func = load_func
+
+    def run(self):
+        try:
+            total_segments = len(self.segment_ids)
+
+            # Phase 1: Load all audio sequentially in this thread.
+            # I/O doesn't benefit much from parallelism on a single drive,
+            # and file handles (AudioFile, NWBFile, DatFile) are not thread-safe.
+            loaded = {}
+            load_failures = []
+            for i, segID in enumerate(self.segment_ids):
+                try:
+                    audio, sr = self.load_func(segID)
+                    loaded[segID] = (audio, sr)
+                except Exception as e:
+                    load_failures.append((segID, str(e)))
+                if (i + 1) % 50 == 0 or i == 0:
+                    print(f"Loaded {i + 1}/{total_segments} segments", flush=True)
+            print(f"Loading complete: {len(loaded)} loaded, {len(load_failures)} failed", flush=True)
+
+            # Report load failures as completed (with no features)
+            completed = 0
+            for segID, error_msg in load_failures:
+                completed += 1
+                result = SegmentFeatureResult(segID, None, error_msg)
+                self.progress.emit(segID, result, completed, total_segments,
+                                   f"Load error for segment {segID}")
+
+            # Phase 2: Extract features using ProcessPoolExecutor.
+            # This is CPU-bound work (pitch tracking, formant estimation, etc.)
+            # and requires separate processes to bypass the GIL.
+            if loaded:
+                with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+                    future_to_seg = {
+                        executor.submit(
+                            _extract_features, audio, sr,
+                            feature_selections=self.feature_selections,
+                            normalize=True
+                        ): segID
+                        for segID, (audio, sr) in loaded.items()
+                    }
+
+                    for future in as_completed(future_to_seg):
+                        segID = future_to_seg[future]
+                        completed += 1
+                        try:
+                            features = future.result()
+                            result = SegmentFeatureResult(segID, features)
+                        except Exception as e:
+                            logger.exception(f"Error extracting features for segment {segID}")
+                            result = SegmentFeatureResult(segID, None, str(e))
+                        self.progress.emit(
+                            segID, result, completed, total_segments,
+                            f"Extracted features {completed}/{total_segments}"
+                        )
+
+        except Exception as e:
+            logger.exception("Error during parallel feature extraction")
+            self.error.emit(str(e))
+
+
 #from numba import jit
 #@jit(nogil=True)
 def _extract_features( audio: np.ndarray, sr: int, feature_selections: dict, normalize: bool) -> List[float]:

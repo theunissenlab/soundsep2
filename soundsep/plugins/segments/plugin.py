@@ -236,6 +236,23 @@ class SegmentTableModel(QAbstractTableModel):
             return True
         return False
 
+    def remove_rows_by_ids(self, seg_ids):
+        """Remove multiple rows by segment IDs in a single batch operation.
+
+        This is much faster than calling remove_row_by_id() in a loop because
+        it only does one model reset and one sorted indices rebuild.
+        """
+        # Filter to only IDs that exist
+        ids_to_remove = [sid for sid in seg_ids if sid in self._segments_df.index]
+        if not ids_to_remove:
+            return 0
+
+        self.beginResetModel()
+        self._segments_df = self._segments_df.drop(ids_to_remove)
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+        return len(ids_to_remove)
+
     def _rebuild_sorted_indices(self):
         """Rebuild the sorted index mapping."""
         if len(self._segments_df) == 0:
@@ -455,6 +472,14 @@ class SegmentPanel(widgets.QWidget):
             self.table.clearSelection()
         if not self.model.remove_row_by_id(seg_id):
             raise ValueError("Cannot remove Segment ID {}: not found in table".format(seg_id))
+
+    def remove_rows_by_segIDs(self, seg_ids):
+        """Remove multiple rows by segment IDs in a single batch operation."""
+        # Clear selection if any of the deleted segments are selected
+        current_selection = self.get_selection()
+        if any(sid in current_selection for sid in seg_ids):
+            self.table.clearSelection()
+        return self.model.remove_rows_by_ids(seg_ids)
 
 class SegmentVisualizer(widgets.QGraphicsRectItem):
     def __init__(
@@ -901,9 +926,9 @@ class SegmentPlugin(BasePlugin):
         if invalid_seg_ids:
             # Remove from datastore
             self._segmentation_datastore = self._segmentation_datastore[~invalid_mask]
-            # Emit signals for each deleted segment
-            for seg_id in invalid_seg_ids:
-                self.api.segment_deleted(seg_id)
+            # Use batch operations for efficiency
+            self.panel.remove_rows_by_segIDs(invalid_seg_ids)
+            self.api.segments_deleted(invalid_seg_ids)
 
         self.refresh()
 
@@ -1054,9 +1079,8 @@ class SegmentPlugin(BasePlugin):
         # Concatenate with existing datastore
         self._segmentation_datastore = pd.concat([self._segmentation_datastore, new_df])
 
-        # Emit signals for each created segment
-        for seg_id in new_df.index:
-            self.api.segment_created(seg_id)
+        # Emit batch signal for other plugins (e.g., FeaturePlugin)
+        self.api.segments_created(list(new_df.index))
 
         # Batch update UI
         self.panel.add_rows_batch(new_df, self.api.project)
@@ -1083,8 +1107,8 @@ class SegmentPlugin(BasePlugin):
         
         
         
-        # TODO change panel to add a single row
-        self.api.segment_created(segID)
+        # Notify other plugins (using batch signal with single-element list)
+        self.api.segments_created([segID])
         self.panel.add_row(self._segmentation_datastore.loc[segID], self.api.project)
         self.umap_panel.add_spot(self._segmentation_datastore.loc[segID], self.api.plugins["TagPlugin"].get_tag_color)
         
@@ -1115,10 +1139,11 @@ class SegmentPlugin(BasePlugin):
         self.gui.show_status("Deleting {} segments".format(n_deleted))
         logger.debug("Deleting {} segments".format(n_deleted))
 
-        for segID in seg_ids:
-            self.panel.remove_row_by_segID(segID)
-            self.api.segment_deleted(segID)
-        self.umap_panel.remove_spots(seg_ids)
+        # Use batch operations for efficiency - single model reset instead of N resets
+        seg_ids_list = list(seg_ids)  # Ensure it's a list for batch operations
+        self.panel.remove_rows_by_segIDs(seg_ids_list)
+        self.api.segments_deleted(seg_ids_list)  # Batch signal for other plugins
+        self.umap_panel.remove_spots(seg_ids_list)
         self._needs_saving = True
         if refresh:
             self.refresh()

@@ -33,8 +33,8 @@ class Api(QObject):
     selectionChanged = pyqtSignal()
     fineSelectionChanged = pyqtSignal()
     segmentSelectionChanged = pyqtSignal()
-    segmentDeleted = pyqtSignal(int)
-    segmentCreated = pyqtSignal(int)
+    segmentsDeleted = pyqtSignal(object)  # Emits list of seg_ids
+    segmentsCreated = pyqtSignal(object)  # Emits list of seg_ids
     closingProgram = pyqtSignal()
 
     def __init__(self, app: 'soundsep.app.app.SoundsepApp'):
@@ -519,13 +519,13 @@ class Api(QObject):
         """Get the current segment selection"""
         return self._app.state["selection"].get_segment_selection()
 
-    def segment_deleted(self, segId):
-        """Notify that a segment has been deleted"""
-        self.segmentDeleted.emit(segId)
-    
-    def segment_created(self, segId):
-        """Notify that a segment has been created"""
-        self.segmentCreated.emit(segId)
+    def segments_deleted(self, seg_ids):
+        """Notify that segments have been deleted. Pass a list of seg_ids."""
+        self.segmentsDeleted.emit(seg_ids)
+
+    def segments_created(self, seg_ids):
+        """Notify that segments have been created. Pass a list of seg_ids."""
+        self.segmentsCreated.emit(seg_ids)
 
     def needs_saving(self) -> bool:
         """Returns True if sources or any plugins have unsaved changes

@@ -279,6 +279,8 @@ class ProjectCreator(widgets.QWidget):
             filelist = []
             for f in search_for_audio_files(base_path, recursive=recursive):
                 filelist.append(f)
+        else:
+            filelist = []
 
         if not len(filelist):
             return

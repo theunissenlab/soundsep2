@@ -7,6 +7,7 @@ import PyQt6.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
 import pandas as pd
+from scipy.io import wavfile
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QAbstractTableModel, QModelIndex, QItemSelectionModel
 from PyQt6 import QtGui
 
@@ -228,27 +229,32 @@ class SegmentTableModel(QAbstractTableModel):
 
     def remove_row_by_id(self, seg_id):
         """Remove a row by segment ID."""
+        self.beginResetModel()
         if seg_id in self._segments_df.index:
-            self.beginResetModel()
             self._segments_df = self._segments_df.drop(seg_id)
-            self._rebuild_sorted_indices()
-            self.endResetModel()
-            return True
-        return False
+        # Always rebuild to sync with potentially externally-modified dataframe
+        self._rebuild_sorted_indices()
+        self.endResetModel()
+        return seg_id not in self._segments_df.index
 
     def remove_rows_by_ids(self, seg_ids):
         """Remove multiple rows by segment IDs in a single batch operation.
 
         This is much faster than calling remove_row_by_id() in a loop because
         it only does one model reset and one sorted indices rebuild.
+
+        Note: The underlying DataFrame may be shared with the plugin and already
+        modified via inplace operations. We always rebuild sorted indices to
+        stay in sync.
         """
-        # Filter to only IDs that exist
+        # Filter to only IDs that still exist (may already be removed from shared df)
         ids_to_remove = [sid for sid in seg_ids if sid in self._segments_df.index]
-        if not ids_to_remove:
-            return 0
 
         self.beginResetModel()
-        self._segments_df = self._segments_df.drop(ids_to_remove)
+        # Only drop if there are IDs still present
+        if ids_to_remove:
+            self._segments_df = self._segments_df.drop(ids_to_remove)
+        # Always rebuild indices to sync with potentially externally-modified dataframe
         self._rebuild_sorted_indices()
         self.endResetModel()
         return len(ids_to_remove)
@@ -360,6 +366,7 @@ class SegmentPanel(widgets.QWidget):
 
     contextMenuRequested = pyqtSignal(QPoint, object)
     segmentSelectionChanged = pyqtSignal(object)
+    deleteRequested = pyqtSignal(object)  # Emits list of segment IDs to delete
 
     # TODO add a filtering dropdown / text box
     # TODO jump to time with click events
@@ -400,6 +407,14 @@ class SegmentPanel(widgets.QWidget):
     def contextMenuEvent(self, event):
         pos = event.globalPos()
         self.contextMenuRequested.emit(pos, self.get_selection())
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Delete:
+            selection = self.get_selection()
+            if selection:
+                self.deleteRequested.emit(selection)
+        else:
+            super().keyPressEvent(event)
 
     def on_click(self):
         selection = self.get_selection()
@@ -580,6 +595,9 @@ class SegmentPlugin(BasePlugin):
         self.merge_selection_action = QtGui.QAction("&Merge segments in selection", self)
         self.merge_selection_action.triggered.connect(self.on_merge_segments_activated)
 
+        self.export_segments_action = QtGui.QAction("&Export segments to WAV files...", self)
+        self.export_segments_action.triggered.connect(self.on_export_segments_activated)
+
     def connect_events(self):
         self.button = widgets.QPushButton("+Segment")
         self.button.clicked.connect(self.on_create_segment_activated)
@@ -592,6 +610,7 @@ class SegmentPlugin(BasePlugin):
 
         self.panel.contextMenuRequested.connect(self.on_context_menu_requested)
         self.panel.segmentSelectionChanged.connect(self.api.set_segment_selection)
+        self.panel.deleteRequested.connect(self.on_delete_selected_segments)
         self.umap_panel.segmentSelectionChanged.connect(self.api.set_segment_selection)
         
         # and connect api event to this
@@ -1007,6 +1026,11 @@ class SegmentPlugin(BasePlugin):
         if selection:
             self.delete_segments_between(selection.x0, selection.x1, selection.source)
 
+    def on_delete_selected_segments(self, seg_ids):
+        """Delete segments by their IDs (called from table delete key)"""
+        if seg_ids:
+            self.delete_segments(seg_ids)
+
     def on_merge_segments_activated(self):
         selection = self.api.get_fine_selection()
         if selection:
@@ -1169,6 +1193,63 @@ class SegmentPlugin(BasePlugin):
         self.delete_segments(segs_to_merge.index, refresh=False)
         self.create_segment(new_start, new_stop, source, new_tags)
 
+    def on_export_segments_activated(self):
+        """Export all segments to individual WAV files in a user-selected folder"""
+        if len(self._segmentation_datastore) == 0:
+            self.gui.show_status("No segments to export")
+            return
+
+        # Prompt user to select a folder
+        folder = widgets.QFileDialog.getExistingDirectory(
+            self.panel,
+            "Select folder to export segments",
+            str(self.api.paths.save_dir)
+        )
+        if not folder:
+            return
+
+        self.export_segments_to_folder(folder)
+
+    def export_segments_to_folder(self, folder: str):
+        """Export all segments to individual WAV files in the specified folder"""
+        from pathlib import Path
+        folder_path = Path(folder)
+        sr = self.api.project.sampling_rate
+        n_exported = 0
+        n_failed = 0
+
+        for seg_id in self._segmentation_datastore.index:
+            seg = self._segmentation_datastore.loc[seg_id]
+            try:
+                # Get segment audio
+                start_idx = self.api.make_project_index(seg.StartIndex)
+                stop_idx = self.api.make_project_index(seg.StopIndex)
+                _, audio = self.api.get_signal(start_idx, stop_idx)
+                # Extract the channel for this segment's source
+                audio_channel = audio[:, seg.Source.channel]
+
+                # Build filename: segID_sourceName_startTime_stopTime.wav
+                start_sec = seg.StartIndex / sr
+                stop_sec = seg.StopIndex / sr
+                tags_str = "_".join(seg.Tags) if seg.Tags else "notag"
+                filename = f"seg{seg_id}_{seg.Source.name}_{start_sec:.3f}s-{stop_sec:.3f}s_{tags_str}.wav"
+                # Sanitize filename (remove invalid characters)
+                filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+                filepath = folder_path / filename
+
+                # Normalize audio to int16 range for WAV export
+                audio_normalized = audio_channel / np.max(np.abs(audio_channel)) if np.max(np.abs(audio_channel)) > 0 else audio_channel
+                audio_int16 = (audio_normalized * 32767).astype(np.int16)
+
+                wavfile.write(str(filepath), sr, audio_int16)
+                n_exported += 1
+            except Exception as e:
+                logger.error(f"Failed to export segment {seg_id}: {e}")
+                n_failed += 1
+
+        self.gui.show_status(f"Exported {n_exported} segments to {folder}" + (f" ({n_failed} failed)" if n_failed else ""))
+        logger.info(f"Exported {n_exported} segments to {folder}, {n_failed} failed")
+
     def plugin_toolbar_items(self):
         return [self.button, self.delete_button, self.merge_button]
 
@@ -1177,6 +1258,8 @@ class SegmentPlugin(BasePlugin):
         menu.addAction(self.create_segment_action)
         menu.addAction(self.delete_selection_action)
         menu.addAction(self.merge_selection_action)
+        menu.addSeparator()
+        menu.addAction(self.export_segments_action)
         return menu
 
     def plugin_panel_widget(self):
@@ -1186,3 +1269,9 @@ class SegmentPlugin(BasePlugin):
         self.create_segment_action.setShortcut(QtGui.QKeySequence("F"))
         self.delete_selection_action.setShortcut(QtGui.QKeySequence("X"))
         self.merge_selection_action.setShortcut(QtGui.QKeySequence("Q"))
+
+    def get_tags_for_segment(self, seg_id):
+        """Get the tags for a segment by its ID"""
+        if seg_id in self._segmentation_datastore.index:
+            return self._segmentation_datastore.loc[seg_id, 'Tags']
+        return set()

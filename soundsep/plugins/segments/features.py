@@ -1,3 +1,4 @@
+import bisect
 import logging
 import json
 import time
@@ -6,9 +7,10 @@ import os
 from multiprocessing import Queue, Process, Event
 import threading
 from functools import partial
-from typing import List, Tuple
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
 from queue import Empty
+from typing import Any, Dict, List, Optional, Tuple
 
 from sklearn import logger
 from soundsig.sound import BioSound
@@ -22,8 +24,13 @@ import PyQt6.QtWidgets as widgets
 import pyqtgraph as pg
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QObject, QAbstractTableModel, QModelIndex, QItemSelectionModel
+from PyQt6.QtCore import Qt, QPoint, QThread, pyqtSignal, pyqtSlot, QObject, QAbstractTableModel, QModelIndex, QItemSelectionModel
 from PyQt6 import QtGui
+
+import soundfile
+import umap
+from pynwb import NWBHDF5IO
+from sklearn.decomposition import PCA
 
 from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.models import Source, ProjectIndex, StftIndex
@@ -47,6 +54,7 @@ class VisualizationPanel(widgets.QWidget):
         self.init_ui()
         self.init_actions()
         self.npoints = 0
+        self._func_get_color = None  # Store color function for tag-based coloring
 
     def init_ui(self):
         # setup a 2d plot
@@ -102,6 +110,10 @@ class VisualizationPanel(widgets.QWidget):
         self.scatter.setSize(sizes)
     
     def set_data(self, features, func_get_color=None):
+        # Store color function for later use in update_spots
+        if func_get_color is not None:
+            self._func_get_color = func_get_color
+
         spots = []
         seg_db = self.api.get_mut_datastore().get('segments')
         for ix, feat_row in features.iterrows():
@@ -109,9 +121,9 @@ class VisualizationPanel(widgets.QWidget):
             if seg_db is None or ix not in seg_db.index:
                 continue
             seg_row = seg_db.loc[ix]
-            tags = self.api.plugins['segments'].get_tags_for_segment(ix)
-            if func_get_color and len(tags) > 0:
-                c = func_get_color(list(tags)[0])
+            tags = self.api.plugins['SegmentPlugin'].get_tags_for_segment(ix)
+            if self._func_get_color and len(tags) > 0:
+                c = self._func_get_color(list(tags)[0])
             else:
                 c = 'r'
             coords = seg_row.get('Coords') if hasattr(seg_row, 'get') else seg_row['Coords'] if 'Coords' in seg_db.columns else None
@@ -149,8 +161,11 @@ class VisualizationPanel(widgets.QWidget):
         self.npoints += 1
 
     def update_spots(self, func_get_color=None):
+        # Update stored color function if provided
+        if func_get_color is not None:
+            self._func_get_color = func_get_color
+
         spot_seg_IDs = self.scatter.data['data']
-        spot_brushes = [spot['brush'] for spot in self.scatter.data]
         mut_ds = self.api.get_mut_datastore()
         seg_db = mut_ds.get('segments')
         if seg_db is None:
@@ -170,12 +185,27 @@ class VisualizationPanel(widgets.QWidget):
         if spot_seg_IDs.size > 0:
             data['x'] = seg_db[x_axis].loc[spot_seg_IDs]
             data['y'] = seg_db[y_axis].loc[spot_seg_IDs]
+
+            # Update colors based on tags
+            if self._func_get_color is not None:
+                new_brushes = []
+                for seg_id in spot_seg_IDs:
+                    tags = self.api.plugins['SegmentPlugin'].get_tags_for_segment(seg_id)
+                    if len(tags) > 0:
+                        c = self._func_get_color(list(tags)[0])
+                    else:
+                        c = 'r'
+                    new_brushes.append(pg.mkBrush(c))
+                self.scatter.setBrush(new_brushes)
+
             self.scatter.updateSpots()
             vb = self.scatter.getViewBox()
             xrange = self.scatter.dataBounds(0)
-            vb.setXRange(xrange[0], xrange[1])
+            if xrange[0] is not None and xrange[1] is not None:
+                vb.setXRange(xrange[0], xrange[1])
             yrange = self.scatter.dataBounds(1)
-            vb.setYRange(yrange[0], yrange[1])
+            if yrange[0] is not None and yrange[1] is not None:
+                vb.setYRange(yrange[0], yrange[1])
 
         segs_to_add = []
         segments_not_present = seg_db[~seg_db.index.isin(spot_seg_IDs)]
@@ -183,11 +213,17 @@ class VisualizationPanel(widgets.QWidget):
             x_val = seg_db.at[ix, x_axis]
             y_val = seg_db.at[ix, y_axis]
             if not pd.isna(x_val) and not pd.isna(y_val):
-                segs_to_add.append((ix, [x_val, y_val]))
+                # Get color based on tag
+                tags = self.api.plugins['SegmentPlugin'].get_tags_for_segment(ix)
+                if self._func_get_color and len(tags) > 0:
+                    c = self._func_get_color(list(tags)[0])
+                else:
+                    c = 'r'
+                segs_to_add.append((ix, [x_val, y_val], c))
 
         # now add the ones that were not present
-        for seg_id, coords in segs_to_add:
-            self.add_spot(seg_id, coords)  # TODO func_get_color
+        for seg_id, coords, color in segs_to_add:
+            self.add_spot(seg_id, coords, color)
 
 class DimensionalityReductionWizard(widgets.QWidget):
     """ Window for selecting features to include in PCA"""
@@ -610,8 +646,6 @@ class FeatureGenerationPanel(widgets.QWidget):
         # The model handles everything, no row-by-row iteration needed
         return
 
-from sklearn.decomposition import PCA
-# Note: umap is imported lazily in generate_UMAP_Feature() to avoid slow startup
 class FeaturePlugin(BasePlugin):
 
     # Features are now stored directly in the segments datastore (no separate file)
@@ -767,7 +801,10 @@ class FeaturePlugin(BasePlugin):
             for feat in custom_features:
                 if feat not in self.panel.indiv_features:
                     self.panel.add_feature(feat, seg_db[feat])
-        self.vis_panel.update_spots()
+
+        # Pass the tag color function for coloring dots by label
+        func_get_color = self.api.plugins["TagPlugin"].get_tag_color
+        self.vis_panel.update_spots(func_get_color)
     
     def get_feat_percent(self, feature):
         seg_db = self._segments_datastore
@@ -829,8 +866,6 @@ class FeaturePlugin(BasePlugin):
 
     def generate_UMAP_Feature(self, feat_name, features):
         """Generates UMAP Feature based on selected features"""
-        import umap  # Lazy import to avoid slow startup
-
         seg_db = self._segments_datastore
         if seg_db is None:
             return
@@ -909,6 +944,56 @@ class FeaturePlugin(BasePlugin):
 
         return soundIn, sr
 
+    def get_segment_load_info(self, segmentID, lowpass=6000, highpass=200) -> SegmentLoadInfo:
+        """Get info needed to load a segment's audio independently (for parallel I/O).
+
+        This returns file path, indices, and channel so that a worker thread
+        can open its own file handle and read the data.
+        """
+        seg = self._datastore['segments'].loc[segmentID]
+        project = self.api.project
+        sr = project.sampling_rate
+
+        # Get project-level indices
+        start_idx = int(seg.StartIndex)
+        stop_idx = int(seg.StopIndex)
+
+        # Find which block this segment is in
+        block_start_frames = project._block_start_frames
+        block_idx = bisect.bisect_right(block_start_frames, start_idx) - 1
+        block = project.blocks[block_idx]
+
+        # Convert to block-local indices
+        block_start = block_start_frames[block_idx]
+        local_start = start_idx - block_start
+        local_stop = stop_idx - block_start
+
+        # Get file path and channel within file for this segment's source channel
+        file_path, file_channel = block.get_channel_info(seg.Source.channel)
+
+        # Convert Path to string if needed
+        file_path_str = str(file_path)
+
+        # Determine file type
+        if file_path_str.lower().endswith('.nwb'):
+            file_type = 'nwb'
+        elif file_path_str.lower().endswith('.dat'):
+            file_type = 'dat'
+        else:
+            file_type = 'wav'
+
+        return SegmentLoadInfo(
+            seg_id=segmentID,
+            file_path=file_path_str,
+            file_type=file_type,
+            start_index=local_start,
+            stop_index=local_stop,
+            channel=file_channel,
+            sampling_rate=sr,
+            lowpass=lowpass,
+            highpass=highpass
+        )
+
     def generate_all_features(self, overwrite=False):
         """Generate features for all segments"""
         # first go through all segments and identify the segments
@@ -949,9 +1034,16 @@ class FeaturePlugin(BasePlugin):
         self._progress_buffer = {}
         self._PROGRESS_FLUSH_INTERVAL = max(1, self.n_to_process // 20)  # ~20 UI updates total
 
+        # Build load info for all segments (for parallel I/O)
+        load_infos = []
+        for seg_id in unprocessed_segIDs:
+            try:
+                load_infos.append(self.get_segment_load_info(seg_id))
+            except Exception as e:
+                print(f"Failed to get load info for segment {seg_id}: {e}", flush=True)
+
         self.parallel_worker = ParallelFeatureWorker(
-            segment_ids=unprocessed_segIDs,
-            load_func=self.get_segment_audio,
+            load_infos=load_infos,
             feature_selections=self.feature_selections,
             max_workers=nworkers
         )
@@ -1088,10 +1180,76 @@ class FeatureExtractionProcess(Process):
             traceback.print_exc()
 
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from typing import Optional, List, Tuple
-from dataclasses import dataclass
+@dataclass
+class SegmentLoadInfo:
+    """Information needed to load a segment's audio independently."""
+    seg_id: int
+    file_path: str
+    file_type: str  # 'wav', 'nwb', 'dat'
+    start_index: int  # Index within the file
+    stop_index: int
+    channel: int  # Channel within the file
+    sampling_rate: int
+    lowpass: int = 6000
+    highpass: int = 200
+
+
+def _load_audio_standalone(load_info: SegmentLoadInfo) -> Tuple[int, np.ndarray, int]:
+    """Load audio from a file with its own file handle (thread-safe).
+
+    This function creates its own file handle, reads the data, and closes it.
+    Safe to call from multiple threads simultaneously.
+
+    Returns
+    -------
+    seg_id : int
+    audio : np.ndarray
+    sr : int
+    """
+    seg_id = load_info.seg_id
+    path = load_info.file_path
+    i0 = load_info.start_index
+    i1 = load_info.stop_index
+    channel = load_info.channel
+    sr = load_info.sampling_rate
+
+    if load_info.file_type == 'nwb':
+        # NWB files need special handling
+        with NWBHDF5IO(path, 'r') as io:
+            nwbfile = io.read()
+            # Find microphone data
+            if 'audio' in nwbfile.acquisition:
+                mic_series = nwbfile.acquisition['audio']
+            else:
+                acquisition_names = list(nwbfile.acquisition.keys())
+                mic_series = nwbfile.acquisition[acquisition_names[0]]
+
+            data = mic_series.data[i0:i1]
+            if len(data.shape) == 1:
+                audio = data.astype(np.float32)
+            else:
+                audio = data[:, channel].astype(np.float32)
+    else:
+        # WAV and other soundfile-supported formats
+        with soundfile.SoundFile(path, 'r') as f:
+            f.seek(i0)
+            data = f.read(i1 - i0, dtype=np.float32, always_2d=True)
+            audio = data[:, channel]
+
+    # Apply filtering
+    nfilt = 1024
+    highpassFilter = firwin(nfilt - 1, 2.0 * load_info.highpass / sr, pass_zero=False)
+    lowpassFilter = firwin(nfilt, 2.0 * load_info.lowpass / sr)
+
+    soundLen = len(audio)
+    if soundLen > 10:
+        padlen = min(soundLen - 10, 3 * len(highpassFilter))
+        audio = filtfilt(highpassFilter, [1.0], audio, padlen=padlen)
+        padlen = min(soundLen - 10, 3 * len(lowpassFilter))
+        audio = filtfilt(lowpassFilter, [1.0], audio, padlen=padlen)
+
+    return seg_id, audio, sr
+
 
 @dataclass
 class SegmentFeatureResult:
@@ -1104,7 +1262,8 @@ class ParallelFeatureWorker(QThread):
     """Worker thread for parallel feature extraction.
 
     Uses a two-phase approach:
-      Phase 1: Load audio sequentially (I/O bound, avoids file-handle races)
+      Phase 1: Load audio in parallel using ThreadPoolExecutor
+               Each thread opens its own file handle (thread-safe)
       Phase 2: Extract features with ProcessPoolExecutor (CPU bound, true multi-core)
 
     ThreadPoolExecutor cannot speed up CPU-bound feature extraction (fundEstOptim,
@@ -1116,34 +1275,48 @@ class ParallelFeatureWorker(QThread):
 
     def __init__(
         self,
-        segment_ids: List[int],
-        load_func,
+        load_infos: List[SegmentLoadInfo],
         feature_selections,
         max_workers: int = 4
     ):
         super().__init__()
-        self.segment_ids = segment_ids
+        self.load_infos = load_infos
         self.feature_selections = feature_selections
         self.max_workers = max_workers
-        self.load_func = load_func
 
     def run(self):
         try:
-            total_segments = len(self.segment_ids)
+            total_segments = len(self.load_infos)
+            if total_segments == 0:
+                return
 
-            # Phase 1: Load all audio sequentially in this thread.
-            # I/O doesn't benefit much from parallelism on a single drive,
-            # and file handles (AudioFile, NWBFile, DatFile) are not thread-safe.
+            # Phase 1: Load audio in parallel using ThreadPoolExecutor.
+            # Each call to _load_audio_standalone opens its own file handle,
+            # so this is thread-safe and benefits from I/O parallelism on SSDs.
             loaded = {}
             load_failures = []
-            for i, segID in enumerate(self.segment_ids):
-                try:
-                    audio, sr = self.load_func(segID)
-                    loaded[segID] = (audio, sr)
-                except Exception as e:
-                    load_failures.append((segID, str(e)))
-                if (i + 1) % 50 == 0 or i == 0:
-                    print(f"Loaded {i + 1}/{total_segments} segments", flush=True)
+
+            # Use fewer I/O workers to avoid overwhelming the disk
+            io_workers = min(8, self.max_workers, total_segments)
+            print(f"Loading {total_segments} segments using {io_workers} I/O threads...", flush=True)
+
+            with ThreadPoolExecutor(max_workers=io_workers) as executor:
+                future_to_info = {
+                    executor.submit(_load_audio_standalone, info): info
+                    for info in self.load_infos
+                }
+
+                for i, future in enumerate(as_completed(future_to_info)):
+                    info = future_to_info[future]
+                    try:
+                        seg_id, audio, sr = future.result()
+                        loaded[seg_id] = (audio, sr)
+                    except Exception as e:
+                        load_failures.append((info.seg_id, str(e)))
+
+                    if (i + 1) % 50 == 0 or i == 0:
+                        print(f"Loaded {i + 1}/{total_segments} segments", flush=True)
+
             print(f"Loading complete: {len(loaded)} loaded, {len(load_failures)} failed", flush=True)
 
             # Report load failures as completed (with no features)

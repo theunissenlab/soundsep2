@@ -14,7 +14,7 @@ import parse
 from tqdm import tqdm
 
 from soundsep.app.exceptions import BadConfigFormat, ConfigDoesNotExist
-from soundsep.core.models import AudioFile, DatFile, NWBFile, Block, Project
+from soundsep.core.models import AudioFile, PhotoProject, DatFile, NWBFile, Block, Project
 
 
 def open_project(path: Path):
@@ -199,7 +199,9 @@ def load_file(path: Path):
     # if path is a string, turn it into a path
     if isinstance(path, str):
         path = Path(path)
-    if path.suffix.lower() == ".nwb":
+    if PhotoProject.is_photo_project(path):
+        return PhotoProject(path)
+    elif path.suffix.lower() == ".nwb":
         return NWBFile(path)
     elif path.suffix.lower() == ".dat":
         return DatFile(path)

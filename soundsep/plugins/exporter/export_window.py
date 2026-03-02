@@ -71,7 +71,7 @@ def segment_to_dict(segment, project_dir: 'pathlib.Path'):
         "project.t_start": t_start,
         "project.t_stop": t_stop,
         "file.name": original_file,
-        "file.relative_path": Path(original_file).relative_to(project_dir),
+        "file.path": Path(original_file),
         "file.channel": original_channel,
         "file.start_index": int(block_start),
         "file.stop_index": int(block_stop),

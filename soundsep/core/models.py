@@ -862,6 +862,224 @@ class NWBFile:
                 return 'intervals' in f and 'soundsep_segments' in f['intervals']
         except Exception:
             return False
+        
+
+def load_photo_metadata(project_name):
+    """
+    Load metadata for a recording saved by ContinuousRecordingThread.
+
+    Parameters:
+    -----------
+    project_name : str
+        Name of the project (corresponding to the filename prefix of the .dat and _metadata.json files)
+
+    Returns:
+    --------
+    dict : Metadata dictionary containing recording info such as channels, sample_rate, dtype, etc.
+    """
+    import json
+    import os
+    # first remove any file extension from project_name to get the base name
+    project_name = os.path.splitext(project_name)[0]
+
+    # Load metadata
+    metadata_file = project_name + '_metadata.json'
+    with open(metadata_file, 'r') as f:
+        metadata = json.load(f)
+
+    # lets get number of samples using memmap to avoid loading the whole file
+    data_file = project_name + '.dat'
+    dtype = np.dtype(metadata['dtype'])
+    file_size = os.path.getsize(data_file)
+    n_samples = file_size // (dtype.itemsize * metadata['n_channels'])
+    metadata['n_samples'] = n_samples
+
+    print(f"Loaded metadata:")
+    print(f"  Channels: {metadata['channels']}")
+    print(f"  Sample rate: {metadata['sample_rate']} Hz")
+    print(f"  Data type: {metadata['dtype']}")
+
+    return metadata
+
+def load_photo_recording(project_name):
+    """
+    Load a recording saved by ContinuousRecordingThread.
+
+    Parameters:
+    -----------
+    project_name : str
+        Name of the project (corresponding to the filename prefix of the .dat and _metadata.json files)
+
+    Returns:
+    --------
+    tuple : (data, metadata) where data is a numpy array (n_samples, n_channels)
+            and metadata is a dictionary with recording info
+    """
+    import json
+    import os
+    # first remove any file extension from project_name to get the base name
+    project_name = os.path.splitext(project_name)[0]
+
+    # Load metadata
+    metadata_file = project_name + '_metadata.json'
+    with open(metadata_file, 'r') as f:
+        metadata = json.load(f)
+
+    # Load data
+    data_file = project_name + '.dat'
+    data = np.fromfile(data_file, dtype=metadata['dtype'])
+    data_reshaped = data.reshape(-1, metadata['n_channels'])
+
+    print(f"Loaded recording:")
+    print(f"  Channels: {metadata['channels']}")
+    print(f"  Sample rate: {metadata['sample_rate']} Hz")
+    print(f"  Duration: {metadata['n_samples'] / metadata['sample_rate']:.2f}s")
+    print(f"  Shape: {data_reshaped.shape}")
+
+    return data_reshaped, metadata
+
+class PhotoProject:
+    """Container for a photo project on disk
+
+    This class provides the same interface as AudioFile but reads from a photo
+    project file. It expects the photo project to be stored in a .json file with
+    a specific structure.
+
+    Arguments
+    ---------
+    path : str
+        Full path to the photo project .json file on disk
+    """
+    @staticmethod
+    def is_photo_project(path):
+        """Check if a given path corresponds to a valid photo project
+
+        Arguments
+        ---------
+        path : str
+            Path to check
+
+        Returns
+        -------
+        bool
+            True if the path corresponds to a valid photo project, False otherwise
+        """
+        try:
+            metadata = load_photo_metadata(path)
+            return True
+        except Exception:
+            return False
+
+    def __init__(self, path):
+        self._path = path
+        self.project_path = os.path.splitext(path)[0]
+        self._max_frame = None
+        self._file = None
+        self.metadata = load_photo_metadata(path)
+        self._sampling_rate = self.metadata['sample_rate']
+        self._channels = self.metadata['n_channels']
+        # TODO could include chanel names
+        self._actual_frames = self.metadata['n_samples']
+
+    def is_open(self):
+        return self._file is not None and self._file._mmap is not None
+
+    def is_closed(self):
+        return self._file is None or self._file._mmap is None
+
+    def open(self):
+        if not self.is_open():
+            self._file = np.memmap(self.project_path + '.dat', dtype=self.metadata['dtype'], mode='r') # this is 1d interleaved data, we will reshape on read
+
+    def close(self):
+        if self.is_open():
+            self._file._mmap.close()
+            self._file = None
+    def __repr__(self):
+        return "<PhotoProject: {}; {} Hz; {} Ch; {} frames>".format(
+            os.path.basename(self._path),
+            self.sampling_rate,
+            self.channels,
+            self.frames
+        )
+
+    def set_max_frame(self, frames):
+        """Set the maximum frame to read from the file
+
+        This can be used to force multiple AudioFiles to behave as if they have the
+        same duration. Reads beyond the given frame will be cut off.
+
+        Arguments
+        ---------
+        frames : int, optional
+            Truncate reads from this file to force_frames (treat this as the length
+            of the file rather than its actual length).
+        """
+        if not isinstance(frames, int) or frames <= 0:
+            raise ValueError("max_frame must be a positive integer or None: got {}".format(frames))
+        if frames > self._actual_frames:
+            raise RuntimeError("Cannot force AudioFile to use more frames than on disk")
+
+        self._max_frame = frames
+
+    def clear_max_frame(self):
+        self._max_frame = None
+
+    def __eq__(self, other_file) -> bool:
+        if isinstance(other_file, PhotoProject):
+            return self.path == other_file.path
+        else:
+            raise ValueError("Can only compare PhotoProject equality with other PhotoProjects")
+    def __hash__(self):
+        return id(self)
+
+    @property
+    def path(self) -> str:
+        """str: Full path to photo project file"""
+        return self._path
+
+    @property
+    def sampling_rate(self) -> int:
+        """int: Sampling rate of the photo project"""
+        return self._sampling_rate
+
+    @property
+    def frames(self) -> int:
+        """int: Number of readable frames in the photo project"""
+        return self._max_frame or self._actual_frames
+
+    @property
+    def channels(self) -> int:
+        """int: Number of channels in the photo project"""
+        return self._channels
+
+    def read(self, i0: int, i1: int) -> np.ndarray:
+        """Read samples from i0 to i1 on channel
+
+        Arguments
+        ---------
+        i0 : int
+            Starting index to read from (inclusive)
+        i1 : int
+            Ending index to read until (exclusive)
+
+        Returns
+        -------
+        data : ndarray
+            A 2D array of shape (frames: int, channels: int) containing data from the requested channel.
+            The first dimension is the sample index, the second dimension is the channel
+            axis.
+        """
+        read_start = i0
+        read_stop = min(i1, self.frames)
+
+        if self.is_closed():
+            self.open()
+
+        # Read data from memmap and reshape to (frames, channels)
+        data = self._file[read_start * self.channels : read_stop * self.channels]
+        data = data.reshape(-1, self.channels)
+        return data.astype(np.float32)
 
 
 class Block:

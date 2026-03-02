@@ -44,7 +44,25 @@ class WorkerSignals(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(int)
 
+@dataclass
+class SegmentLoadInfo:
+    """Information needed to load a segment's audio independently."""
+    seg_id: int
+    file_path: str
+    file_type: str  # 'wav', 'nwb', 'dat'
+    start_index: int  # Index within the file
+    stop_index: int
+    channel: int  # Channel within the file
+    sampling_rate: int
+    lowpass: int = 6000
+    highpass: int = 200
 
+@dataclass
+class SegmentFeatureResult:
+    """Result from processing a single segment."""
+    segmentID: int
+    features: dict  # Detected intervals relative to block start
+    error: Optional[str] = None
 
 class VisualizationPanel(widgets.QWidget):
     segmentSelectionChanged = pyqtSignal(object)
@@ -1180,18 +1198,7 @@ class FeatureExtractionProcess(Process):
             traceback.print_exc()
 
 
-@dataclass
-class SegmentLoadInfo:
-    """Information needed to load a segment's audio independently."""
-    seg_id: int
-    file_path: str
-    file_type: str  # 'wav', 'nwb', 'dat'
-    start_index: int  # Index within the file
-    stop_index: int
-    channel: int  # Channel within the file
-    sampling_rate: int
-    lowpass: int = 6000
-    highpass: int = 200
+
 
 
 def _load_audio_standalone(load_info: SegmentLoadInfo) -> Tuple[int, np.ndarray, int]:
@@ -1250,13 +1257,6 @@ def _load_audio_standalone(load_info: SegmentLoadInfo) -> Tuple[int, np.ndarray,
 
     return seg_id, audio, sr
 
-
-@dataclass
-class SegmentFeatureResult:
-    """Result from processing a single segment."""
-    segmentID: int
-    features: dict  # Detected intervals relative to block start
-    error: Optional[str] = None
 
 class ParallelFeatureWorker(QThread):
     """Worker thread for parallel feature extraction.

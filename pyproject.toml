@@ -43,6 +43,11 @@ dependencies = [
     "parse",
     "torch",
     "torchaudio",
+    "tqdm",
+    "scikit-learn",
+    "soundsig",
+    "umap-learn",
+    "pynwb",
 ]
 
 [project.urls]

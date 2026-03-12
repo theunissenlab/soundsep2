@@ -1,7 +1,7 @@
 import pyqtgraph as pg
 import numpy as np
 from PyQt6 import QtWidgets as widgets
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QEvent, QPointF
 from PyQt6.QtGui import QTransform
 from scipy.signal import spectrogram
 
@@ -247,6 +247,9 @@ class AdvancedPreviewWidget(widgets.QWidget):
         self.threshold_line.sigDragged.connect(self._on_threshold_dragged)
         self.ampenv_plot.addItem(self.threshold_line)
 
+        # Double-click on ampenv plot sets threshold
+        self.ampenv_plot.viewport().installEventFilter(self)
+
         # Link x-axes so they stay aligned
         self.ampenv_plot.setXLink(self.spec_plot)
 
@@ -258,6 +261,18 @@ class AdvancedPreviewWidget(widgets.QWidget):
         self.ampenv_plot.setMinimumHeight(120)
 
         self.setLayout(layout)
+
+    def eventFilter(self, obj, event):
+        if obj is self.ampenv_plot.viewport() and event.type() == QEvent.Type.MouseButtonDblClick:
+            pos = event.position()
+            scene_pos = self.ampenv_plot.mapToScene(int(pos.x()), int(pos.y()))
+            vb = self.ampenv_plot.plotItem.vb
+            view_pos = vb.mapSceneToView(scene_pos)
+            # Y is already in log10 space (because setLogMode y=True maps data to log10)
+            self.threshold_line.setValue(view_pos.y())
+            self.thresholdChanged.emit(self.get_threshold())
+            return True
+        return super().eventFilter(obj, event)
 
     def _on_signal_band_changed(self):
         if self._suppress_signals:

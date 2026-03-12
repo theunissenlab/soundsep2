@@ -161,10 +161,6 @@ class SoundsepApp(QObject):
         # Store the NWB file path for reopening
         app.qsettings.setValue(SETTINGS_VARIABLES["REOPEN_PROJECT_PATH"], str(nwb_path))
 
-        # Create folders for plugins that still need filesystem storage
-        # (e.g., segments plugin saves to CSV)
-        app.paths.create_folders()
-
         return app
 
     @staticmethod
@@ -278,8 +274,6 @@ class SoundsepApp(QObject):
             except Exception as e:
                 logger.error(f"Could not save sources to NWB file: {e}")
                 raise
-            # Also create folders for plugins that still need filesystem storage
-            self.paths.create_folders()
         else:
             # Save to CSV file
             self.paths.create_folders()

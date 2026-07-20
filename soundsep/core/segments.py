@@ -89,7 +89,7 @@ class BlockSegment(OrderableSegment):
         make it refer abstractly to the specified range (start, stop) if None)
     """
 
-    def __init__(self, start: BlockIndex, stop: BlockIndex, source: Source, data: None):
+    def __init__(self, start: BlockIndex, stop: BlockIndex, source: Source, data: 'Optional[object]' = None):
         # TODO: Can we support exporting across block boundaries? would have to handle the edge cases where
         # segments span more than 2 blocks!
         if data is None:

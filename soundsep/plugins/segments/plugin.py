@@ -1116,7 +1116,9 @@ class SegmentPlugin(BasePlugin):
         self.refresh()
 
 
-    def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = set(), coords: list = list()):
+    def create_segment(self, start: ProjectIndex, stop: ProjectIndex, source: Source, tags: set = None, coords: list = None):
+        tags = set() if tags is None else tags
+        coords = list() if coords is None else coords
         self.delete_segments_between(start, stop, source)
 
         segID = self._next_seg_id

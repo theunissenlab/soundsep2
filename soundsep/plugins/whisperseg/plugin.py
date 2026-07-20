@@ -32,6 +32,7 @@ class BlockSegmentResult:
     """Result from processing a single block."""
     block_index: int
     block_start_sample: int  # Absolute project index where this block starts
+    block_end_sample: int  # Absolute project index where the read range for this block ends
     intervals: np.ndarray  # Detected intervals relative to block start
     error: Optional[str] = None
 
@@ -110,6 +111,7 @@ class ParallelSegmentWorker(QThread):
 
     def _process_block(self, block_info: BlockReadInfo) -> BlockSegmentResult:
         """Process a single block and return detected intervals."""
+        block_end_sample = block_info.block_start_sample + (block_info.read_end - block_info.read_start)
         try:
             # Read audio data using the Block's read method (handles WAV, NWB, DAT)
             audio = block_info.block.read(
@@ -157,6 +159,7 @@ class ParallelSegmentWorker(QThread):
             return BlockSegmentResult(
                 block_index=block_info.block_index,
                 block_start_sample=block_info.block_start_sample,
+                block_end_sample=block_end_sample,
                 intervals=intervals
             )
 
@@ -165,6 +168,7 @@ class ParallelSegmentWorker(QThread):
             return BlockSegmentResult(
                 block_index=block_info.block_index,
                 block_start_sample=block_info.block_start_sample,
+                block_end_sample=block_end_sample,
                 intervals=np.array([]),
                 error=str(e)
             )
@@ -291,6 +295,11 @@ class AutoSegmentPanel(widgets.QWidget):
         self.use_scrollbar_selection_button.setToolTip("Set time range from scrollbar selection (Shift+drag on scrollbar)")
         layout.addWidget(self.use_scrollbar_selection_button)
 
+        # Use full project button
+        self.use_full_project_button = widgets.QPushButton("Full Project")
+        self.use_full_project_button.setToolTip("Set time range to cover the entire project")
+        layout.addWidget(self.use_full_project_button)
+
         # Parallel processing checkbox
         self.parallel_checkbox = widgets.QCheckBox("Process blocks in parallel")
         self.parallel_checkbox.setChecked(True)
@@ -386,6 +395,7 @@ class AutoSegmentPlugin(BasePlugin):
         self.panel.segmentRequested.connect(self.on_segment_requested)
         self.panel.use_selection_button.clicked.connect(self.on_use_selection)
         self.panel.use_scrollbar_selection_button.clicked.connect(self.on_use_scrollbar_selection)
+        self.panel.use_full_project_button.clicked.connect(self.on_use_full_project)
 
         # Connect to API signals
         self.api.projectLoaded.connect(self.on_project_loaded)
@@ -430,6 +440,13 @@ class AutoSegmentPlugin(BasePlugin):
             self.panel.set_status(f"Set range: {start_time:.3f}s - {end_time:.3f}s")
         else:
             self.panel.set_status("No selection available", is_error=True)
+
+    def on_use_full_project(self):
+        """Set time range to cover the entire project."""
+        duration = self.api.project.frames / self.api.project.sampling_rate
+        self.panel.start_time_input.setValue(0)
+        self.panel.end_time_input.setValue(duration)
+        self.panel.set_status(f"Set range: 0.000s - {duration:.3f}s (full project)")
 
     def on_use_scrollbar_selection(self):
         """Set time range from scrollbar selection."""
@@ -773,12 +790,20 @@ class AutoSegmentPlugin(BasePlugin):
             )
 
         # Collect all intervals from all blocks, converting to absolute project indices
+        sr = self.api.project.sampling_rate
         all_segments = []
         errors = []
 
         for result in results:
             if result.error:
-                errors.append(f"Block {result.block_index}: {result.error}")
+                errors.append(
+                    "Block {} ({:.3f}s - {:.3f}s): {}".format(
+                        result.block_index,
+                        result.block_start_sample / sr,
+                        result.block_end_sample / sr,
+                        result.error,
+                    )
+                )
                 continue
 
             if len(result.intervals) > 0:
@@ -793,12 +818,13 @@ class AutoSegmentPlugin(BasePlugin):
                     ))
 
         if errors:
-            logger.warning(f"Errors during parallel segmentation: {errors}")
+            logger.warning(f"Errors during parallel segmentation ({len(errors)} blocks):\n" + "\n".join(errors))
+            self._show_block_errors(errors, total_blocks=len(results))
 
         if not all_segments:
             msg = "No segments detected (existing segments in range were deleted)"
             if errors:
-                msg += f". Errors in {len(errors)} blocks."
+                msg += f". Errors in {len(errors)} blocks - see dialog/logs for details."
             self.panel.set_status(msg)
             self.parallel_worker = None
             return
@@ -818,6 +844,30 @@ class AutoSegmentPlugin(BasePlugin):
             self.panel.set_status(f"Error creating segments: {e}", is_error=True)
 
         self.parallel_worker = None
+
+    def _show_block_errors(self, errors: List[str], total_blocks: int, max_shown: int = 25):
+        """Pop up a dialog listing which blocks failed during parallel segmentation and why.
+
+        Block-level failures are otherwise easy to miss (they only add a short
+        "(N blocks had errors)" suffix to the status label), which makes it very
+        hard to notice/diagnose why some regions of a large multi-file project
+        end up with no detected segments.
+        """
+        shown = errors[:max_shown]
+        text = "\n".join(shown)
+        if len(errors) > max_shown:
+            text += "\n... and {} more (see logs for the full list)".format(len(errors) - max_shown)
+
+        box = widgets.QMessageBox(self.gui)
+        box.setIcon(widgets.QMessageBox.Icon.Warning)
+        box.setWindowTitle("Auto Segment: some blocks failed")
+        box.setText(
+            "{} of {} block(s) raised an error during segmentation and were skipped "
+            "(no segments were created for them). Their existing segments in the "
+            "requested range were still deleted.".format(len(errors), total_blocks)
+        )
+        box.setDetailedText(text)
+        box.exec()
 
     def _create_segments_from_intervals(self, intervals: np.ndarray, channel: int, start_offset: int, end_offset: int):
         """Create segments from detected intervals, deleting existing segments in the range first."""

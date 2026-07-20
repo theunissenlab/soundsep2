@@ -134,7 +134,7 @@ class AudioFile:
             The first dimension is the sample index, the second dimension is the channel
             axis.
         """
-        read_start = i0
+        read_start = max(i0, 0)
         read_stop = min(i1, self.frames)
 
         if self.is_closed():
@@ -375,7 +375,7 @@ class DatFile:
             The first dimension is the sample index, the second dimension is the channel
             axis.
         """
-        read_start = i0
+        read_start = max(i0, 0)
         read_stop = min(i1, self.frames)
 
         if self.is_closed():
@@ -539,12 +539,12 @@ class NWBFile:
             A 2D array of shape (frames: int, channels: int) containing data from the requested channel.
             The first dimension is the sample index, the second dimension is the channel axis.
         """
-        read_start = i0
+        read_start = max(i0, 0)
         read_stop = min(i1, self.frames)
-        
+
         if self.is_closed():
             self.open()
-        
+
         # Read data from NWB file
         if self._channels == 1:
             # Single channel - reshape to 2D
@@ -1091,7 +1091,7 @@ class PhotoProject:
             The first dimension is the sample index, the second dimension is the channel
             axis.
         """
-        read_start = i0
+        read_start = max(i0, 0)
         read_stop = min(i1, self.frames)
 
         if self.is_closed():
@@ -1242,6 +1242,7 @@ class Block:
         data : np.ndarray
             A 2D floating point array of shape (i1 - i0, len(channels))
         """
+        i0 = max(i0, 0)
         i1 = min(i1, self.frames)
         output = np.zeros((i1 - i0, len(channels)))
 

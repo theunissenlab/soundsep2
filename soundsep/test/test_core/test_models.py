@@ -264,8 +264,8 @@ class TestAudioFile(unittest.TestCase):
             f1.open()
             f1._file.read.return_value = np.random.random((10, 2))
             result = f1.read(-5, 10)
-            f1._file.seek.assert_called_with(-5)
-            f1._file.read.assert_called_with(15, dtype=np.float32, always_2d=True)
+            f1._file.seek.assert_called_with(0)
+            f1._file.read.assert_called_with(10, dtype=np.float32, always_2d=True)
 
             f1._file.read.return_value = np.random.random((self.frames - 10, self.channels))
             result = f1.read(10, self.frames + 100)

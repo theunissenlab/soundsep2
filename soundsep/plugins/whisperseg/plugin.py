@@ -819,7 +819,6 @@ class AutoSegmentPlugin(BasePlugin):
 
         if errors:
             logger.warning(f"Errors during parallel segmentation ({len(errors)} blocks):\n" + "\n".join(errors))
-            self._show_block_errors(errors, total_blocks=len(results))
 
         if not all_segments:
             msg = "No segments detected (existing segments in range were deleted)"
@@ -827,6 +826,8 @@ class AutoSegmentPlugin(BasePlugin):
                 msg += f". Errors in {len(errors)} blocks - see dialog/logs for details."
             self.panel.set_status(msg)
             self.parallel_worker = None
+            if errors:
+                self._show_block_errors(errors, total_blocks=len(results))
             return
 
         # Create segments using SegmentPlugin
@@ -845,6 +846,12 @@ class AutoSegmentPlugin(BasePlugin):
 
         self.parallel_worker = None
 
+        # Show the block-failure dialog last, after segments from the successful
+        # blocks have already been created and saved - a problem displaying this
+        # dialog must never be able to prevent/abort segment creation above.
+        if errors:
+            self._show_block_errors(errors, total_blocks=len(results))
+
     def _show_block_errors(self, errors: List[str], total_blocks: int, max_shown: int = 25):
         """Pop up a dialog listing which blocks failed during parallel segmentation and why.
 
@@ -853,21 +860,24 @@ class AutoSegmentPlugin(BasePlugin):
         hard to notice/diagnose why some regions of a large multi-file project
         end up with no detected segments.
         """
-        shown = errors[:max_shown]
-        text = "\n".join(shown)
-        if len(errors) > max_shown:
-            text += "\n... and {} more (see logs for the full list)".format(len(errors) - max_shown)
+        try:
+            shown = errors[:max_shown]
+            text = "\n".join(shown)
+            if len(errors) > max_shown:
+                text += "\n... and {} more (see logs for the full list)".format(len(errors) - max_shown)
 
-        box = widgets.QMessageBox(self.gui)
-        box.setIcon(widgets.QMessageBox.Icon.Warning)
-        box.setWindowTitle("Auto Segment: some blocks failed")
-        box.setText(
-            "{} of {} block(s) raised an error during segmentation and were skipped "
-            "(no segments were created for them). Their existing segments in the "
-            "requested range were still deleted.".format(len(errors), total_blocks)
-        )
-        box.setDetailedText(text)
-        box.exec()
+            box = widgets.QMessageBox(self.gui)
+            box.setIcon(widgets.QMessageBox.Icon.Warning)
+            box.setWindowTitle("Auto Segment: some blocks failed")
+            box.setText(
+                "{} of {} block(s) raised an error during segmentation and were skipped "
+                "(no segments were created for them). Their existing segments in the "
+                "requested range were still deleted.".format(len(errors), total_blocks)
+            )
+            box.setDetailedText(text)
+            box.exec()
+        except Exception:
+            logger.exception("Failed to display block-error dialog")
 
     def _create_segments_from_intervals(self, intervals: np.ndarray, channel: int, start_offset: int, end_offset: int):
         """Create segments from detected intervals, deleting existing segments in the range first."""

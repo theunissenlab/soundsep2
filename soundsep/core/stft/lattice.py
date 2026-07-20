@@ -38,7 +38,7 @@ class Lattice:
     step: int
 
     def __hash__(self):
-        return (offset, step)
+        return hash((self.offset, self.step))
 
     def __eq__(self, other: 'Lattice'):
         return self.offset == other.offset and self.step == other.step
@@ -96,7 +96,7 @@ class BoundedLattice(Lattice):
         if isinstance(idx, int):
             return ceil(self.bound.start + idx * self.step, self)
         elif isinstance(idx, slice):
-            return list(self)[slice]
+            return list(self)[idx]
 
     def to_position(self, idx: int):
         """Map a index in StftIndex coordinates to a integer index [0, len(self))

@@ -281,12 +281,12 @@ class SoundsepMainWindow(widgets.QMainWindow):
     def on_context_menu(self, source, pos):
         self.context_menu = widgets.QMenu()
         menu = self.context_menu.addMenu("Apply Tag")
-        _, actions = self.api.plugins["TagPlugin"].get_tag_menu(menu)
+        _, actions = self.api.get_plugin("TagPlugin").get_tag_menu(menu)
         for tag, action in actions.items():
-            action.triggered.connect(partial(self.api.plugins["TagPlugin"].on_apply_tag, tag))
+            action.triggered.connect(partial(self.api.get_plugin("TagPlugin").on_apply_tag, tag))
 
         self.jump_to_selection_action = QtGui.QAction("Jump to selection")
-        self.jump_to_selection_action.triggered.connect(partial(self.api.plugins["SegmentPlugin"].jump_to_selection))
+        self.jump_to_selection_action.triggered.connect(partial(self.api.get_plugin("SegmentPlugin").jump_to_selection))
         self.jump_to_selection_action.setToolTip("Jump to this position in the segments panel")
 
         self.context_menu.addAction(self.jump_to_selection_action)

@@ -624,7 +624,7 @@ class SegmentPlugin(BasePlugin):
 
     def on_context_menu_requested(self, pos, selection):
         self.tag_menu = widgets.QMenu()
-        _, actions = self.api.plugins["TagPlugin"].get_tag_menu(self.tag_menu)
+        _, actions = self.api.get_plugin("TagPlugin").get_tag_menu(self.tag_menu)
         for tag, action in actions.items():
             action.setCheckable(True)
 
@@ -634,7 +634,7 @@ class SegmentPlugin(BasePlugin):
             else:
                 action.setChecked(False)
 
-            action.triggered.connect(partial(self.api.plugins["TagPlugin"].on_toggle_selection_tag, tag, selection))
+            action.triggered.connect(partial(self.api.get_plugin("TagPlugin").on_toggle_selection_tag, tag, selection))
         self.tag_menu.popup(pos)
 
     def on_segment_selection_changed(self):
@@ -809,7 +809,7 @@ class SegmentPlugin(BasePlugin):
 
     def on_project_data_loaded(self):
         self.panel.set_data(self._segmentation_datastore,self.api.project)
-        self.umap_panel.set_data(self._segmentation_datastore, self.api.plugins["TagPlugin"].get_tag_color)
+        self.umap_panel.set_data(self._segmentation_datastore, self.api.get_plugin("TagPlugin").get_tag_color)
         self.refresh()
 
     def needs_saving(self):
@@ -1007,7 +1007,7 @@ class SegmentPlugin(BasePlugin):
                     c = "#00ff00"
                 else:
                     t = list(tags)[0]
-                    c = self.api.plugins["TagPlugin"].get_tag_color(t, as_hex=True)
+                    c = self.api.get_plugin("TagPlugin").get_tag_color(t, as_hex=True)
                 # if this segment is selected in the Segment Table then color it differently
                 if idx in self._selected_segments:
                     rect = SegmentVisualizer(segment_row, source_view.spectrogram, c, 4, 0.6, (0.1, 0.9), self)
@@ -1108,7 +1108,7 @@ class SegmentPlugin(BasePlugin):
 
         # Batch update UI
         self.panel.add_rows_batch(new_df, self.api.project)
-        self.umap_panel.add_spots_batch(new_df, self.api.plugins["TagPlugin"].get_tag_color)
+        self.umap_panel.add_spots_batch(new_df, self.api.get_plugin("TagPlugin").get_tag_color)
 
         self.gui.show_status(f"Created {len(segment_data)} segments")
         logger.debug(f"Created {len(segment_data)} segments in batch")
@@ -1136,7 +1136,7 @@ class SegmentPlugin(BasePlugin):
         # Notify other plugins (using batch signal with single-element list)
         self.api.segments_created([segID])
         self.panel.add_row(self._segmentation_datastore.loc[segID], self.api.project)
-        self.umap_panel.add_spot(self._segmentation_datastore.loc[segID], self.api.plugins["TagPlugin"].get_tag_color)
+        self.umap_panel.add_spot(self._segmentation_datastore.loc[segID], self.api.get_plugin("TagPlugin").get_tag_color)
         
         self.gui.show_status("Created segment {} to {}".format(start, stop))
         logger.debug("Created segment {} to {}".format(start, stop))

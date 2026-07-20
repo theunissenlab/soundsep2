@@ -55,6 +55,34 @@ class Api(QObject):
     def plugins(self):
         return self._app.plugins
 
+    def get_plugin(self, name: str, required: bool = True):
+        """Look up a loaded plugin instance by its class name.
+
+        Plugins commonly reach into each other (e.g. SegmentPlugin calling
+        into TagPlugin). Looking up self.api.plugins[name] directly raises a
+        bare KeyError with no context if that plugin failed to load (its
+        __init__ raised, it was a local plugin that got renamed/removed, etc),
+        deep inside an unrelated call stack. This centralizes that lookup so
+        the failure is at least clearly attributed to the missing plugin.
+
+        Arguments
+        ---------
+        name : str
+            The plugin's class name, as it appears in self.plugins
+        required : bool (default True)
+            If True and the plugin is not currently loaded, raises a
+            RuntimeError with a clear message. If False, returns None
+            instead, for integrations with genuinely optional plugins.
+        """
+        plugin = self.plugins.get(name)
+        if plugin is None and required:
+            raise RuntimeError(
+                "Plugin '{}' is required but is not currently loaded. It may "
+                "have failed to initialize (check logs) or been removed/renamed."
+                .format(name)
+            )
+        return plugin
+
     @property
     def config(self):
         return self._app.config

@@ -89,8 +89,8 @@ class TagPlugin(BasePlugin):
             else:
                 self._datastore["segments"].loc[i,'Tags'].remove(tag)
         # TODO CONFIRM TAGS ARE ADDED
-        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"].loc[selection], self.api.project)
-        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"].loc[selection], self.get_tag_color)
+        self.api.get_plugin("SegmentPlugin").panel.update_rows(self._datastore["segments"].loc[selection], self.api.project)
+        self.api.get_plugin("SegmentPlugin").umap_panel.update_spots(self._datastore["segments"].loc[selection], self.get_tag_color)
         self._needs_saving = True
 
     def apply_tag(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source', tag: 'str'):
@@ -108,8 +108,8 @@ class TagPlugin(BasePlugin):
         for _,segment in self._datastore["segments"][segs_to_tag].iterrows():
             segment["Tags"].add(tag)
         
-        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"][segs_to_tag], self.api.project)
-        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"][segs_to_tag], self.get_tag_color)
+        self.api.get_plugin("SegmentPlugin").panel.update_rows(self._datastore["segments"][segs_to_tag], self.api.project)
+        self.api.get_plugin("SegmentPlugin").umap_panel.update_spots(self._datastore["segments"][segs_to_tag], self.get_tag_color)
         self._needs_saving = True
 
     def clear_tags(self, start: 'ProjectIndex', stop: 'ProjectIndex', source: 'Source'):
@@ -126,8 +126,8 @@ class TagPlugin(BasePlugin):
         for _,segment in self._datastore["segments"][segs_to_untag].iterrows():
             segment["Tags"].clear()
 
-        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"][segs_to_untag], self.api.project)
-        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"][segs_to_untag], self.get_tag_color)
+        self.api.get_plugin("SegmentPlugin").panel.update_rows(self._datastore["segments"][segs_to_untag], self.api.project)
+        self.api.get_plugin("SegmentPlugin").umap_panel.update_spots(self._datastore["segments"][segs_to_untag], self.get_tag_color)
         self._needs_saving = True
 
     def connect_events(self):
@@ -178,8 +178,8 @@ class TagPlugin(BasePlugin):
             # remove the corresponding color for this tag
             self._datastore["tag_colors"].pop(self._datastore["tags"].index(tag_name))
             self._datastore["tags"].remove(tag_name)
-        self.api.plugins["SegmentPlugin"].panel.update_rows(self._datastore["segments"].loc[updated_segs], self.api.project)
-        self.api.plugins["SegmentPlugin"].umap_panel.update_spots(self._datastore["segments"].loc[updated_segs], self.get_tag_color)
+        self.api.get_plugin("SegmentPlugin").panel.update_rows(self._datastore["segments"].loc[updated_segs], self.api.project)
+        self.api.get_plugin("SegmentPlugin").umap_panel.update_spots(self._datastore["segments"].loc[updated_segs], self.get_tag_color)
         self.panel.set_data(self._datastore["tags"], self._datastore["tag_colors"])
         self.update_menu(self._datastore["tags"])
         self._needs_saving = True

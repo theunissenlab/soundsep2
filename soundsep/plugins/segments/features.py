@@ -158,7 +158,7 @@ class VisualizationPanel(widgets.QWidget):
             if seg_db is None or ix not in seg_db.index:
                 continue
             seg_row = seg_db.loc[ix]
-            tags = self.api.plugins['SegmentPlugin'].get_tags_for_segment(ix)
+            tags = self.api.get_plugin('SegmentPlugin').get_tags_for_segment(ix)
             if self._func_get_color and len(tags) > 0:
                 c = self._func_get_color(list(tags)[0])
             else:
@@ -227,7 +227,7 @@ class VisualizationPanel(widgets.QWidget):
             if self._func_get_color is not None:
                 new_brushes = []
                 for seg_id in spot_seg_IDs:
-                    tags = self.api.plugins['SegmentPlugin'].get_tags_for_segment(seg_id)
+                    tags = self.api.get_plugin('SegmentPlugin').get_tags_for_segment(seg_id)
                     if len(tags) > 0:
                         c = self._func_get_color(list(tags)[0])
                     else:
@@ -251,7 +251,7 @@ class VisualizationPanel(widgets.QWidget):
             y_val = seg_db.at[ix, y_axis]
             if not pd.isna(x_val) and not pd.isna(y_val):
                 # Get color based on tag
-                tags = self.api.plugins['SegmentPlugin'].get_tags_for_segment(ix)
+                tags = self.api.get_plugin('SegmentPlugin').get_tags_for_segment(ix)
                 if self._func_get_color and len(tags) > 0:
                     c = self._func_get_color(list(tags)[0])
                 else:
@@ -840,7 +840,7 @@ class FeaturePlugin(BasePlugin):
                     self.panel.add_feature(feat, seg_db[feat])
 
         # Pass the tag color function for coloring dots by label
-        func_get_color = self.api.plugins["TagPlugin"].get_tag_color
+        func_get_color = self.api.get_plugin("TagPlugin").get_tag_color
         self.vis_panel.update_spots(func_get_color)
     
     def get_feat_percent(self, feature):

@@ -527,7 +527,7 @@ class AutoSegmentPlugin(BasePlugin):
             return
 
         # Get DetectPlugin for settings
-        detect_plugin = self.api.plugins.get("DetectPlugin")
+        detect_plugin = self.api.get_plugin("DetectPlugin", required=False)
         if not detect_plugin:
             self.panel.set_status("DetectPlugin not available", is_error=True)
             return
@@ -619,7 +619,7 @@ class AutoSegmentPlugin(BasePlugin):
             return
 
         # Get DetectPlugin for settings
-        detect_plugin = self.api.plugins.get("DetectPlugin")
+        detect_plugin = self.api.get_plugin("DetectPlugin", required=False)
         if not detect_plugin:
             self.panel.set_status("DetectPlugin not available", is_error=True)
             return
@@ -764,7 +764,7 @@ class AutoSegmentPlugin(BasePlugin):
             return
 
         # Delete existing segments in the range first
-        segment_plugin = self.api.plugins.get("SegmentPlugin")
+        segment_plugin = self.api.get_plugin("SegmentPlugin", required=False)
         if segment_plugin:
             segment_plugin.delete_segments_between(
                 self.api.make_project_index(self._pending_start_sample),
@@ -828,7 +828,7 @@ class AutoSegmentPlugin(BasePlugin):
             return
 
         # Delete existing segments in the range first
-        segment_plugin = self.api.plugins.get("SegmentPlugin")
+        segment_plugin = self.api.get_plugin("SegmentPlugin", required=False)
         if segment_plugin:
             segment_plugin.delete_segments_between(
                 self.api.make_project_index(start_offset),
@@ -852,7 +852,7 @@ class AutoSegmentPlugin(BasePlugin):
 
         # Create segments using SegmentPlugin
         try:
-            segment_plugin = self.api.plugins.get("SegmentPlugin")
+            segment_plugin = self.api.get_plugin("SegmentPlugin", required=False)
             if segment_plugin:
                 segment_plugin.create_segments_batch(absolute_segments, skip_delete_check=True)
                 self.panel.set_status(f"Created {len(intervals)} segments")
@@ -873,7 +873,7 @@ class AutoSegmentPlugin(BasePlugin):
             return
 
         # Delete existing segments in the range first
-        segment_plugin = self.api.plugins.get("SegmentPlugin")
+        segment_plugin = self.api.get_plugin("SegmentPlugin", required=False)
         if segment_plugin:
             segment_plugin.delete_segments_between(
                 self.api.make_project_index(self._pending_start_sample),

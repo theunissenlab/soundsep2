@@ -537,7 +537,7 @@ class DetectPlugin(BasePlugin):
         if not selection:
             return
 
-        self.api.plugins["SegmentPlugin"].delete_segments_between(
+        self.api.get_plugin("SegmentPlugin").delete_segments_between(
             selection.x0,
             selection.x1,
             selection.source
@@ -577,7 +577,7 @@ class DetectPlugin(BasePlugin):
                 min_peak=self.using_peak_threshold and self.compute_peak_threshold(signal, ampenv)
             )
 
-        self.api.plugins["SegmentPlugin"].create_segments_batch([
+        self.api.get_plugin("SegmentPlugin").create_segments_batch([
             (
                 selection.x0 + int(interval0),
                 selection.x0 + int(interval1),

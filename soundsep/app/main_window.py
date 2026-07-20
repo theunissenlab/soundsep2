@@ -485,7 +485,7 @@ class SoundsepMainWindow(widgets.QMainWindow):
         if result:
             self.show_status("Save successful", 2000)
         else:
-            widgets.QMessageBox.error("Save failed. See logs.")
+            widgets.QMessageBox.critical(self, "Error", "Save failed. See logs.")
 
     def on_toggle_view_mode(self):
         if self.spectrogram_view_mode_button.isChecked():

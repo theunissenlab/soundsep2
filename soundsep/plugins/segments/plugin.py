@@ -1237,11 +1237,11 @@ class SegmentPlugin(BasePlugin):
                 filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
                 filepath = folder_path / filename
 
-                # Normalize audio to int16 range for WAV export
-                audio_normalized = audio_channel / np.max(np.abs(audio_channel)) if np.max(np.abs(audio_channel)) > 0 else audio_channel
-                audio_int16 = (audio_normalized * 32767).astype(np.int16)
+                # # Normalize audio to int16 range for WAV export
+                # audio_normalized = audio_channel / np.max(np.abs(audio_channel)) if np.max(np.abs(audio_channel)) > 0 else audio_channel
+                # audio_int16 = (audio_normalized * 32767).astype(np.int16)
 
-                wavfile.write(str(filepath), sr, audio_int16)
+                wavfile.write(str(filepath), sr, audio_channel )
                 n_exported += 1
             except Exception as e:
                 logger.error(f"Failed to export segment {seg_id}: {e}")

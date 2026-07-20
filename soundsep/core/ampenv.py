@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.ndimage import uniform_filter1d
-from scipy.signal import butter, filter_design, filtfilt
+from scipy.signal import butter, filter_design, filtfilt, sosfiltfilt
 
 
 def lowpass_filter(s, sample_rate, cutoff_freq, filter_order=5, rescale=False):
@@ -100,24 +100,39 @@ def advanced_filter_and_ampenv(data, fs, params):
     data = data.astype(np.float32)
     data = software_gain * (data - np.mean(data))
 
-    # -------- Step 2: bandpass filters --------
-    hb, ha = butter(5, [signal_low, signal_high], 'bandpass', fs=fs)
-    lb, la = butter(5, [noise_low, noise_high], 'bandpass', fs=fs)
-    sig = filtfilt(hb, ha, data)
-    noi = filtfilt(lb, la, data)
+    sigsos = butter(6, [signal_low, signal_high], "bandpass", fs=fs, output="sos")
+    noi_sos = butter(6, [noise_low, noise_high], "bandpass", fs=fs, output="sos")
+    sig = sosfiltfilt(sigsos, data)
+    noi = sosfiltfilt(noi_sos, data)
 
+    #rms_signal = np.sqrt(np.mean(sig**2))
+    #rms_noise = np.sqrt(np.mean(noi**2))
 
-    # -------- Step 3–4: energy-based combination with rolling RMS --------
-    rms_signal = np.sqrt(uniform_filter1d(sig**2, size=rms_window_samples, mode='nearest'))
-    rms_noise  = np.sqrt(uniform_filter1d(noi**2, size=rms_window_samples, mode='nearest'))
-
-    amp = (signal_gain * (sig**2 - rms_signal)
-         - noise_gain  * (noi**2 - rms_noise))
-
+    amp = (signal_gain * sig**2 ) - (noise_gain * noi**2 )
     amp = np.maximum(amp, 0)
+    eps=np.finfo(np.float32).eps
+    amp += eps
 
-    # -------- Step 5: smoothing --------
-    amp_smooth = uniform_filter1d(amp, size=smooth_samples, mode='nearest')
+    amp_smooth = uniform_filter1d(amp, size=smooth_samples, mode="nearest")
+
+    # # -------- Step 2: bandpass filters --------
+    # hb, ha = butter(8, [signal_low, signal_high], 'bandpass', fs=fs)
+    # lb, la = butter(8, [noise_low, noise_high], 'bandpass', fs=fs)
+    # sig = filtfilt(hb, ha, data)
+    # noi = filtfilt(lb, la, data)
+
+
+    # # -------- Step 3–4: energy-based combination with rolling RMS --------
+    # rms_signal = np.sqrt(uniform_filter1d(sig**2, size=rms_window_samples, mode='nearest'))
+    # rms_noise  = np.sqrt(uniform_filter1d(noi**2, size=rms_window_samples, mode='nearest'))
+
+    # amp = (signal_gain * (sig**2 - rms_signal)
+    #     - noise_gain  * (noi**2 - rms_noise))
+    # # amp = (signal_gain * sig**2 ) - (noise_gain * noi**2 )
+    # amp = np.maximum(amp, 0)
+
+    # # -------- Step 5: smoothing --------
+    # amp_smooth = uniform_filter1d(amp, size=smooth_samples, mode='nearest')
     return amp_smooth
 
 
@@ -176,7 +191,8 @@ def advanced_seg(data, fs, params, return_amp=False):
         return (np.array([]), np.array([]), amp_smooth) if return_amp else (np.array([]), np.array([]))
 
     if offsets[0] < onsets[0]:
-        offsets = offsets[1:]
+        onsets = np.insert(onsets, 0, 0)
+        # offsets = offsets[1:]
     if len(onsets) > len(offsets):
         onsets = onsets[:-1]
 

@@ -827,18 +827,39 @@ class NWBFile:
                 tags = np.array([], dtype='S1024')
                 coords = np.array([], dtype='S1024')
 
-            # Create datasets
-            seg_group.create_dataset('start_time', data=start_times)
-            seg_group.create_dataset('stop_time', data=stop_times)
-            seg_group.create_dataset('id', data=segment_ids)
-            seg_group.create_dataset('source_name', data=source_names)
-            seg_group.create_dataset('source_channel', data=source_channels)
-            seg_group.create_dataset('tags', data=tags)
-            seg_group.create_dataset('coords', data=coords)
+            # Create datasets with HDMF-required attributes so pynwb can index them
+            col_names = ['start_time', 'stop_time', 'source_name', 'source_channel', 'tags', 'coords']
+            col_descs = {
+                'start_time': 'Start time of segment in seconds',
+                'stop_time': 'Stop time of segment in seconds',
+                'source_name': 'Name of the audio source',
+                'source_channel': 'Channel index of the audio source',
+                'tags': 'JSON-encoded list of tags',
+                'coords': 'JSON-encoded coordinates array',
+            }
 
-            # Add attributes to make it identifiable as a soundsep intervals table
+            id_ds = seg_group.create_dataset('id', data=segment_ids)
+            id_ds.attrs['neurodata_type'] = 'ElementIdentifiers'
+            id_ds.attrs['namespace'] = 'hdmf-common'
+
+            for ds_name, ds_data in [
+                ('start_time', start_times),
+                ('stop_time', stop_times),
+                ('source_name', source_names),
+                ('source_channel', source_channels),
+                ('tags', tags),
+                ('coords', coords),
+            ]:
+                ds = seg_group.create_dataset(ds_name, data=ds_data)
+                ds.attrs['neurodata_type'] = 'VectorData'
+                ds.attrs['namespace'] = 'hdmf-common'
+                ds.attrs['description'] = col_descs[ds_name]
+
+            # Attributes required for pynwb/HDMF to register this as a TimeIntervals table
             seg_group.attrs['neurodata_type'] = 'TimeIntervals'
+            seg_group.attrs['namespace'] = 'core'
             seg_group.attrs['description'] = 'Soundsep segmentation intervals'
+            seg_group.attrs['colnames'] = np.array(col_names, dtype=object)
 
     @staticmethod
     def has_soundsep_segments(nwb_path: str) -> bool:

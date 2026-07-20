@@ -7,7 +7,7 @@ import os
 from multiprocessing import Queue, Process, Event
 import threading
 from functools import partial
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from queue import Empty
 from typing import Any, Dict, List, Optional, Tuple
@@ -63,6 +63,24 @@ class SegmentFeatureResult:
     segmentID: int
     features: dict  # Detected intervals relative to block start
     error: Optional[str] = None
+
+@dataclass
+class BlockSegInfo:
+    """Info for a single segment within a block."""
+    seg_id: int
+    local_start: int   # Start index relative to block
+    local_stop: int    # Stop index relative to block
+    channel: int       # Channel index within the block
+
+@dataclass
+class BlockFeatureInfo:
+    """Info needed to extract features from all segments in a block."""
+    block_index: int
+    block: object      # The Block object (handles WAV, NWB, DAT internally)
+    sampling_rate: int
+    segments: List[BlockSegInfo]
+    lowpass: int = 6000
+    highpass: int = 200
 
 class VisualizationPanel(widgets.QWidget):
     segmentSelectionChanged = pyqtSignal(object)
@@ -1045,23 +1063,48 @@ class FeaturePlugin(BasePlugin):
             print("No segments to process.", flush=True)
             return
 
-        nworkers = min(16, self.n_to_process)
-        print(f"Starting {nworkers} worker threads...", flush=True)
-
         # Initialize batch buffer for progress updates
         self._progress_buffer = {}
         self._PROGRESS_FLUSH_INTERVAL = max(1, self.n_to_process // 20)  # ~20 UI updates total
 
-        # Build load info for all segments (for parallel I/O)
-        load_infos = []
+        # Group segments by block
+        project = self.api.project
+        sr = project.sampling_rate
+        block_start_frames = project._block_start_frames
+        blocks_by_idx: dict = {}
+
         for seg_id in unprocessed_segIDs:
             try:
-                load_infos.append(self.get_segment_load_info(seg_id))
+                seg = self._datastore['segments'].loc[seg_id]
+                start_idx = int(seg.StartIndex)
+                stop_idx = int(seg.StopIndex)
+                block_idx = bisect.bisect_right(block_start_frames, start_idx) - 1
+                block = project.blocks[block_idx]
+                block_start = block_start_frames[block_idx]
+                local_start = start_idx - block_start
+                local_stop = stop_idx - block_start
+                _, file_channel = block.get_channel_info(seg.Source.channel)
+
+                if block_idx not in blocks_by_idx:
+                    blocks_by_idx[block_idx] = BlockFeatureInfo(
+                        block_index=block_idx,
+                        block=block,
+                        sampling_rate=sr,
+                        segments=[]
+                    )
+                blocks_by_idx[block_idx].segments.append(
+                    BlockSegInfo(seg_id, local_start, local_stop, file_channel)
+                )
             except Exception as e:
-                print(f"Failed to get load info for segment {seg_id}: {e}", flush=True)
+                print(f"Failed to get block info for segment {seg_id}: {e}", flush=True)
+
+        blocks_info = list(blocks_by_idx.values())
+        nworkers = min(16, len(blocks_info))
+        print(f"Processing {self.n_to_process} segments across {len(blocks_info)} block(s) "
+              f"using {nworkers} thread(s)...", flush=True)
 
         self.parallel_worker = ParallelFeatureWorker(
-            load_infos=load_infos,
+            blocks_info=blocks_info,
             feature_selections=self.feature_selections,
             max_workers=nworkers
         )
@@ -1259,99 +1302,79 @@ def _load_audio_standalone(load_info: SegmentLoadInfo) -> Tuple[int, np.ndarray,
 
 
 class ParallelFeatureWorker(QThread):
-    """Worker thread for parallel feature extraction.
+    """Worker thread for parallel feature extraction across blocks.
 
-    Uses a two-phase approach:
-      Phase 1: Load audio in parallel using ThreadPoolExecutor
-               Each thread opens its own file handle (thread-safe)
-      Phase 2: Extract features with ProcessPoolExecutor (CPU bound, true multi-core)
-
-    ThreadPoolExecutor cannot speed up CPU-bound feature extraction (fundEstOptim,
-    formantEstimator, etc.) because Python's GIL serializes all threads. Using
-    ProcessPoolExecutor gives real parallelism across cores.
+    Mirrors the ParallelSegmentWorker pattern: one task per block,
+    each task reads the block once and processes all its segments.
     """
+
     progress = pyqtSignal(int, object, int, int, str)  # segmentID, result, current, total, message
     error = pyqtSignal(str)
 
     def __init__(
         self,
-        load_infos: List[SegmentLoadInfo],
+        blocks_info: List[BlockFeatureInfo],
         feature_selections,
         max_workers: int = 4
     ):
         super().__init__()
-        self.load_infos = load_infos
+        self.blocks_info = blocks_info
         self.feature_selections = feature_selections
         self.max_workers = max_workers
 
+    def _process_block(self, block_info: BlockFeatureInfo) -> List[SegmentFeatureResult]:
+        """Read a block once and extract features for all its segments."""
+        results = []
+        sr = block_info.sampling_rate
+        nfilt = 1024
+        hp = firwin(nfilt - 1, 2.0 * block_info.highpass / sr, pass_zero=False)
+        lp = firwin(nfilt, 2.0 * block_info.lowpass / sr)
+
+        for seg in block_info.segments:
+            try:
+                audio = block_info.block.read(seg.local_start, seg.local_stop, channels=[seg.channel])
+                audio = audio[:, 0].astype(np.float32)
+                n = len(audio)
+                if n > 10:
+                    audio = filtfilt(hp, [1.0], audio, padlen=min(n - 10, 3 * len(hp)))
+                    audio = filtfilt(lp, [1.0], audio, padlen=min(n - 10, 3 * len(lp)))
+                features = _extract_features(audio, sr, feature_selections=self.feature_selections, normalize=True)
+                results.append(SegmentFeatureResult(seg.seg_id, features))
+            except Exception as e:
+                logger.exception(f"Error processing segment {seg.seg_id} in block {block_info.block_index}")
+                results.append(SegmentFeatureResult(seg.seg_id, None, str(e)))
+
+        return results
+
     def run(self):
         try:
-            total_segments = len(self.load_infos)
+            total_segments = sum(len(b.segments) for b in self.blocks_info)
+            total_blocks = len(self.blocks_info)
             if total_segments == 0:
                 return
 
-            # Phase 1: Load audio in parallel using ThreadPoolExecutor.
-            # Each call to _load_audio_standalone opens its own file handle,
-            # so this is thread-safe and benefits from I/O parallelism on SSDs.
-            loaded = {}
-            load_failures = []
-
-            # Use fewer I/O workers to avoid overwhelming the disk
-            io_workers = min(8, self.max_workers, total_segments)
-            print(f"Loading {total_segments} segments using {io_workers} I/O threads...", flush=True)
-
-            with ThreadPoolExecutor(max_workers=io_workers) as executor:
-                future_to_info = {
-                    executor.submit(_load_audio_standalone, info): info
-                    for info in self.load_infos
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_block = {
+                    executor.submit(self._process_block, block_info): block_info
+                    for block_info in self.blocks_info
                 }
 
-                for i, future in enumerate(as_completed(future_to_info)):
-                    info = future_to_info[future]
+                completed = 0
+                for future in as_completed(future_to_block):
+                    block_info = future_to_block[future]
                     try:
-                        seg_id, audio, sr = future.result()
-                        loaded[seg_id] = (audio, sr)
+                        block_results = future.result()
                     except Exception as e:
-                        load_failures.append((info.seg_id, str(e)))
+                        logger.exception(f"Error in block {block_info.block_index}")
+                        block_results = [
+                            SegmentFeatureResult(seg.seg_id, None, str(e))
+                            for seg in block_info.segments
+                        ]
 
-                    if (i + 1) % 50 == 0 or i == 0:
-                        print(f"Loaded {i + 1}/{total_segments} segments", flush=True)
-
-            print(f"Loading complete: {len(loaded)} loaded, {len(load_failures)} failed", flush=True)
-
-            # Report load failures as completed (with no features)
-            completed = 0
-            for segID, error_msg in load_failures:
-                completed += 1
-                result = SegmentFeatureResult(segID, None, error_msg)
-                self.progress.emit(segID, result, completed, total_segments,
-                                   f"Load error for segment {segID}")
-
-            # Phase 2: Extract features using ProcessPoolExecutor.
-            # This is CPU-bound work (pitch tracking, formant estimation, etc.)
-            # and requires separate processes to bypass the GIL.
-            if loaded:
-                with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-                    future_to_seg = {
-                        executor.submit(
-                            _extract_features, audio, sr,
-                            feature_selections=self.feature_selections,
-                            normalize=True
-                        ): segID
-                        for segID, (audio, sr) in loaded.items()
-                    }
-
-                    for future in as_completed(future_to_seg):
-                        segID = future_to_seg[future]
+                    for result in block_results:
                         completed += 1
-                        try:
-                            features = future.result()
-                            result = SegmentFeatureResult(segID, features)
-                        except Exception as e:
-                            logger.exception(f"Error extracting features for segment {segID}")
-                            result = SegmentFeatureResult(segID, None, str(e))
                         self.progress.emit(
-                            segID, result, completed, total_segments,
+                            result.segmentID, result, completed, total_segments,
                             f"Extracted features {completed}/{total_segments}"
                         )
 

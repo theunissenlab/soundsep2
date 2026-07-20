@@ -1,4 +1,5 @@
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
@@ -90,6 +91,16 @@ class WhisperSegWorker(QThread):
 class ParallelSegmentWorker(QThread):
     """Worker thread for running segmentation across multiple blocks in parallel."""
 
+    # Minimum context padding (seconds) read around each block's own nominal
+    # range. Detection filters (bandpass + smoothing) need real audio on both
+    # sides of a call to represent it accurately, and calls routinely start in
+    # one block/file and end in the next when files are chunked into short
+    # segments. Reading only exactly each block's own samples truncates any
+    # call crossing a file boundary; the truncated remainder on each side can
+    # independently fail duration/threshold checks that the whole call would
+    # have passed, silently dropping it entirely.
+    DEFAULT_CONTEXT_PAD_SEC = 2.0
+
     finished = pyqtSignal(list)  # Emits list of BlockSegmentResult
     error = pyqtSignal(str)
     progress = pyqtSignal(int, int, str)  # current_block, total_blocks, message
@@ -100,6 +111,7 @@ class ParallelSegmentWorker(QThread):
         sampling_rate: int,
         method: str,  # "basic" or "advanced"
         params: dict,  # Method-specific parameters
+        project,  # Project, used to read padded context across block boundaries
         max_workers: int = 4
     ):
         super().__init__()
@@ -107,21 +119,44 @@ class ParallelSegmentWorker(QThread):
         self.sampling_rate = sampling_rate
         self.method = method
         self.params = params
+        self.project = project
         self.max_workers = max_workers
+        # Context padding makes adjacent blocks' read windows overlap into
+        # shared neighboring files, unlike each block's own exact (disjoint)
+        # range - serialize the actual file reads so concurrent tasks never
+        # seek/read the same underlying file handle at once. DSP work below
+        # stays parallel since numpy/scipy release the GIL during it.
+        self._read_lock = threading.Lock()
+
+    def _context_pad_samples(self) -> int:
+        pad_sec = max(float(self.params.get('max_dur_sec', 0.0)), self.DEFAULT_CONTEXT_PAD_SEC)
+        return int(pad_sec * self.sampling_rate)
 
     def _process_block(self, block_info: BlockReadInfo) -> BlockSegmentResult:
-        """Process a single block and return detected intervals."""
-        block_end_sample = block_info.block_start_sample + (block_info.read_end - block_info.read_start)
+        """Process a single block and return detected intervals.
+
+        Reads a padded window around the block's own nominal range (spanning
+        into neighboring blocks/files if needed) so calls near a block
+        boundary get real audio context instead of being truncated, then
+        keeps only the intervals whose onset falls within this block's own
+        nominal range. A call's onset lies in exactly one block's nominal
+        range even though adjacent blocks' padded windows overlap, so this
+        can't double-count or drop a call at the handoff between blocks.
+        """
+        nominal_start = block_info.block_start_sample
+        nominal_end = block_info.block_start_sample + (block_info.read_end - block_info.read_start)
+        pad = self._context_pad_samples()
+        padded_start = max(nominal_start - pad, 0)
+        padded_end = min(nominal_end + pad, self.project.frames)
+
         try:
-            # Read audio data using the Block's read method (handles WAV, NWB, DAT)
-            audio = block_info.block.read(
-                block_info.read_start,
-                block_info.read_end,
-                channels=[block_info.channel]
+            with self._read_lock:
+                audio = self.project[padded_start:padded_end, block_info.channel]
+            audio = audio.astype(np.float32)
+            logger.debug(
+                f"Processing block {block_info.block_index}: nominal [{nominal_start}, {nominal_end}), "
+                f"padded [{padded_start}, {padded_end}), {len(audio)} samples"
             )
-            # Squeeze to 1D (block.read returns shape (samples, channels))
-            audio = audio[:, 0].astype(np.float32)
-            logger.debug(f"Processing block {block_info.block_index}: {len(audio)} samples starting at {block_info.block_start_sample}")
 
             if self.method == "basic":
                 # Basic threshold detection
@@ -153,13 +188,24 @@ class ParallelSegmentWorker(QThread):
             else:
                 raise ValueError(f"Unknown method: {self.method}")
 
-            n_intervals = len(intervals) if len(intervals.shape) > 0 and intervals.shape[0] > 0 else 0
-            logger.debug(f"Block {block_info.block_index}: detected {n_intervals} intervals")
+            # Convert to absolute sample positions and keep only the calls
+            # whose onset belongs to this block's own nominal range (see
+            # docstring), then convert back to positions relative to
+            # nominal_start to match this method's existing return contract.
+            kept = []
+            for interval in intervals:
+                abs_onset = padded_start + int(interval[0])
+                abs_offset = padded_start + int(interval[1])
+                if nominal_start <= abs_onset < nominal_end:
+                    kept.append((abs_onset - nominal_start, abs_offset - nominal_start))
+            intervals = np.array(kept) if kept else np.array([])
+
+            logger.debug(f"Block {block_info.block_index}: detected {len(intervals)} intervals after boundary filtering")
 
             return BlockSegmentResult(
                 block_index=block_info.block_index,
-                block_start_sample=block_info.block_start_sample,
-                block_end_sample=block_end_sample,
+                block_start_sample=nominal_start,
+                block_end_sample=nominal_end,
                 intervals=intervals
             )
 
@@ -167,8 +213,8 @@ class ParallelSegmentWorker(QThread):
             logger.exception(f"Error processing block {block_info.block_index}")
             return BlockSegmentResult(
                 block_index=block_info.block_index,
-                block_start_sample=block_info.block_start_sample,
-                block_end_sample=block_end_sample,
+                block_start_sample=nominal_start,
+                block_end_sample=nominal_end,
                 intervals=np.array([]),
                 error=str(e)
             )
@@ -758,6 +804,7 @@ class AutoSegmentPlugin(BasePlugin):
             sampling_rate=sr,
             method=method,
             params=params,
+            project=project,
             max_workers=min(16, num_blocks)
         )
         self.parallel_worker.finished.connect(self._on_parallel_finished)

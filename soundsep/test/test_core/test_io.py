@@ -15,6 +15,10 @@ from soundsep.core.io import (
 def mock_soundfile_metadata():
     @contextmanager
     def _mock_soundfile(path):
+        # load_file() normalizes paths to pathlib.Path before constructing
+        # AudioFile, so `path` here may be a Path rather than a str -
+        # compare as str either way.
+        path = str(path)
         if path == str(Path("foo/ba(r/rec:s1_ch0-00123.wav")):
             obj = mock.MagicMock()
             obj.frames = 20
@@ -121,7 +125,9 @@ class TestGroupFilesByPattern(unittest.TestCase):
         )
 
         self.assertEqual(len(groups), 5)
-        mock_audiofile.assert_has_calls([mock.call(f) for f in self.filelist])
+        # Files are loaded in parallel via ThreadPoolExecutor/as_completed, so
+        # AudioFile() calls can happen in any order - only assert they all happened.
+        mock_audiofile.assert_has_calls([mock.call(f) for f in self.filelist], any_order=True)
         self.assertEqual(groups[0][0], str(self.filelist[0]))
         for obj in groups[0][1]:
             self.assertEqual(obj["block_id"], str(self.filelist[0]))

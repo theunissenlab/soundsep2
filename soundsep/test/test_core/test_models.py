@@ -543,7 +543,8 @@ class TestProject(unittest.TestCase):
             mock_fn.assert_called_with(
                 ProjectIndex(project, 110),
                 ProjectIndex(project, 150),
-                [0]
+                [0],
+                concatenate=True
             )
 
         with mock.patch.object(project, "_read_by_project_indices") as mock_fn:
@@ -551,7 +552,8 @@ class TestProject(unittest.TestCase):
             mock_fn.assert_called_with(
                 ProjectIndex(project, 110),
                 ProjectIndex(project, 150),
-                [0]
+                [0],
+                concatenate=True
             )
 
         with mock.patch.object(project, "_read_by_project_indices") as mock_fn:
@@ -559,7 +561,8 @@ class TestProject(unittest.TestCase):
             mock_fn.assert_called_with(
                 ProjectIndex(project, 110),
                 ProjectIndex(project, 150),
-                [0]
+                [0],
+                concatenate=True
             )
 
         with mock.patch.object(project, "_read_by_project_indices") as mock_fn:
@@ -567,7 +570,8 @@ class TestProject(unittest.TestCase):
             mock_fn.assert_called_with(
                 ProjectIndex(project, 110),
                 ProjectIndex(project, 150),
-                [0]
+                [0],
+                concatenate=True
             )
 
     def test_normalize_slice_both_none(self):

@@ -36,7 +36,12 @@ class AudioFileView(widgets.QTreeWidget):
         """If base_dir is set, removes it from the path
         """
         if self.base_dir:
-            return str(os.path.relpath(path, self.base_dir))
+            try:
+                return str(os.path.relpath(path, self.base_dir))
+            except ValueError:
+                # path and base_dir are on different drives (Windows) - no
+                # relative path is possible, fall back to the absolute path
+                return str(path)
         else:
             return str(path)
 

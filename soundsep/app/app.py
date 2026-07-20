@@ -205,12 +205,6 @@ class SoundsepApp(QObject):
         self.state["selection"] = SelectionService(self.project)
 
         self.services["ampenv"] = AmpenvService(self.project)
-        # self.services["stft"] = StftCache(
-        #     self.project,
-        #     self.state["workspace"].size,
-        #     pad=self.config["stft.cache.size"],
-        #     stft_config=StftConfig(window=self.config["stft.window"], step=step)
-        # )
         self.services["stft"] = StftService(
             self.project,
             n_scales=self.config["stft.cache.n_scales"],

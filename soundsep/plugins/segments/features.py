@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from queue import Empty
 from typing import Any, Dict, List, Optional, Tuple
 
-from sklearn import logger
 from soundsig.sound import BioSound
 import soundsig.sound as sound
 import warnings
@@ -36,6 +35,8 @@ from soundsep.core.base_plugin import BasePlugin
 from soundsep.core.models import Source, ProjectIndex, StftIndex
 from soundsep.core.segments import Segment
 from soundsep.core.utils import hhmmss
+
+logger = logging.getLogger(__name__)
 
 # TODO move to core or something
 warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
@@ -1539,7 +1540,11 @@ def features_spectrum(audio, sr, f_high = 10000):
                 break
                 
     # Find skewness, kurtosis and entropy for power spectrum below f_high
-    ind_fmax = np.where(Freqs > f_high)[0][0]
+    fmax_candidates = np.where(Freqs > f_high)[0]
+    # If f_high is at or above the Nyquist frequency (e.g. low sampling rate
+    # projects), no bin exceeds it -- fall back to using the whole spectrum
+    # instead of crashing.
+    ind_fmax = fmax_candidates[0] if len(fmax_candidates) else len(Freqs)
 
     # Description of spectral shape
     spectdata = Pxx[0:ind_fmax]

@@ -156,7 +156,6 @@ class StftCache:
         arr = np.zeros(shape=(i1 - i0, self.layers[0].data.shape[1], self.layers[0].data.shape[2]))
         stale_mask = np.ones(shape=(i1 - i0, self.layers[0].stale.shape[1]), dtype=bool)
 
-        first_offset = self.layers[-1].lattice.offset
         for layer in self.layers[level:]:
             layer_lim = layer.get_lim()
             start, stop, step = overlapping_slice(i0, i1, layer.lattice)
@@ -164,10 +163,16 @@ class StftCache:
             fill_data = layer.data[layer_selector]
 
             stale_mask[start - i0:stop - i0:step] &= layer.stale[layer_selector]
-            first_offset = min(first_offset, start - i0)
             arr[start - i0:stop - i0:step] = fill_data
 
+        # The raw indices reachable at this pyramid level always fall on a fixed
+        # lattice (offset=every_other - 1, step=every_other), independent of which
+        # portion of it any individual layer's cache window currently covers.
+        # Samples on that lattice but not yet covered by any layer's current
+        # bound are correctly left as 0.0/stale=True above; they must not be
+        # trimmed off the front of the result.
         every_other = pow(2, level)
+        first_offset = (every_other - 1 - i0) % every_other
         return np.arange(i0 + first_offset, i1, every_other), arr[first_offset::every_other], stale_mask[first_offset::every_other]
 
     def set_shape(self, channels: int, features: int):

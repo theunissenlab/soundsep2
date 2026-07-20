@@ -200,6 +200,8 @@ class StftService(QObject):
 
     def close(self):
         self._worker.cancel()
+        self._worker.queue.put(StftWorker.END)
+        self._worker.wait()
 
     @property
     def n_cache_total(self):

@@ -291,7 +291,7 @@ class SoundsepApp(QObject):
             "datastore": self.datastore,
             "exception": e,
         }
-        with open(self.paths.recovery_file, "w+") as f:
+        with open(self.paths.recovery_file, "wb+") as f:
             pickle.dump(payload, f)
 
     def load_local_plugins(self) -> List[str]:

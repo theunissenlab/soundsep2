@@ -228,11 +228,18 @@ class SegmentTableModel(QAbstractTableModel):
         self.endResetModel()
 
     def remove_row_by_id(self, seg_id):
-        """Remove a row by segment ID."""
+        """Remove a row by segment ID.
+
+        Drops in-place (rather than reassigning self._segments_df) so that this
+        stays the same DataFrame object the plugin's datastore holds a reference
+        to, and does the drop itself inside the beginResetModel/endResetModel
+        bracket - the caller must not drop the row from the shared dataframe
+        beforehand, or the view can query data() with a row count that hasn't
+        been updated to match the already-shrunk dataframe yet.
+        """
         self.beginResetModel()
         if seg_id in self._segments_df.index:
-            self._segments_df = self._segments_df.drop(seg_id)
-        # Always rebuild to sync with potentially externally-modified dataframe
+            self._segments_df.drop(seg_id, inplace=True)
         self._rebuild_sorted_indices()
         self.endResetModel()
         return seg_id not in self._segments_df.index
@@ -243,18 +250,16 @@ class SegmentTableModel(QAbstractTableModel):
         This is much faster than calling remove_row_by_id() in a loop because
         it only does one model reset and one sorted indices rebuild.
 
-        Note: The underlying DataFrame may be shared with the plugin and already
-        modified via inplace operations. We always rebuild sorted indices to
-        stay in sync.
+        Drops in-place so this dataframe object (shared with the plugin's
+        datastore) and this model's _sorted_indices are updated atomically
+        inside one beginResetModel/endResetModel bracket. The caller must not
+        drop these rows from the shared dataframe beforehand.
         """
-        # Filter to only IDs that still exist (may already be removed from shared df)
         ids_to_remove = [sid for sid in seg_ids if sid in self._segments_df.index]
 
         self.beginResetModel()
-        # Only drop if there are IDs still present
         if ids_to_remove:
-            self._segments_df = self._segments_df.drop(ids_to_remove)
-        # Always rebuild indices to sync with potentially externally-modified dataframe
+            self._segments_df.drop(ids_to_remove, inplace=True)
         self._rebuild_sorted_indices()
         self.endResetModel()
         return len(ids_to_remove)
@@ -300,8 +305,18 @@ class SegmentTableModel(QAbstractTableModel):
         if role != Qt.ItemDataRole.DisplayRole:
             return None
 
-        # Map view row to dataframe row using sorted indices
-        df_row_idx = self._sorted_indices[index.row()]
+        # Map view row to dataframe row using sorted indices. _sorted_indices can
+        # be briefly stale relative to _segments_df if the underlying dataframe is
+        # mutated outside of this model's own add/remove methods (e.g. the plugin
+        # dropping rows from the shared dataframe before notifying this model) -
+        # guard against that instead of raising, since it's a transient view-model
+        # inconsistency rather than a real out-of-range row request.
+        row = index.row()
+        if row < 0 or row >= len(self._sorted_indices):
+            return None
+        df_row_idx = self._sorted_indices[row]
+        if df_row_idx < 0 or df_row_idx >= len(self._segments_df):
+            return None
         seg_id = self._segments_df.index[df_row_idx]
         row_data = self._segments_df.iloc[df_row_idx]
         col = index.column()
@@ -342,7 +357,8 @@ class SegmentTableModel(QAbstractTableModel):
         """Get the segment ID for a view row index."""
         if 0 <= view_row < len(self._sorted_indices):
             df_row_idx = self._sorted_indices[view_row]
-            return self._segments_df.index[df_row_idx]
+            if 0 <= df_row_idx < len(self._segments_df):
+                return self._segments_df.index[df_row_idx]
         return None
 
     def get_row_for_seg_id(self, seg_id):

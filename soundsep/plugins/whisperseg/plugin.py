@@ -142,6 +142,11 @@ class ParallelSegmentWorker(QThread):
         nominal range. A call's onset lies in exactly one block's nominal
         range even though adjacent blocks' padded windows overlap, so this
         can't double-count or drop a call at the handoff between blocks.
+
+        Segments never cross a block boundary: a kept interval is clamped to
+        the block's own nominal range, so a call that (per the padded
+        context) actually starts before or ends after this block is cut off
+        at the block edge rather than reported with an out-of-block extent.
         """
         nominal_start = block_info.block_start_sample
         nominal_end = block_info.block_start_sample + (block_info.read_end - block_info.read_start)
@@ -190,14 +195,18 @@ class ParallelSegmentWorker(QThread):
 
             # Convert to absolute sample positions and keep only the calls
             # whose onset belongs to this block's own nominal range (see
-            # docstring), then convert back to positions relative to
-            # nominal_start to match this method's existing return contract.
+            # docstring), clamped to the block's own bounds so the reported
+            # segment never crosses into a neighboring block, then convert
+            # back to positions relative to nominal_start to match this
+            # method's existing return contract.
             kept = []
             for interval in intervals:
                 abs_onset = padded_start + int(interval[0])
                 abs_offset = padded_start + int(interval[1])
                 if nominal_start <= abs_onset < nominal_end:
-                    kept.append((abs_onset - nominal_start, abs_offset - nominal_start))
+                    clamped_onset = max(abs_onset, nominal_start)
+                    clamped_offset = min(abs_offset, nominal_end)
+                    kept.append((clamped_onset - nominal_start, clamped_offset - nominal_start))
             intervals = np.array(kept) if kept else np.array([])
 
             logger.debug(f"Block {block_info.block_index}: detected {len(intervals)} intervals after boundary filtering")

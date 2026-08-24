@@ -151,6 +151,20 @@ The NWB Intervals Plugin allows you to view and navigate intervals stored in NWB
 
 **Note:** The plugin requires NWB files to have intervals stored in the standard `intervals` group.
 
+### Transferring Segments Between NWB Files
+
+If you have segments (annotations) saved in one NWB file and want to copy them into another NWB file that shares the same underlying audio (e.g. a reprocessed or renamed copy of a recording), use **Segments > Transfer segments from another NWB file...** from the menu.
+
+**Usage:**
+1. Open the destination NWB file as a project (the one you want to add segments to)
+2. Choose "Segments > Transfer segments from another NWB file..."
+3. Select the source NWB file containing the segments to copy
+4. Soundsep verifies that the two files' audio durations match (this is the only compatibility check performed) before copying the segments in
+5. Confirm the transfer; the segments are added to the current project's segment table (any existing segments overlapping the transferred ones are replaced, same as normal segment creation)
+6. Save the project as usual to persist the transferred segments to the destination NWB file
+
+This action is only available when the current project was opened directly from an NWB file.
+
 ## Notes
 
 - NWB files are read using the HDF5 backend, which may be slower than WAV files for random access

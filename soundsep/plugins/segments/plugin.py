@@ -614,6 +614,10 @@ class SegmentPlugin(BasePlugin):
         self.export_segments_action = QtGui.QAction("&Export segments to WAV files...", self)
         self.export_segments_action.triggered.connect(self.on_export_segments_activated)
 
+        self.transfer_segments_action = QtGui.QAction("&Transfer segments from another NWB file...", self)
+        self.transfer_segments_action.triggered.connect(self.on_transfer_segments_activated)
+        self.transfer_segments_action.setEnabled(False)
+
     def connect_events(self):
         self.button = widgets.QPushButton("+Segment")
         self.button.clicked.connect(self.on_create_segment_activated)
@@ -725,6 +729,8 @@ class SegmentPlugin(BasePlugin):
 
     def on_project_ready(self):
         """Called once"""
+        self.transfer_segments_action.setEnabled(self.api.is_nwb_mode)
+
         # Check if we should load from NWB file
         if self.api.is_nwb_mode and self.api.nwb_path:
             self._load_from_nwb()
@@ -1066,7 +1072,9 @@ class SegmentPlugin(BasePlugin):
     def create_segments_batch(
         self,
         segment_data: List[Tuple[ProjectIndex, ProjectIndex, Source]],
-        skip_delete_check: bool = False
+        skip_delete_check: bool = False,
+        tags_list: List[set] = None,
+        coords_list: List[list] = None
     ):
         """Create multiple segments efficiently using batch operations.
 
@@ -1077,21 +1085,29 @@ class SegmentPlugin(BasePlugin):
         skip_delete_check : bool
             If True, skip checking for overlapping segments to delete.
             Use this when you've already deleted segments in the range (e.g., from AutoSegmentPlugin).
+        tags_list : List[set], optional
+            Tags to assign to each new segment, parallel to segment_data. Defaults to an empty set per segment.
+        coords_list : List[list], optional
+            Coords to assign to each new segment, parallel to segment_data. Defaults to an empty list per segment.
         """
         if not segment_data:
             return
+        if tags_list is not None and len(tags_list) != len(segment_data):
+            raise ValueError("tags_list must be the same length as segment_data")
+        if coords_list is not None and len(coords_list) != len(segment_data):
+            raise ValueError("coords_list must be the same length as segment_data")
 
         # Build all segment data at once
         new_rows = []
         start_seg_id = self._next_seg_id
 
-        for start, stop, source in segment_data:
+        for i, (start, stop, source) in enumerate(segment_data):
             new_rows.append({
                 'StartIndex': int(start),  # Store raw integer, not ProjectIndex
                 'StopIndex': int(stop),    # Store raw integer, not ProjectIndex
                 'Source': source,
-                'Tags': set(),
-                'Coords': list()
+                'Tags': tags_list[i] if tags_list is not None else set(),
+                'Coords': coords_list[i] if coords_list is not None else list()
             })
 
         # Update next ID
@@ -1268,6 +1284,129 @@ class SegmentPlugin(BasePlugin):
         self.gui.show_status(f"Exported {n_exported} segments to {folder}" + (f" ({n_failed} failed)" if n_failed else ""))
         logger.info(f"Exported {n_exported} segments to {folder}, {n_failed} failed")
 
+    def on_transfer_segments_activated(self):
+        """Copy segments from another NWB file that shares this project's audio stream."""
+        if not self.api.is_nwb_mode or not self.api.nwb_path:
+            widgets.QMessageBox.warning(
+                self.panel,
+                "Not an NWB project",
+                "Transferring segments is only available when the current project was opened from an NWB file."
+            )
+            return
+
+        from pathlib import Path
+        start_dir = str(Path(self.api.nwb_path).parent)
+        source_path, _ = widgets.QFileDialog.getOpenFileName(
+            self.panel, "Select NWB file to transfer segments from", start_dir, "NWB files (*.nwb)"
+        )
+        if not source_path:
+            return
+
+        if Path(source_path).resolve() == Path(self.api.nwb_path).resolve():
+            widgets.QMessageBox.warning(self.panel, "Same file", "Selected file is the currently open NWB file.")
+            return
+
+        try:
+            n_added = self.import_segments_from_nwb(source_path)
+        except Exception as e:
+            logger.exception("Failed to transfer segments from {}".format(source_path))
+            widgets.QMessageBox.critical(self.panel, "Transfer failed", str(e))
+            return
+
+        if n_added:
+            self.gui.show_status(f"Transferred {n_added} segments from {Path(source_path).name}")
+
+    def import_segments_from_nwb(self, source_path: str):
+        """Copy soundsep segments from source_path into the current NWB-backed project.
+
+        Only allowed when source_path's audio duration matches this project's, since
+        segment boundaries are meaningless if the underlying audio streams differ.
+
+        Returns
+        -------
+        n_added : int or None
+            Number of segments added, or None if nothing was transferred (missing
+            data, duration mismatch, or the user declined the confirmation).
+        """
+        from pathlib import Path
+
+        if not NWBFile.has_soundsep_segments(source_path):
+            widgets.QMessageBox.information(
+                self.panel, "No segments found",
+                "{} does not contain any soundsep segments.".format(source_path)
+            )
+            return None
+
+        source_file = NWBFile(source_path)
+        source_duration = source_file.frames / source_file.sampling_rate
+        dest_rate = self.api.project.sampling_rate
+        dest_duration = self.api.project.frames / dest_rate
+
+        # Allow up to one sample period (at whichever file has the coarser rate) of
+        # slack for floating point/rounding differences between the two files.
+        tolerance = 1.0 / min(source_file.sampling_rate, dest_rate)
+        if abs(source_duration - dest_duration) > tolerance:
+            widgets.QMessageBox.warning(
+                self.panel, "Audio duration mismatch",
+                "Cannot transfer segments: audio durations do not match.\n\n"
+                "Current project: {:.4f}s\n{}: {:.4f}s".format(
+                    dest_duration, Path(source_path).name, source_duration
+                )
+            )
+            return None
+
+        # Read segments and convert their times using this project's sampling rate,
+        # so the resulting sample indices are correct here even if the two files
+        # were recorded at different sampling rates.
+        segment_rows = NWBFile.read_soundsep_segments(source_path, dest_rate)
+
+        if not segment_rows:
+            widgets.QMessageBox.information(
+                self.panel, "No segments found",
+                "{} does not contain any soundsep segments.".format(source_path)
+            )
+            return None
+
+        reply = widgets.QMessageBox.question(
+            self.panel, "Transfer segments",
+            "Found {} segment(s) in {}. Add them to the current project?\n\n"
+            "(Any existing segments overlapping the transferred ones will be replaced, "
+            "as with normal segment creation.)".format(len(segment_rows), Path(source_path).name),
+            widgets.QMessageBox.StandardButton.Yes | widgets.QMessageBox.StandardButton.No
+        )
+        if reply != widgets.QMessageBox.StandardButton.Yes:
+            return None
+
+        existing_sources = {(s.name, s.channel): s for s in self.api.get_sources()}
+        segment_data = []
+        tags_list = []
+        coords_list = []
+
+        for row in segment_rows:
+            source_key = (row["SourceName"], row["SourceChannel"])
+            if source_key not in existing_sources:
+                self.api.create_source(source_key[0], source_key[1])
+                existing_sources[source_key] = self.api.get_source(source_key[0], source_key[1])
+            source = existing_sources[source_key]
+
+            start = self.api.make_project_index(row["StartIndex"])
+            stop = self.api.make_project_index(row["StopIndex"])
+            segment_data.append((start, stop, source))
+
+            try:
+                tags_list.append(set(json.loads(row["Tags"])) if row["Tags"] else set())
+            except (TypeError, ValueError):
+                tags_list.append(set())
+
+            try:
+                coords = json.loads(row["Coords"]) if row["Coords"] else None
+                coords_list.append(list(coords) if coords else list())
+            except (TypeError, ValueError):
+                coords_list.append(list())
+
+        self.create_segments_batch(segment_data, tags_list=tags_list, coords_list=coords_list)
+        return len(segment_data)
+
     def plugin_toolbar_items(self):
         return [self.button, self.delete_button, self.merge_button]
 
@@ -1278,6 +1417,7 @@ class SegmentPlugin(BasePlugin):
         menu.addAction(self.merge_selection_action)
         menu.addSeparator()
         menu.addAction(self.export_segments_action)
+        menu.addAction(self.transfer_segments_action)
         return menu
 
     def plugin_panel_widget(self):
